@@ -95,9 +95,12 @@ Terrain table (ids: meadow 0, forest 1, water 2, swamp 3, hills 4, desert 5):
   at 0.5 so the camp reads on screen immediately.
 - `party.investigateFactor()` is `0.45 + condition/220 + morale/500`, halved while working a
   deposit. `contest` is 1, or 0.25 when a rival's influence is higher in that cell.
-- **Survey** is the player's deliberate verb: one immediate pass of the same sweep at 2 h and
-  triple effort, costs 2 condition, trains observation 0.2, then a 6 h cooldown. It reuses
-  `investigationSweep`, so the radius, falloff and contest rules are the same in both paths.
+- **Survey** is the player's deliberate verb: one immediate pass worth 2.5 h of the standing
+  sweep, costs 2 condition, trains observation 0.2, then a 6 h cooldown. It reuses
+  `investigationSweep` with no multiplier of its own, so the radius, falloff and contest rules
+  are the same in both paths. 2.5 h finishes the core cells and leaves the outer ring partial:
+  a survey claims what the party already worked on and marks sites out to roughly 3 cells, it
+  does not clear the whole disk in one press.
 - Unexplored cells are painted dark; investigation level drives the fog brightness and the
   investigation view.
 

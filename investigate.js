@@ -6,7 +6,7 @@ const INV_RADIUS = 3.5;
 const INV_INNER = 1.2;
 const INV_NEARBY_RANGE = 8;
 const INV_NEARBY_CAP = 16;
-const INV_SURVEY_HOURS = 2;
+const INV_SURVEY_HOURS = 2.5;
 const INV_SURVEY_CONDITION = 2;
 const INV_SURVEY_COOLDOWN = 6;
 
@@ -54,14 +54,14 @@ function investigationFalloff(dx, dy, reach) {
 function investigationStep(minutes) {
 	if (!party.alive) return;
 	if (investigation.surveyTicks > 0) investigation.surveyTicks -= minutes;
-	investigationSweep(minutes, false);
+	investigationSweep(minutes);
 }
 
-// A survey is the same sweep pushed hard: one immediate 2 h pass at triple effort, then a cooldown.
+// A survey is the standing sweep delivered at once, then a cooldown: no separate falloff or bonus.
 function investigationSurvey() {
 	if (!investigationSurveyReady()) return false;
 	investigation.surveyTicks = INV_SURVEY_COOLDOWN * 60;
-	investigationSweep(INV_SURVEY_HOURS * 60, true);
+	investigationSweep(INV_SURVEY_HOURS * 60);
 	return true;
 }
 
@@ -73,13 +73,13 @@ function investigationSurveyCooldown() {
 	return Math.ceil(investigation.surveyTicks / 60);
 }
 
-function investigationSweep(minutes, surveyed) {
+function investigationSweep(minutes) {
 	const progress = investigation.progress;
 	const hours = minutes / 60;
 	const reach = investigationReach();
 	const originX = party.x;
 	const originY = party.y;
-	const effort = party.investigateFactor() * (surveyed ? 3 : 1);
+	const effort = party.investigateFactor();
 	const r = Math.ceil(reach);
 	const x0 = Math.max(0, originX - r);
 	const x1 = Math.min(MAP_SIZE - 1, originX + r);
