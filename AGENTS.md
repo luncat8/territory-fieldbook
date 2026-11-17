@@ -58,8 +58,16 @@ getObj().data().action()
 - relevance is decided from head -12. never read a full file just to learn what it is.
 
 - keep this map updated when ownership changes:
-	main.js — owns boot/wiring only. edit for load order, boot, wiring.
-	ui.js — owns <ui concern>. edit for <ui changes>.
+	main.js — owns boot/wiring only. edit for startup wiring.
+	world.js — owns seeded terrain and investigation geometry.
+	party.js — owns members, skills, upkeep and training.
+	sites.js — owns site lifecycle and influence.
+	economy.js — owns physical stocks, flows and land recovery.
+	game.js — owns simulation ordering, rival and victory.
+	ui.js — owns map rendering, controls and panels.
+	style.css — owns application presentation.
+	tests/simulation.test.js — owns simulation regression checks.
+	tests/ui.test.js — owns browser wiring smoke checks.
 - new code goes to its owner, never appended "because the file is already there". no owner exists -> new file + header + map entry.
 - file > ~500 lines = defect. split by feature within the same plan.
 - moves are pure moves: contiguous ranges, snap to enclosing declarations, no behavior change.

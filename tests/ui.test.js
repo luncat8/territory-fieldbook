@@ -1,0 +1,36 @@
+// owns: dependency-free browser wiring smoke test
+// edit for: page controls and boot integration
+'use strict';
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const ids = [...fs.readFileSync('index.html', 'utf8').matchAll(/id="([^"]+)"/g)].map(match => match[1]);
+const elements = {};
+for (const id of ids) elements[id] = { value: '', textContent: '', innerHTML: '', className: '', disabled: false, listeners: {}, addEventListener(name, fn) { this.listeners[name] = fn; }, getBoundingClientRect() { return { left: 0, top: 0, width: 768, height: 768 }; } };
+elements['seed-input'].value = '42';
+elements['speed-input'].value = '1';
+const ctx2d = { fillRect() {}, strokeRect() {}, setLineDash() {}, beginPath() {}, arc() {}, stroke() {}, fill() {}, rect() {} };
+elements['map-canvas'].width = 768;
+elements['map-canvas'].getContext = () => ctx2d;
+const document = { getElementById(id) { assert.ok(elements[id], `Missing #${id}`); return elements[id]; }, addEventListener() {}, querySelectorAll() { return []; } };
+let nextFrame;
+const sandbox = vm.createContext({ document, console, requestAnimationFrame(fn) { nextFrame = fn; } });
+for (const name of ['world.js', 'party.js', 'sites.js', 'economy.js', 'game.js', 'ui.js', 'main.js']) vm.runInContext(fs.readFileSync(name, 'utf8'), sandbox, { filename: name });
+assert.match(elements['cell-panel'].innerHTML, /Meadow/);
+assert.match(elements['victory-panel'].innerHTML, /Largest territory/);
+elements['run-button'].listeners.click();
+nextFrame(1000); nextFrame(3000);
+assert.equal(elements['tick-label'].textContent, '0002');
+elements['run-button'].listeners.click();
+nextFrame(5000);
+assert.equal(elements['tick-label'].textContent, '0002');
+elements['map-canvas'].listeners.click({ clientX: 24, clientY: 36, shiftKey: false });
+assert.equal(elements.coordinates.textContent, '02 / 03');
+assert.equal(vm.runInContext('Math.floor(fieldGame.parties[0].x)', sandbox), 2);
+elements['map-canvas'].listeners.click({ clientX: 48, clientY: 36, shiftKey: true });
+assert.equal(elements.coordinates.textContent, '04 / 03');
+assert.equal(vm.runInContext('Math.floor(fieldGame.parties[0].x)', sandbox), 2);
+elements['seed-input'].value = '99'; elements['new-button'].listeners.click();
+assert.equal(elements['tick-label'].textContent, '0000');
+assert.equal(elements['world-label'].textContent, 'WORLD 99');
+console.log('UI smoke passed: boot, tick/pause, travel, inspection and seeded restart.');

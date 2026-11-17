@@ -1,11 +1,38 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title></title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Territory Fieldbook</title>
+	<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<canvas id="canv"></canvas>
+	<header class="topbar">
+		<div class="brand"><span class="brand-mark">✳</span><div><strong>FIELD<span>BOOK</span></strong><small> A TERRITORY STUDY</small></div></div>
+		<div class="top-controls"><label>WORLD SEED <input id="seed-input" type="number" value="42" aria-label="World seed"></label><button id="new-button" class="quiet">New world</button><span class="divider"></span><button id="run-button" class="primary">▶ &nbsp;Resume</button><label>SPEED <select id="speed-input"><option value="1">1×</option><option value="5">5×</option><option value="10">10×</option></select></label></div>
+	</header>
+	<main class="layout">
+		<section class="map-section">
+			<div class="map-heading"><div><div class="eyebrow">FIELD OPERATIONS <span> / </span> <span id="world-label">WORLD 42</span></div><h1>Explore the territory<span>.</span></h1><p>Survey the land, record discoveries and build a lasting foothold.</p></div><div class="tick-box"><span>ELAPSED TIME</span><strong id="tick-label">0000</strong><small> TICKS</small></div></div>
+			<div class="map-toolbar"><div class="view-buttons" id="view-buttons"><button data-view="terrain" class="active">Terrain</button><button data-view="survey">Survey</button><button data-view="influence">Influence</button><button data-view="land">Land condition</button></div><span class="map-hint">CLICK TO TRAVEL · SHIFT-CLICK TO INSPECT ↗</span></div>
+			<div class="canvas-wrap"><canvas id="map-canvas" width="768" height="768" aria-label="World map, click a cell to move the party"></canvas><div class="map-key"><span><i class="player-key"></i> YOUR PARTY</span><span><i class="rival-key"></i> RIVAL</span><span><i class="site-key"></i> SITE</span></div></div>
+			<div class="map-footer"><span id="map-caption">TERRAIN VIEW · SELECT A CELL TO EXPLORE</span><span>64 × 64 CELLS</span></div>
+			<div class="bottom-grid"><section class="card"><div class="section-title"><span>01 / FIELD NOTES</span><span>RECENT ACTIVITY</span></div><div id="event-panel" class="events"></div></section><section class="card"><div class="section-title"><span>02 / DECLARATION</span><span>NO TIME LIMIT</span></div><div id="victory-panel"></div><button id="declare-button" class="outline wide">Declare victory <span>↗</span></button></section></div>
+		</section>
+		<aside class="sidebar">
+			<div class="sidebar-header"><div><div class="eyebrow">YOUR EXPEDITION</div><h2>Field overview</h2></div><span class="status" id="status-label">● PAUSED</span></div>
+			<div id="summary-panel"></div>
+			<div class="side-section"><div class="section-title"><span>SELECTED CELL</span><span id="coordinates">08 / 08</span></div><div id="cell-panel"></div></div>
+			<div class="side-section"><div class="section-title"><span>PARTY &amp; SKILLS</span><span>PERSONNEL</span></div><div id="party-panel"></div></div>
+			<div class="side-section"><div class="section-title"><span>STOCKS &amp; FLOWS</span><span>SHARED WORLD</span></div><div id="economy-panel"></div></div>
+		</aside>
+	</main>
+	<script src="world.js"></script>
+	<script src="party.js"></script>
+	<script src="sites.js"></script>
+	<script src="economy.js"></script>
+	<script src="game.js"></script>
+	<script src="ui.js"></script>
+	<script src="main.js"></script>
 </body>
 </html>
