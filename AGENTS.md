@@ -20,20 +20,12 @@ const $ = id => document.getElementById(id);
 - 0-2 comments per function is normal. 3+ usually means names or structure are wrong — rename or restructure, don't comment.
 - no banners, no commented-out code, no TODOs in code — that goes to plan or findings instead.
 
-good:
-	// 2x step: halves samples, still >60fps (plan 0.3, log 11-02)
-not good:
-	// increment i
-	// loop over items
+good: `// 2x step: halves samples, still >60fps (plan 0.3, log 11-02)`
+not good: `// increment i`, `// loop over items`
 
 - no legacy support, no old versions, no outdated browsers, no leftovers and no over protecting from unreal edge cases. we need clean architecture.
 
-good:
-obj.action(obj.data)
-obj.data.action()
-
-not good:
-getObj().data().action()
+good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().action()
 
 ## runtime
 
@@ -52,14 +44,27 @@ getObj().data().action()
 
 ## files
 
-- every source file starts with a 1-2 line header:
-	// owns: input handling and rebinding
-	// edit for: key maps, bind changes
-- relevance is decided from head -12. never read a full file just to learn what it is.
+- every source file starts with a 1-2 line header (`// owns: ...` / `// edit for: ...`);
+  head -12 decides relevance — never read a full file just to learn what it is.
 
 - keep this map updated when ownership changes:
-	main.js — owns boot/wiring only. edit for load order, boot, wiring.
-	ui.js — owns <ui concern>. edit for <ui changes>.
+	main.js — boot, shared clock, tick order, speeds.
+	random.js — seeded LCG streams for generation, sites, rivals.
+	world.js — 64x64 terrain grid, seeded generation, map queries.
+	events.js — event feed and status line.
+	land.js — disturbed fraction, productivity, recovery, restoration.
+	economy.js — resources, town stocks, prices, recipes, biosphere, ledger.
+	sites.js — site pool, discovery, claims, extraction, payouts.
+	investigate.js — investigation progress, radius, distance falloff.
+	party.js — members, shared values, skills, movement, camping, hiring.
+	territory.js — per-faction influence fields, control, share, contest.
+	rivals.js — rival agents: targets, travel, claims, extraction, scouting.
+	victory.js — victory conditions, declaration, feedback.
+	render.js — canvas painting, view modes, markers.
+	input.js — clicks, hover mark, keyboard bindings.
+	hud.js — side panel, context actions, feed.
+	actions.js — player verbs spanning features (move, work, sell, hire, restore, declare).
+	experiments/ — smoke.js (sim) and dom_smoke.js (boot + UI), never loaded by the page.
 - new code goes to its owner, never appended "because the file is already there". no owner exists -> new file + header + map entry.
 - file > ~500 lines = defect. split by feature within the same plan.
 - moves are pure moves: contiguous ranges, snap to enclosing declarations, no behavior change.
@@ -99,8 +104,7 @@ getObj().data().action()
 - experiments/ — node measurement scripts, never loaded by the page.
 - logs are machine format: fixed keys, fixed units, one line per metric.
 	fps_pre=58 fps_post=61 step=2x plan=0.3
-	a log a human must parse is a defect.
-- comparison = a ~15-line node script: diff two logs by key, flag |delta| > 5%. conclusion (1 sentence + numbers) -> findings, raw stays in logs.
+- comparison = a ~15-line node script diffing two logs by key, |delta| > 5% flagged; conclusion -> findings.
 - keep only runs that produced a decision. prune the rest when the plan closes.
 
 ## validation
@@ -132,10 +136,13 @@ Before all topics has minimal implementation Do not try to implement 100% of som
 
 ## current workstream
 
-[rewritten each phase, never accumulated. only constraints that matter right now. delete lines that stopped mattering.]
-
-e.g. splitting ui.js per plan 0.4: dom_smoke after each move, benches at end only.
-e.g. experiment loader derives scripts from index.html and runs them in one VM context.
+- plan-prototype.md is the standing design; change its numbers with the owning file in the
+  same edit.
+- four experiment files cover the loop: smoke (sim), dom_smoke (boot + UI). run both after
+  touching main.js, index.html or load order.
+- keep every file under ~500 lines; a new feature gets a new file, header and map entry.
+- next phase: playtest balance (supplies, rival pressure, victory margins), then extend one
+  draft topic at a time from plan open questions.
 
 ## housekeeping
 
