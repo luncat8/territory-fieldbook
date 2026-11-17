@@ -95,6 +95,9 @@ Terrain table (ids: meadow 0, forest 1, water 2, swamp 3, hills 4, desert 5):
   at 0.5 so the camp reads on screen immediately.
 - `party.investigateFactor()` is `0.45 + condition/220 + morale/500`, halved while working a
   deposit. `contest` is 1, or 0.25 when a rival's influence is higher in that cell.
+- **Survey** is the player's deliberate verb: one immediate pass of the same sweep at 2 h and
+  triple effort, costs 2 condition, trains observation 0.2, then a 6 h cooldown. It reuses
+  `investigationSweep`, so the radius, falloff and contest rules are the same in both paths.
 - Unexplored cells are painted dark; investigation level drives the fog brightness and the
   investigation view.
 
@@ -259,12 +262,21 @@ Around-list (under the map): recording % in the party's cell, current float reac
 marked/visible/spent sites within 8 cells, each with Euclidean distance, name, state and that
 cell's investigation %.
 
+Under the map: the view switch, a joined five-mode group of real radios (`role="radiogroup"`,
+labelled), then the around-list. Exactly one writer — the group's `change` handler — applies the
+mode by setting `render.view`, refreshing the panel and redrawing; the `1`…`5` keys and the
+pointer preview route through the same handler. On `(hover: hover) and (pointer: fine)` moving
+over a mode selects it as a preview by checking its radio; touch and stylus stay click-only, and
+a hover that resolves to no mode is ignored. The group is styled from the shared tokens in
+`index.html` (`:root`), so the checked, hover, focus-visible and disabled states all come from
+the palette rather than literals.
+
 Side panel, top to bottom: clock and speeds (pause/1×/2×/4×); condition, morale, funds, supplies,
 items, members; skills with unlock marks; member rows; current-cell site details and market
-prices of carried goods; the action list for the current context; view switches; victory
-declaration and its feedback; status line; event feed.
+prices of carried goods; the action list for the current context; victory declaration and its
+feedback; status line; event feed.
 
-Actions are context-driven from the party's cell: camp, work/stop
+Actions are context-driven from the party's cell: camp, survey, work/stop
 deposit, gather, take item, train, attempt task, sell all, sell item, buy supplies, provision
 supplies from food, process goods, restore land, hire, dismiss, declare victory. Buttons that
 cannot run are disabled.
@@ -274,9 +286,9 @@ markers — towns, deposits, one-shot sites, the party, rivals, claims in factio
 for marked sites, an amber dot when a site can be discovered right now — and a dashed ring for
 the investigation reach.
 
-Input: left click jumps the party to a cell; space pauses; `1`…`5` switch views; `c` camps;
-`w` works the deposit under the party. The clicked cell keeps a mark so the jump target is
-visible.
+Input: left click jumps the party to a cell; space pauses; `1`…`5` switch views; `i` surveys;
+`c` camps; `w` works the deposit under the party. The clicked cell keeps a mark so the jump
+target is visible.
 
 ## Validation
 
