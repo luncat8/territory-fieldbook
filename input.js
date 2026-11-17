@@ -38,6 +38,10 @@ function inputKey(event) {
 		actionsTogglePause();
 		return;
 	}
+	if (key === 'i' || key === 'I') {
+		actionsSurvey();
+		return;
+	}
 	if (key === 'c' || key === 'C') {
 		actionsCamp();
 		return;
@@ -47,7 +51,6 @@ function inputKey(event) {
 		return;
 	}
 	if (key >= '1' && key <= '5') {
-		render.view = Number(key) - 1;
-		hudRefresh(true);
+		hudSetView(Number(key) - 1);
 	}
 }
