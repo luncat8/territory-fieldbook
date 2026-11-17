@@ -46,3 +46,12 @@ at boot: hybrid laptops can swap pointer classes while the page is open.
 `:checked`, `:hover`, `:focus-visible`, `:disabled` — or keyboard users see nothing. Use
 `input:focus-visible + span { outline: …; outline-offset: -2px }` so the ring sits inside the
 joined group instead of overlapping the neighbour.
+
+## a radius reads as a plate, not a gradient, when the effect saturates
+
+A sweep whose centre gain is above 1 gets clamped, so every cell inside the clamp radius renders
+at 100 % and the falloff shows only in the last ring — the disk looks like a plate and the
+falloff you tuned is invisible. Judge a radial effect by the mean per distance band, not by the
+centre cell: a 3.5-cell reach with centre gain 1.33 recorded every meadow cell within 2.3 cells
+in one press. Keep the centre gain near 1.0 so the core completes and the ring keeps a gradient.
+Hours and effort multiply, so tune their product and drop the spare factor.
