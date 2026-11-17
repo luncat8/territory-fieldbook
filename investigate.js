@@ -6,16 +6,21 @@ const INV_RADIUS = 3.5;
 const INV_INNER = 1.2;
 const INV_NEARBY_RANGE = 8;
 const INV_NEARBY_CAP = 16;
+const INV_SURVEY_HOURS = 2;
+const INV_SURVEY_CONDITION = 2;
+const INV_SURVEY_COOLDOWN = 6;
 
 const investigation = {
 	progress: null,
 	nearby: new Int16Array(INV_NEARBY_CAP),
-	nearbyCount: 0
+	nearbyCount: 0,
+	surveyTicks: 0
 };
 
 function investigationInit() {
 	investigation.progress = new Float32Array(world.n);
 	investigation.nearbyCount = 0;
+	investigation.surveyTicks = 0;
 }
 
 function investigationSeed(x, y) {
@@ -48,12 +53,33 @@ function investigationFalloff(dx, dy, reach) {
 
 function investigationStep(minutes) {
 	if (!party.alive) return;
+	if (investigation.surveyTicks > 0) investigation.surveyTicks -= minutes;
+	investigationSweep(minutes, false);
+}
+
+// A survey is the same sweep pushed hard: one immediate 2 h pass at triple effort, then a cooldown.
+function investigationSurvey() {
+	if (!investigationSurveyReady()) return false;
+	investigation.surveyTicks = INV_SURVEY_COOLDOWN * 60;
+	investigationSweep(INV_SURVEY_HOURS * 60, true);
+	return true;
+}
+
+function investigationSurveyReady() {
+	return party.alive && investigation.surveyTicks <= 0;
+}
+
+function investigationSurveyCooldown() {
+	return Math.ceil(investigation.surveyTicks / 60);
+}
+
+function investigationSweep(minutes, surveyed) {
 	const progress = investigation.progress;
 	const hours = minutes / 60;
 	const reach = investigationReach();
 	const originX = party.x;
 	const originY = party.y;
-	const effort = party.investigateFactor();
+	const effort = party.investigateFactor() * (surveyed ? 3 : 1);
 	const r = Math.ceil(reach);
 	const x0 = Math.max(0, originX - r);
 	const x1 = Math.min(MAP_SIZE - 1, originX + r);
@@ -124,4 +150,4 @@ function investigationCollectNearby() {
 	investigation.nearbyCount = count;
 }
 
-if (typeof module !== 'undefined') module.exports = { investigation, investigationInit, investigationStep };
+if (typeof module !== 'undefined') module.exports = { investigation, investigationInit, investigationStep, investigationSurvey };
