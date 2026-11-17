@@ -55,7 +55,7 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	land.js — disturbed fraction, productivity, recovery, restoration.
 	economy.js — resources, town stocks, prices, recipes, biosphere, ledger.
 	sites.js — site pool, discovery, claims, extraction, payouts.
-	investigate.js — investigation progress, radius, distance falloff.
+	investigate.js — investigation progress, float radius, Euclidean falloff, nearby list.
 	party.js — members, shared values, skills, movement, camping, hiring.
 	territory.js — per-faction influence fields, control, share, contest.
 	rivals.js — rival agents: targets, travel, claims, extraction, scouting.

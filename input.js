@@ -38,10 +38,6 @@ function inputKey(event) {
 		actionsTogglePause();
 		return;
 	}
-	if (key === 'i' || key === 'I') {
-		actionsCycleInvestigation();
-		return;
-	}
 	if (key === 'c' || key === 'C') {
 		actionsCamp();
 		return;

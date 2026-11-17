@@ -21,6 +21,9 @@ body {
 #ui-mapwrap {
 	flex: 0 1 768px;
 	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
 }
 #ui-canvas {
 	display: block;
@@ -69,6 +72,13 @@ button.ui-chip.on { background: #2c5f6e; border-color: #4f8d9d; color: #f2fbfd; 
 	text-transform: uppercase;
 	color: #7f8fa1;
 }
+#ui-nearby {
+	white-space: pre-line;
+	color: #c8d2dd;
+	font-size: 12px;
+	max-height: 180px;
+	overflow-y: auto;
+}
 #ui-stats, #ui-skills, #ui-members, #ui-site, #ui-victory {
 	white-space: pre-line;
 	color: #c8d2dd;
@@ -108,7 +118,10 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 </head>
 <body>
 <div id="ui-app">
-	<div id="ui-mapwrap"><canvas id="ui-canvas"></canvas></div>
+	<div id="ui-mapwrap">
+		<canvas id="ui-canvas"></canvas>
+		<section class="ui-block"><h2>around</h2><div id="ui-nearby"></div></section>
+	</div>
 	<aside id="ui-panel">
 		<div id="ui-clock">day 1 · 06:00</div>
 		<div id="ui-time" class="ui-row"></div>

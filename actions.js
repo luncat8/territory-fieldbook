@@ -20,12 +20,6 @@ function actionsSetSpeed(speed) {
 	hudRefresh(true);
 }
 
-function actionsCycleInvestigation() {
-	investigation.radius = investigation.radius === 1 ? 2 : 1;
-	eventsStatus('Investigation area: ' + (investigation.radius === 1 ? '3×3' : '5×5') + '.');
-	hudRefresh(true);
-}
-
 function actionsCamp() {
 	if (!party.alive) return;
 	partySetCamp(!party.camped);

@@ -83,16 +83,15 @@ Terrain table (ids: meadow 0, forest 1, water 2, swamp 3, hills 4, desert 5):
 
 ## Investigation
 
-- Two areas: 3×3 (centre 1) and 5×5 (centre 2), switched by the player.
-- A cell's multiplier is 1 when its Chebyshev distance to the party is within the centre.
-  Beyond that it falls off smoothly by Euclidean distance to the cell centre:
-  `t = (reach − dist) / (reach − centre)`, `m = smoothstep(t)`, clamped to 0…1.
-  `reach = centre + 2`, plus 1 when the party stands on hills, minus 1 in forest.
-  The multiplier is never above 1.
+- One float radius `INV_RADIUS = 3.5` cells (hills +1, forest −1, never below 2). There is no
+  3×3 / 5×5 mode: the radius is Euclidean distance from the party's cell centre to each cell
+  centre. Nearby cells are interpolated by that distance; the grid is never the operator.
+- Multiplier: 1 while `dist ≤ INV_INNER` (1.2); then smoothstep
+  `t = (reach − dist) / (reach − inner)`, `m = t²(3−2t)`, 0 at `dist ≥ reach`. Never above 1.
 - Progress is a `Float32Array` in 0…1, capped at 1. Per tick:
   `progress += rate[terrain] * m * party.investigateFactor() * contest * hours`.
 - A cell at 1 means the ground is fully recorded. A visible site on a fully recorded cell is
-  claimed for the party automatically: recording is the claim. The 3×3 around the spawn starts
+  claimed for the party automatically: recording is the claim. Cells within 1.6 of spawn start
   at 0.5 so the camp reads on screen immediately.
 - `party.investigateFactor()` is `0.45 + condition/220 + morale/500`, halved while working a
   deposit. `contest` is 1, or 0.25 when a rival's influence is higher in that cell.
@@ -253,14 +252,19 @@ is lost, the panel offers a new survey on a new seed instead of a dead end.
 
 ## Screen and controls
 
-Layout: square map on the left, one side panel on the right. No tabs, modals or mode jumps.
+Layout: square map on the left with an around-list under it; one side panel on the right. No
+tabs, modals or mode jumps.
 
-Panel, top to bottom: clock and speeds (pause/1×/2×/4×); condition, morale, funds, supplies,
+Around-list (under the map): recording % in the party's cell, current float reach, then nearby
+marked/visible/spent sites within 8 cells, each with Euclidean distance, name, state and that
+cell's investigation %.
+
+Side panel, top to bottom: clock and speeds (pause/1×/2×/4×); condition, morale, funds, supplies,
 items, members; skills with unlock marks; member rows; current-cell site details and market
 prices of carried goods; the action list for the current context; view switches; victory
 declaration and its feedback; status line; event feed.
 
-Actions are context-driven from the party's cell: camp, investigation area 3×3/5×5, work/stop
+Actions are context-driven from the party's cell: camp, work/stop
 deposit, gather, take item, train, attempt task, sell all, sell item, buy supplies, provision
 supplies from food, process goods, restore land, hire, dismiss, declare victory. Buttons that
 cannot run are disabled.
@@ -270,9 +274,9 @@ markers — towns, deposits, one-shot sites, the party, rivals, claims in factio
 for marked sites, an amber dot when a site can be discovered right now — and a dashed ring for
 the investigation reach.
 
-Input: left click jumps the party to a cell; space pauses; `1`…`5` switch views; `i` cycles the
-investigation area; `c` camps; `w` works the deposit under the party. The clicked cell keeps a
-mark so the jump target is visible.
+Input: left click jumps the party to a cell; space pauses; `1`…`5` switch views; `c` camps;
+`w` works the deposit under the party. The clicked cell keeps a mark so the jump target is
+visible.
 
 ## Validation
 

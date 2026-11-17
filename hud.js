@@ -1,4 +1,4 @@
-// owns: the side panel: clock, stats, skills, members, site, actions, feed
+// owns: the side panel and the under-map nearby list
 // edit for: panel content, action buttons, formatting
 
 const HUD_REFRESH_SECONDS = 0.2;
@@ -11,6 +11,7 @@ const hud = {
 	skillsEl: null,
 	membersEl: null,
 	siteEl: null,
+	nearbyEl: null,
 	actionsEl: null,
 	viewsEl: null,
 	timeEl: null,
@@ -31,6 +32,7 @@ function hudInit() {
 	hud.skillsEl = $('ui-skills');
 	hud.membersEl = $('ui-members');
 	hud.siteEl = $('ui-site');
+	hud.nearbyEl = $('ui-nearby');
 	hud.actionsEl = $('ui-actions');
 	hud.viewsEl = $('ui-views');
 	hud.timeEl = $('ui-time');
@@ -97,6 +99,7 @@ function hudRefresh(force) {
 	hudUpdateSkills();
 	hudUpdateMembers();
 	hudUpdateSite();
+	hudUpdateNearby();
 	hudUpdateVictory();
 	hudUpdateLog(force);
 	hudUpdateStatus();
@@ -206,6 +209,38 @@ function hudUpdateSite() {
 	hud.siteEl.textContent = hudSiteText(sitesAt(party.x, party.y));
 }
 
+function hudNearbyState(state) {
+	if (state === SITE_STATE.MARKED) return 'trace';
+	if (state === SITE_STATE.VISIBLE) return 'open';
+	if (state === SITE_STATE.DONE) return 'spent';
+	return '';
+}
+
+function hudUpdateNearby() {
+	if (!hud.nearbyEl) return;
+	investigationCollectNearby();
+	const idx = party.y * world.size + party.x;
+	const reach = investigationReach();
+	let text = 'Recording here ' + Math.round(investigation.progress[idx] * 100) + '% · reach ' + reach.toFixed(1) + ' cells.';
+	const count = investigation.nearbyCount;
+	if (count === 0) {
+		text += '\nNo recorded sites within ' + INV_NEARBY_RANGE + ' cells.';
+		hud.nearbyEl.textContent = text;
+		return;
+	}
+	for (let k = 0; k < count; k++) {
+		const i = investigation.nearby[k];
+		const dx = sites.x[i] - party.x;
+		const dy = sites.y[i] - party.y;
+		const dist = Math.sqrt(dx * dx + dy * dy);
+		const cell = sites.y[i] * world.size + sites.x[i];
+		const rec = Math.round(investigation.progress[cell] * 100);
+		const label = sites.state[i] === SITE_STATE.MARKED ? 'unidentified' : sitesName(i);
+		text += '\n' + dist.toFixed(1) + '  ' + label + '  ' + hudNearbyState(sites.state[i]) + '  rec ' + rec + '%';
+	}
+	hud.nearbyEl.textContent = text;
+}
+
 function hudVictoryText() {
 	if (victory.result === 0) return 'Victory declared. The fieldbook stands.';
 	if (victory.result === 2) return 'The party did not survive.';
@@ -248,7 +283,7 @@ function hudUpdateStatus() {
 
 function hudActionKey() {
 	const i = sitesAt(party.x, party.y);
-	let key = party.x + ':' + party.y + ':' + (party.camped ? 1 : 0) + (party.working ? 1 : 0) + ':' + investigation.radius;
+	let key = party.x + ':' + party.y + ':' + (party.camped ? 1 : 0) + (party.working ? 1 : 0);
 	key += ':' + Math.round(party.funds) + ':' + party.members.length + ':' + (party.unlocks.trust ? 1 : 0) + (party.alive ? 1 : 0);
 	key += ':' + Math.round(party.supplies) + ':' + party.items;
 	key += ':' + Math.round(land.disturbed[party.y * world.size + party.x] * 10);
@@ -271,7 +306,6 @@ function hudActionList() {
 	const kind = i >= 0 ? sites.kind[i] : -1;
 	const ready = state === SITE_STATE.VISIBLE && sitesWorkable(i);
 	list.push({ label: party.camped ? 'Break camp' : 'Make camp', enabled: true, run: actionsCamp, primary: true });
-	list.push({ label: 'Investigation area ' + (investigation.radius === 1 ? '3×3' : '5×5'), enabled: true, run: actionsCycleInvestigation });
 	if (ready && kind === SITE.DEPOSIT) list.push({ label: party.working ? 'Stop working the deposit' : 'Work the deposit', enabled: true, run: actionsToggleWork, primary: true });
 	if (ready && kind === SITE.GATHER) list.push({ label: 'Gather ' + RES_NAME[sites.res[i]], enabled: true, run: actionsGather, primary: true });
 	if (ready && kind === SITE.ITEM) list.push({ label: 'Take the relic', enabled: true, run: actionsTakeItem, primary: true });
