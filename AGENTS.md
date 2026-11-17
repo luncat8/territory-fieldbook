@@ -55,14 +55,14 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	land.js — disturbed fraction, productivity, recovery, restoration.
 	economy.js — resources, town stocks, prices, recipes, biosphere, ledger.
 	sites.js — site pool, discovery, claims, extraction, payouts.
-	investigate.js — investigation progress, float radius, Euclidean falloff, nearby list.
+	investigate.js — investigation progress, float radius, Euclidean falloff, survey push, nearby list.
 	party.js — members, shared values, skills, movement, camping, hiring.
 	territory.js — per-faction influence fields, control, share, contest.
 	rivals.js — rival agents: targets, travel, claims, extraction, scouting.
 	victory.js — victory conditions, declaration, feedback.
 	render.js — canvas painting, view modes, markers.
 	input.js — clicks, hover mark, keyboard bindings.
-	hud.js — side panel, context actions, feed.
+	hud.js — side panel, view switch, around-list, context actions, feed.
 	actions.js — player verbs spanning features (move, work, sell, hire, restore, declare).
 	experiments/ — smoke.js (sim) and dom_smoke.js (boot + UI), never loaded by the page.
 - new code goes to its owner, never appended "because the file is already there". no owner exists -> new file + header + map entry.
