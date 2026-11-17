@@ -337,7 +337,7 @@ function hudActionKey() {
 	let key = party.x + ':' + party.y + ':' + (party.camped ? 1 : 0) + (party.working ? 1 : 0);
 	key += ':' + investigationSurveyCooldown();
 	key += ':' + Math.round(party.funds) + ':' + party.members.length + ':' + (party.unlocks.trust ? 1 : 0) + (party.alive ? 1 : 0);
-	key += ':' + Math.round(party.supplies) + ':' + party.items;
+	key += ':' + Math.round(party.supplies) + ':' + party.items + ':' + victory.result;
 	key += ':' + Math.round(land.disturbed[party.y * world.size + party.x] * 10);
 	key += ':' + Math.round(economy.inventory[RES.ORE]) + '.' + Math.round(economy.inventory[RES.FUEL]) + '.' + Math.round(economy.inventory[RES.FOOD]);
 	if (i < 0) return key;
@@ -379,7 +379,7 @@ function hudActionList() {
 	list.push({ label: 'Restore land here', enabled: land.disturbed[idx] > 0 && party.funds >= LAND_RESTORE_FUNDS, run: actionsRestore });
 	list.push({ label: 'Hire member (' + partyHireCost() + ' funds)', enabled: party.funds >= partyHireCost(), run: actionsHire });
 	list.push({ label: 'Dismiss member', enabled: party.members.length > 1, run: actionsDismiss });
-	list.push({ label: 'Declare victory', enabled: true, run: actionsDeclareVictory, primary: true });
+	list.push({ label: victory.result === 0 ? 'Victory declared' : 'Declare victory', enabled: victory.result !== 0, run: actionsDeclareVictory, primary: true });
 	return list;
 }
 

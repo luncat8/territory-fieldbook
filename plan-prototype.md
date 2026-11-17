@@ -12,8 +12,9 @@ sites, work finite deposits, sell at towns, improve skills until emergent capabi
 watch two rivals claim and extract on their own, keep the map's land and biosphere in shape,
 then declare victory.
 
-Deferred by design: contracts, reputation, access, buildings and multi-cell industry, learning
-ability changes, after-victory play, difficulty tuning.
+Deferred, low priority: multi-cell industry, learning ability changes, difficulty tuning,
+Contracts, reputation, access. the draft has no details for them and they are unlikely to be interesting unless
+thought through well before implementation.
 
 ## Runtime and architecture
 
@@ -237,8 +238,10 @@ The stored energy counters are shown in the victory panel as evidence.
 `d` is a `Float32Array` per cell, 0 untouched … 1 fully disturbed. Mining adds
 `units × 0.006` per extracted unit, so a fully worked deposit sits just above the 0.25
 threshold. Productivity is `1 − d`; it scales deposit yield and biosphere growth. Natural
-recovery runs at the terrain rate in the table above. Active restoration costs 12 funds and
-2 supplies and removes 0.25 `d` from the party's cell immediately.
+recovery runs at the terrain rate scaled by `(1 − d)`: the more disturbed a cell is, the
+slower it recovers, and fully disturbed land (`d = 1`) does not recover on its own.
+Active restoration costs 12 funds and 2 supplies and removes 0.25 `d` from the party's
+cell immediately.
 
 Appearance blends the terrain colour toward degraded brown by `d × 0.75`, and the disturbance
 view shows `d` directly.
@@ -248,12 +251,13 @@ view shows `d` directly.
 There is no timer. Survival (the party is not lost) is a precondition. The player declares
 victory from the panel; the check reports every failing condition:
 
-1. territory lead — the player's control share is the largest and above 5 % of the map;
+1. territory lead — the player's control share is the largest by at least VICTORY_MARGIN (0 for the prototype, i.e. strict largest) and above 5 % of the map;
 2. resource base — remaining deposit stock is at least 25 % of the starting stock;
 3. disturbance under control — no cell with `d ≥ 0.25` outside player-controlled cells;
 4. biosphere balance — cumulative oxygen produced is at least oxygen consumed.
 
-A rejected declaration lists the failing items; a valid one flags the run as won. If the party
+A rejected declaration lists the failing items; a valid one flags the run as won. After a
+valid declaration rivals stop competing and the declare button disables. If the party
 is lost, the panel offers a new survey on a new seed instead of a dead end.
 
 ## Screen and controls

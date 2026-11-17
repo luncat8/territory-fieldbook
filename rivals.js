@@ -231,6 +231,7 @@ function rivalsWanderStep(k, hours) {
 
 function rivalsStep(minutes) {
 	if (!party.alive) return;
+	if (victory.result === 0) return;
 	const hours = minutes / 60;
 	for (let k = 0; k < RIVAL_COUNT; k++) {
 		territoryMaintain(rivals.faction[k], rivals.x[k], rivals.y[k]);

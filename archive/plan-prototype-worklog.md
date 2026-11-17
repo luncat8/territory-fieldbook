@@ -14,3 +14,12 @@ decisions: mining leaves 0.006 d per unit so one restoration clears a worked dep
 decisions: food converts to supplies (5→5) because supply prices alone made a 3-member party insolvent by day 4.
 pitfalls: vm lexical globals, stub ImageData, island spawns, setLineDash arrays — full notes in findings.
 next: browser playtest and tuning; then take one open question from the plan (recovery rates, declaration margin).
+
+plan: plan-prototype.md — recovery scales with disturbed fraction; contracts/reputation/access marked deferred low priority needs review
+changed: land.js — natural recovery rate scales with (1 − d): d = 1 never recovers naturally, light disturbance clears in hours (feature)
+changed: draft2.txt — 5.3 recovery decision recorded; 3.4 deferred systems marked low priority, needs review; 8 open question closed (feature)
+changed: plan-prototype.md — land condition recovery note and deferred-by-design line updated (feature)
+validation: node --check land.js pass; smoke 13/13 seed 20261117 (disturbed_cell 0.000→0.050, 1 rival claim); dom_smoke 16/16; formula check: d=1 stays 1 after 1000 h, d=0.01 meadow clears in ~6 h, d=0.25 meadow ~144 h
+decisions: recovery speed = terrain rate × (1 − d), so fully disturbed land needs active restoration and natural recovery cannot outrun deposit/factory disturbance
+pitfalls: none
+next: browser playtest and tuning; then take one open question from the plan

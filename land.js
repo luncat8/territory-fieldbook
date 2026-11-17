@@ -41,7 +41,11 @@ function landStep(minutes) {
 	for (let i = 0; i < world.n; i++) {
 		const d = disturbed[i];
 		if (d <= 0) continue;
-		const next = d - LAND_RECOVERY[terrain[i]] * hours;
+		// recovery slows as disturbance grows: d = 1 never recovers on its own,
+		// light disturbance recovers near the terrain rate but never instantly,
+		// so natural recovery cannot outrun waste from deposits and factories
+		const rate = LAND_RECOVERY[terrain[i]] * (1 - d);
+		const next = d - rate * hours;
 		disturbed[i] = next > 0 ? next : 0;
 	}
 }

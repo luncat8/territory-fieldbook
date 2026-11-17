@@ -179,6 +179,10 @@ There is **no fighting or wargaming**. Rivals compete through discovery, claims,
 
 Access, contracts, and reputation are **deferred** and are not part of this design.
 
+Priority: **low**. Status: **needs review** — the draft has no details for these
+systems, and they are unlikely to be interesting unless they are thought through
+well before any implementation.
+
 ---
 
 ## 4. Economy
@@ -193,6 +197,38 @@ Each deposit has:
 - an **extraction rate**
 - an **output** of resource
 - a **disturbed area** left behind (see Section 5)
+
+### 4.1a Map-economy engine
+
+settlement 2% cells, with populations
+
+demand is distance field
+
+population	-> demands
+population in area with low demands on what population what -> population growth.
+
+demand -> start to build factory: place on max demand and resource available (max negative demand of resource)
+
+factory construction site -> demand of build materials
+
+factory -> demand of resource
+		-> products storage
+		transportation cost from storage: distance, population (who work on transportation) -> workforce demand -> population growth/migration
+
+mine -> resources storage value
+cell with resources or products storage -> negative demand on resource, products
+
+open questions: will negative demand work or need actual goods availability? i think it will weork, need to play with this.
+do we need diffusion map on each items (products, resources) + storage as source of distance field. looks like this will work and easy to visualize, if keep items in reasonable amount. but need to investigate other possibilities and/or do some prototypes to ensure it will work and scalable.
+
+
+new cell sites: settlements, resources storage
+open question: do we really need them or better keep it as raw cell values of population and storage without sites.
+
+if make all in cells values transportation will be just moving goods by gradient, and this allow move population in save way.
+else if keep sites : this make possible factories call for resources in more deterministic way by price. and settlement will buy what they need in same way.
+
+Can we implement both approaches (sites and diffusion-based) as selectable game engine?
 
 ### 4.2 Layers
 
@@ -235,10 +271,11 @@ Waste is **not a material type**. Each cell tracks a **disturbed fraction** `d`,
 
 ### 5.3 Recovery
 
-- **Natural recovery** is slow and depends on terrain. Forests and meadows recover faster than desert or hills.
+- **Natural recovery** is slow, depends on terrain, and slows as disturbance grows: speed scales with `(1 − d)`, so fully disturbed land (`d = 1`) does not recover naturally, while lightly disturbed land recovers near the terrain rate but never instantly — it cannot outrun disturbance left by deposits and factories.
 - **Active restoration** (planting, soil work, water management) reduces `d` faster. Each action costs energy and resources and is recorded in the ledger.
 - Remote repair is possible in some cases, provided the party pays the energy and transport cost.
 
+recovery - better some dependence on disturbed percent, so more disturbed has lover speed. lets set  lower by disturbed percent - 100% mean no recovery. 1% is some reasonably fast speed but avoid instant recovery to not outperform real waste deposits by towns and factories
 ---
 
 ## 6. Map Balance
@@ -266,10 +303,8 @@ A party fails if its members are lost to endurance and hardship, if its oxygen a
 ## 8. Open Questions
 
 - **Victory detail:** the precise meaning of "unmanaged disturbance" and how the energy balance is sourced.
-- **Recovery rates:** exact rates per terrain, and whether the amount of disturbed area slows natural recovery.
+- **Recovery rates:** terrain rates set; recovery scales with `(1 − d)` — fully disturbed land does not recover naturally. Decided, see section 5.3.
 - **Rival damage persistence:** whether a rival's damage stays after they leave, or recovers on its own.
-- **After declaration:** whether rivals keep competing after the player declares victory.
-- **Declaration margin:** whether a small territorial lead can be declared, or a minimum margin is required.
 - **Learning ability changes:** deferred, low priority.
 - **Deferred systems:** access, contracts, and reputation.
 
