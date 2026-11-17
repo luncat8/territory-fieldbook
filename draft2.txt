@@ -1,0 +1,276 @@
+This document summarises the design decisions so far for the prototype, covering Phase 1 (map and investigation) and Phase 2 (party, competition, and economy). This is not final rule, feel free to change if found good way.
+As for GUI - keep it gameplay oriented: useful sequence of typical action without jumping across panels, view modes, overlays and plots to show what happens and how it changes.
+
+read draft, make plans for minimal game prototype implementation that cover main features of each topic.
+next steps: implements these plans to got minimal game.
+next improve draft based on result and make more detailed plans to whole implementation in best way.
+
+---
+
+## 1. Technical Foundation
+
+The prototype uses **plain JavaScript with minimal HTML and CSS**, and renders with the **Canvas 2D API**. Performance follows a data-oriented approach: **typed arrays** and **struct-of-arrays** layout, with a **linear cell index** and **sequential loops** for cache-friendly access.
+
+---
+
+## 2. Map
+
+### 2.1 Structure and Generation
+
+- The world is a **64 × 64 top-view cell grid**.
+- Generation is **deterministic from a seed**, so the same seed always produces the same map.
+- Territory is driven by a **2D noise heightmap**.
+- Terrain types are **forest, meadow, water, swamp, hills, and desert**.
+
+### 2.2 Visibility
+
+- **Forest** reduces the party's observation radius.
+- **Hills** increase it.
+
+---
+
+## 3. Movement and Time
+
+### 3.1 Movement
+
+The party is a **single unit**. The player **clicks any cell to jump there directly**. Pathfinding is not part of the prototype.
+
+### 3.2 Time Model
+
+The game runs in **real time with a hybrid control**: the player can pause or run at a slow speed.
+
+---
+
+## 4. Investigation
+
+### 4.1 Search Area
+
+Investigation covers a **3 × 3 or 5 × 5 area** around the party.
+
+### 4.2 Progress
+
+Each cell fills toward **100%**. The rate depends on the **cell type** and on the **continuous Euclidean distance** from the party's exact position to the cell centre.
+
+### 4.3 Distance Multiplier
+
+- The multiplier is **capped at 1**.
+- Cells inside the **observation centre** (3 × 3 or 5 × 5) receive **1**.
+- Distant cells receive a **smooth falloff** below 1.
+- **Camping on hills** raises the multiplier toward 1, but never above it.
+
+The distance function uses smooth float interpolation to cell centres, not grid steps.
+
+### 4.4 View Mode
+
+A view mode colours each cell by its **investigation percentage**.
+
+---
+
+## 5. Sites
+
+### 5.1 Visibility Levels
+
+Sites are either **immediately visible**, **unknown but interesting**, or **hidden** and requiring investigation.
+
+### 5.2 Chance-Based Sites
+
+- Some sites exist only for a **limited time**.
+- **Presence** and **discovery** are separate probabilities.
+- **Investigation increases the discovery chance.**
+- An indicator shows when discovery is possible.
+
+### 5.3 Site Types
+
+| Type | Purpose | Payout behaviour |
+|---|---|---|
+| One-time resource collection | Gather a resource once | Paid once, added to inventory |
+| Item collection | Gather an item once | Paid once |
+| Party experience | Improve a skill or attribute | Granted to the party |
+| Tasks and quests | Solve a problem for a reward or escape | Reward on completion |
+| Persistent deposit | Extract a finite resource over time | Yields while stock remains, then depletes |
+
+Tasks and items stay **abstract** so the setting can be fantasy, steampunk, social realism, or another theme.
+
+
+# Phase 2 design document. It covers party structure, skills, competition, economy, and victory, and it builds on the Phase 1 map and investigation rules.
+
+---
+
+## 1. Party Structure
+
+The party is a single travelling unit with **shared values** and **individual members**. Each member contributes base traits and skills, and the party's effective capability comes from combining them.
+
+### 1.1 Shared Party Values
+
+| Value | Meaning | Affected by |
+|---|---|---|
+| Condition | How well the party can keep travelling and working | Members' physical condition, terrain, rest, and supplies |
+| Morale | Willingness to continue, especially after setbacks | Successes, failures, rest, and pay |
+| Funds and supplies | What the party can attempt and how long it can stay out | Hiring costs, spending, and resource use |
+
+### 1.2 Hiring and Dismissal
+
+- Hiring adds a member's base traits and skills to the party.
+- Each member has an ongoing cost.
+- Dismissing a member reduces ongoing cost but removes their skills, which may leave a gap in the party's capabilities.
+
+---
+
+## 2. Members
+
+### 2.1 Base Characteristics
+
+Each member has base characteristics set at hiring. These are separate from trained skills.
+
+| Characteristic | What it controls |
+|---|---|
+| Learning ability | Rate of skill gain from training and experience |
+| Physical condition | Baseline endurance and strength, feeding party condition |
+| Recovery rate | How quickly condition returns after rest |
+| Growth potential | How far physical condition can improve with training |
+
+Learning ability can change over time, but this is a **low-priority deferred task** and is not part of the current design.
+
+### 2.2 Skills
+
+Skills are merged into **six domains** to keep the party readable.
+
+| Skill | Combines | Role |
+|---|---|---|
+| Navigation | Navigation | Efficient travel, fewer delays, route knowledge |
+| Fieldcraft | Endurance, Field making | Shelter, routes, practical management of local conditions |
+| Observation | Survey | Noticing sites, resources, and time-limited discoveries |
+| Knowledge | Natural science, Record-keeping | Identifying materials and recording findings |
+| Communication | Languages, Ethnography | Building trust, gaining access and information |
+| Logistics | Logistics (organising supply and processing) | Reduced supply use and better resource processing |
+
+Skills are raised by use and training. Each member's learning ability affects how quickly they improve.
+
+### 2.3 Emergent Party Skills
+
+When combined domain levels cross a threshold, the party unlocks a new capability. For example:
+
+- Observation with Navigation unlocks **route charting**, which reveals cells beyond the normal observation radius.
+- Knowledge with Logistics unlocks **field assay**, which estimates deposit quality before mining.
+- Communication with Fieldcraft unlocks **local trust**, which opens certain site tasks.
+
+---
+
+## 3. Competition
+
+### 3.1 Core Principle
+
+There is **no fighting or wargaming**. Rivals compete through discovery, claims, extraction, and influence.
+
+### 3.2 Discovery Race, Claims and Finite Sites
+
+- **Priority claims:** the first party to fully record a site owns its primary value.
+- **Finite sites:** deposits deplete as they are worked, so rivals compete for them.
+- **Industrial efficiency:** population in cell, availability of resources (material, food, oxygen), special buildings (knowledge) nearbly + in whole party's controlled area determines how fast it can build mine, extract, and process.
+
+### 3.3 Influence
+
+- Influence is a continuous field in cells, using the same smooth falloff from sources.
+- Sources include special claimed sites, camps, willages, some buildings, discoveries, etc.
+- The party with higher influence can controll cell: investigate, build, think about it as cell population has attention to this party.
+- Influence decays where a party stops maintaining its sources.
+
+### 3.4 Deferred
+
+Access, contracts, and reputation are **deferred** and are not part of this design.
+
+---
+
+## 4. Economy
+
+### 4.1 Stock-and-Flow Model
+
+The economy is a set of stocks and flows. Resources, products, and recipes are **defined as data**, so new materials and industries can be added without redesigning the system.
+
+Each deposit has:
+
+- a **finite quantity**
+- an **extraction rate**
+- an **output** of resource
+- a **disturbed area** left behind (see Section 5)
+
+### 4.2 Layers
+
+- **Resources:** easy, concentrated deposits are extracted first. Later, recovery of dispersed material needs investigation and processing knowledge.
+- **Products:** produced from resources using energy and inputs.
+- **Biosphere:** oxygen and carbon stocks. Forests, meadows, and swamps produce oxygen and consume carbon. Fuel and industry consume oxygen and add carbon. Surplus oxygen over fuel use is limited.
+
+### 4.3 Conservation Ledger
+
+Every transformation conserves mass and energy. Each process consumes inputs and produces outputs and dissipated heat, and the totals balance.
+
+| Process | Inputs | Outputs | Conservation note |
+|---|---|---|---|
+| Mining | Deposit stock, energy | Ore, disturbed material in the cell | Ore plus left-behind material equals mass removed |
+| Fuel and industry | Fuel, oxygen, energy | Energy, carbon, heat, products | Mass balance holds through combustion |
+| Photosynthesis | Carbon, sunlight | Oxygen, biomass | Carbon fixed into biomass; energy partly dissipated |
+| Recycling | Disturbed material, energy | Recovered material | Recovered mass plus residue equals input; recycling costs energy |
+| Natural breakdown | Disturbed material, biosphere activity | Slow return to the cycle | Limited by available energy |
+
+Each tick, total mass and energy on the map should equal the previous total plus external input (sunlight) minus dissipated heat. This works as a built-in test for bugs.
+
+### 4.4 money
+
+to make more easy exchange and save capital - big towns make money. money has cost as long as someone accept this money in exchange for resource or work. all prices comes from resources and work demand and availability now.
+
+---
+
+## 5. Land Condition
+
+### 5.1 Disturbed Area Instead of Waste
+
+Waste is **not a material type**. Each cell tracks a **disturbed fraction** `d`, from 0 (untouched) to 1 (fully disturbed). Mining and factory deposition add to `d` by the area they cover.
+
+### 5.2 Effects
+
+- **Productivity** = `base × (1 − d)`
+- **Farming** is allowed only while `d` is below a threshold, for example 0.2.
+- **Growth** of forests, meadows, and swamps follows the same productivity factor.
+- **Appearance** blends the normal colour toward a degraded colour by `d`.
+
+### 5.3 Recovery
+
+- **Natural recovery** is slow and depends on terrain. Forests and meadows recover faster than desert or hills.
+- **Active restoration** (planting, soil work, water management) reduces `d` faster. Each action costs energy and resources and is recorded in the ledger.
+- Remote repair is possible in some cases, provided the party pays the energy and transport cost.
+
+---
+
+## 6. Map Balance
+
+Map balance is a **shared state** that every party affects. A rival who worsens the map through over-extraction or heavy industry increases `d` and change global climate and lowers biosphere quality in the affected cells.
+
+The response is territorial: the affected party extends its influence into those cells, then claims and improves them.
+
+---
+
+## 7. Win and Survival
+
+### 7.1 Survival
+
+A party fails if its members are lost to endurance and hardship, if its oxygen and fuel balance collapses in a region, or if it runs out of supplies with no way to recover. Survival is a precondition for winning.
+
+### 7.2 Victory
+
+- There is **no time limit**. The **player decides when to declare victory**.
+- A declaration is valid when the player holds the **largest territory share** and the **economy is stable**: it does not depend on depleting resources, produces no unmanaged disturbance, and runs an energy balance of zero or better.
+- When the player declares, the game checks these conditions. If one fails, the player receives feedback on which one is missing.
+
+---
+
+## 8. Open Questions
+
+- **Victory detail:** the precise meaning of "unmanaged disturbance" and how the energy balance is sourced.
+- **Recovery rates:** exact rates per terrain, and whether the amount of disturbed area slows natural recovery.
+- **Rival damage persistence:** whether a rival's damage stays after they leave, or recovers on its own.
+- **After declaration:** whether rivals keep competing after the player declares victory.
+- **Declaration margin:** whether a small territorial lead can be declared, or a minimum margin is required.
+- **Learning ability changes:** deferred, low priority.
+- **Deferred systems:** access, contracts, and reputation.
+
+
