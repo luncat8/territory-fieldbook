@@ -19,7 +19,7 @@ const hud = {
 	statusEl: null,
 	logEl: null,
 	timeButtons: [],
-	viewButtons: [],
+	viewRadios: [],
 	acc: 0,
 	key: '',
 	logVersion: -1,
@@ -69,16 +69,68 @@ function hudBuildTime() {
 	}
 }
 
+function hudViewItem(label, view) {
+	const item = document.createElement('label');
+	item.className = 'ui-seg-item';
+	const radio = document.createElement('input');
+	radio.type = 'radio';
+	radio.name = 'ui-view';
+	radio.value = String(view);
+	radio.checked = render.view === view;
+	const text = document.createElement('span');
+	text.textContent = label;
+	item.appendChild(radio);
+	item.appendChild(text);
+	return item;
+}
+
 function hudBuildViews() {
 	const host = hud.viewsEl;
 	host.textContent = '';
-	hud.viewButtons.length = 0;
+	hud.viewRadios.length = 0;
+	const group = document.createElement('div');
+	group.className = 'ui-seg';
+	group.setAttribute('role', 'radiogroup');
+	group.setAttribute('aria-label', 'map view mode');
 	for (let k = 0; k < VIEW_NAME.length; k++) {
-		const view = k;
-		const button = hudButton(VIEW_NAME[k], true, function () { render.view = view; hudRefresh(true); }, 'ui-chip');
-		host.appendChild(button);
-		hud.viewButtons.push(button);
+		const item = hudViewItem(VIEW_NAME[k], k);
+		group.appendChild(item);
+		hud.viewRadios.push(item.children[0]);
 	}
+	group.addEventListener('change', hudViewChanged);
+	group.addEventListener('pointerover', hudViewPreview);
+	host.appendChild(group);
+}
+
+// The change event is the only writer: hover and keys both end up here through the checked radio.
+function hudViewChanged(event) {
+	const radio = event.target;
+	if (!radio || radio.type !== 'radio') return;
+	hudSetView(Number(radio.value));
+}
+
+// Precise pointers get a preview by checking the radio; the change event then does the work.
+// Touch and stylus keep click-only selection because they report no hovering fine pointer.
+function hudViewPreview(event) {
+	if (!hudViewFinePointer()) return;
+	const item = event.target && event.target.closest ? event.target.closest('.ui-seg-item') : null;
+	if (!item || !hud.viewsEl.contains(item)) return;
+	const radio = item.children[0];
+	if (!radio || radio.checked || radio.disabled) return;
+	radio.click();
+}
+
+function hudViewFinePointer() {
+	if (typeof window === 'undefined' || !window.matchMedia) return false;
+	return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+}
+
+function hudSetView(view) {
+	if (render.view === view) return;
+	render.view = view;
+	for (let k = 0; k < hud.viewRadios.length; k++) hud.viewRadios[k].checked = render.view === k;
+	hudRefresh(true);
+	renderDraw();
 }
 
 function hudTick(dt) {
@@ -116,7 +168,6 @@ function hudUpdateClock() {
 	if (!party.alive) text += ' · lost';
 	hud.clockEl.textContent = text;
 	for (let k = 0; k < hud.timeButtons.length; k++) hud.timeButtons[k].className = clock.speed === k ? 'ui-chip on' : 'ui-chip';
-	for (let k = 0; k < hud.viewButtons.length; k++) hud.viewButtons[k].className = render.view === k ? 'ui-chip on' : 'ui-chip';
 }
 
 function hudUpdateStats() {
@@ -284,6 +335,7 @@ function hudUpdateStatus() {
 function hudActionKey() {
 	const i = sitesAt(party.x, party.y);
 	let key = party.x + ':' + party.y + ':' + (party.camped ? 1 : 0) + (party.working ? 1 : 0);
+	key += ':' + investigationSurveyCooldown();
 	key += ':' + Math.round(party.funds) + ':' + party.members.length + ':' + (party.unlocks.trust ? 1 : 0) + (party.alive ? 1 : 0);
 	key += ':' + Math.round(party.supplies) + ':' + party.items;
 	key += ':' + Math.round(land.disturbed[party.y * world.size + party.x] * 10);
@@ -306,6 +358,8 @@ function hudActionList() {
 	const kind = i >= 0 ? sites.kind[i] : -1;
 	const ready = state === SITE_STATE.VISIBLE && sitesWorkable(i);
 	list.push({ label: party.camped ? 'Break camp' : 'Make camp', enabled: true, run: actionsCamp, primary: true });
+	const surveyLeft = investigationSurveyCooldown();
+	list.push({ label: surveyLeft > 0 ? 'Survey in progress (' + surveyLeft + ' h)' : 'Survey the ground', enabled: surveyLeft === 0, run: actionsSurvey });
 	if (ready && kind === SITE.DEPOSIT) list.push({ label: party.working ? 'Stop working the deposit' : 'Work the deposit', enabled: true, run: actionsToggleWork, primary: true });
 	if (ready && kind === SITE.GATHER) list.push({ label: 'Gather ' + RES_NAME[sites.res[i]], enabled: true, run: actionsGather, primary: true });
 	if (ready && kind === SITE.ITEM) list.push({ label: 'Take the relic', enabled: true, run: actionsTakeItem, primary: true });
