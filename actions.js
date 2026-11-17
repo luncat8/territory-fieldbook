@@ -20,6 +20,18 @@ function actionsSetSpeed(speed) {
 	hudRefresh(true);
 }
 
+function actionsSurvey() {
+	if (!party.alive) return;
+	if (!investigationSurvey()) {
+		eventsStatus('The party is already surveying — ' + investigationSurveyCooldown() + ' h left.');
+		return;
+	}
+	partyAddCondition(-INV_SURVEY_CONDITION);
+	partyTrain(SKILL.OBS, 0.2);
+	eventsStatus('Surveyed ' + INV_SURVEY_HOURS + ' h of ground around ' + party.x + ',' + party.y + '.');
+	hudRefresh(true);
+}
+
 function actionsCamp() {
 	if (!party.alive) return;
 	partySetCamp(!party.camped);
