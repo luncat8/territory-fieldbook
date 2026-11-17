@@ -5,6 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Territory Fieldbook</title>
 <style>
+:root {
+	--ui-surface: #18212b;
+	--ui-surface-hi: #23303d;
+	--ui-line: #2a3847;
+	--ui-text: #c3cedb;
+	--ui-text-strong: #f2fbfd;
+	--ui-accent: #2c5f6e;
+	--ui-accent-line: #4f8d9d;
+	--ui-radius-sm: 3px;
+	--ui-gap: 6px;
+	--ui-step: 3px;
+}
 * { box-sizing: border-box; }
 body {
 	margin: 0;
@@ -72,6 +84,36 @@ button.ui-chip.on { background: #2c5f6e; border-color: #4f8d9d; color: #f2fbfd; 
 	text-transform: uppercase;
 	color: #7f8fa1;
 }
+.ui-seg {
+	display: inline-flex;
+	border: 1px solid var(--ui-line);
+	border-radius: var(--ui-radius-sm);
+	background: var(--ui-surface);
+	overflow: hidden;
+	align-self: flex-start;
+}
+.ui-seg-item { position: relative; display: block; }
+.ui-seg-item + .ui-seg-item { border-left: 1px solid var(--ui-line); }
+.ui-seg-item > span {
+	display: block;
+	padding: var(--ui-step) 9px;
+	color: var(--ui-text);
+	line-height: 1.45;
+	white-space: nowrap;
+	cursor: pointer;
+}
+.ui-seg-item > input {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: 0;
+	opacity: 0;
+	pointer-events: none;
+}
+.ui-seg-item > input:checked + span { background: var(--ui-accent); color: var(--ui-text-strong); }
+.ui-seg-item:hover > input:not(:checked):not(:disabled) + span { background: var(--ui-surface-hi); }
+.ui-seg-item > input:focus-visible + span { outline: 2px solid var(--ui-accent-line); outline-offset: -2px; }
+.ui-seg-item > input:disabled + span { opacity: 0.38; cursor: default; }
 #ui-nearby {
 	white-space: pre-line;
 	color: #c8d2dd;
@@ -120,6 +162,7 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 <div id="ui-app">
 	<div id="ui-mapwrap">
 		<canvas id="ui-canvas"></canvas>
+		<div id="ui-views"></div>
 		<section class="ui-block"><h2>around</h2><div id="ui-nearby"></div></section>
 	</div>
 	<aside id="ui-panel">
@@ -129,7 +172,6 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 		<section class="ui-block"><h2>skills</h2><div id="ui-skills"></div></section>
 		<section class="ui-block"><h2>members</h2><div id="ui-members"></div></section>
 		<section class="ui-block"><h2>here</h2><div id="ui-site"></div><div id="ui-actions"></div></section>
-		<section class="ui-block"><h2>view</h2><div id="ui-views" class="ui-row"></div></section>
 		<section class="ui-block"><h2>victory</h2><div id="ui-victory"></div></section>
 		<div id="ui-status"></div>
 		<ol id="ui-log"></ol>
