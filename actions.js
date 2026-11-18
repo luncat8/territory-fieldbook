@@ -21,9 +21,8 @@ function actionsSetSpeed(speed) {
 }
 
 function actionsSetEngine(mode) {
-	if (mode === MAPE_ENGINE.SITES && !mape.sitesReady) return;
 	if (!mapeSetEngine(mode)) return;
-	eventsStatus('Economy engine: ' + MAPE_ENGINE_NAME[mape.engine] + '.');
+	eventsStatus('Economy engine: ' + MAPE_ENGINE_NAME[mape.engine] + ' · stock and progress kept.');
 	hudRefresh(true);
 	renderDraw();
 }

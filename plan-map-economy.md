@@ -3,8 +3,8 @@
 Standalone design for the map-economy engine prototype from draft 4.1a. It covers
 settlements with populations, demand as a distance field, gradient goods flow,
 factory placement and construction, resource and product storage, transportation
-workforce, the coal–CO2–forest loop, and the two selectable implementations
-(diffusion fields vs discrete sites) behind one interface. All numbers live in
+workforce, the coal–CO2–forest loop, and selectable field engines with a planned
+discrete shipment engine behind the same interface. All numbers live in
 the owning source file and are tuned from experiment logs.
 
 ## Time model
@@ -38,28 +38,17 @@ production throttle (closing the full CO2↔O2 constraint), multi-product recipe
 beyond one, player-built factories, caravan agents, larger maps, rival
 map-economy actions.
 
-## Engine order: diffusion first, then sites
+## Engine order: shared field foundation, then sites
 
-The prototype executes Phases 0–3 end-to-end with the **diffusion** engine first,
-then implements the **sites** engine in Phase 4 on top of the completed model,
-and compares both in Phase 5. Rationale:
+Diffusion is the default reference for Phases 0–3. Catchment A and Queue B are
+playable alternatives for settlement coal and goods; they use the same land
+rules, stock, markets, workforce, mines, atmosphere and heatmaps. This isolates
+stock feedback and intake before adding supplier search, shipment queues or
+factory placement scoring to the model.
 
-1. **Lowest path to a full working loop.** One 4-connected cell pass drives all
-   four items (coal, iron, goods and atmospheric CO2 to every forest cell) plus
-   population migration and water routing, without supplier search, price bidding,
-   in-transit shipment queues or pathfinding.
-2. **Direct foundation for sites.** The typed arrays (`pop`, `demand`, `goods`,
-   `workforce`, `money`), factory/mine/storage pools, settlement markets, deposit
-   unlocking, construction timers, waste and CO2 accounting, ledger, render views,
-   HUD inspector and scenario scripts all carry straight into Phase 4. Sites only
-   replaces goods routing and factory placement scoring, while reusing atmospheric
-   CO2 diffusion for forests.
-3. **Exposes shared pitfalls early.** Running one full loop first surfaces the
-   pitfalls common to both engines — town-to-settlement market balance, water
-   isolation of islands, cold-start supply before first factory completion,
-   duplicate builds during the 10–30 s construction lag, settlement waste vs
-   natural land recovery, mass conservation, and tick budget — without mixing
-   half-built second-engine code into every tuning pass.
+The discrete Sites engine follows in Phase 4. It replaces goods routing and
+factory placement scoring on the shared economy foundation and is selectable
+only when it runs the full loop.
 
 ## Relationship to the base prototype
 
@@ -99,14 +88,14 @@ fields (`territory.js`), disturbed fraction (`land.js`), biomass and oxygen
   factories and settlements, releasing CO2; iron ore feeds factory construction
   and production; goods satisfy settlements and leave disturbance; CO2 feeds
   forests. Mapped to party resources: `FUEL ↔ COAL`, `ORE ↔ IRON`, `GOODS ↔ GOODS`.
-- **Demand `demand[r * N + i]`**: signed distance field per item. Positive means
-  unmet need, negative means surplus available. Its gradient points from surplus
-  toward need.
+- **Demand `demand[r * N + i]`**: diffused per-item routing signal. Diffusion
+  uses positive need and negative surplus; A and B use nonnegative import pull
+  for coal and goods. Stock moves up the gradient.
 - **Goods `goods[r * N + i]`**: physical stock (or CO2 concentration for `r = 3`)
   in cell `i`. Kept alongside demand for mass conservation and to test gated vs
   demand-only production.
-- **Storage**: a cell registered to inject negative demand proportional to its
-  `goods` stock. Mines and factories register storages at their cells.
+- **Storage**: a registered stock location. Mines and factories register
+  storages at their cells; signed stock feedback reads all walkable cells.
 - **Factory**: built over `MAPE_FACTORY_BUILD_SEC` (`20 s` default, `10–30 s`
   typical) while demanding iron; when active, runs
   `coal + iron → 2 × coal goods + waste + CO2`, needs workforce, disturbs its cell.
@@ -123,11 +112,11 @@ fields (`territory.js`), disturbed fraction (`land.js`), biomass and oxygen
 ## Data model
 
 `map-economy.js` owns map-economy state, pools, seeding, deposit locks, markets,
-conservation ledgers and engine dispatch; `map-diffusion.js` owns the diffusion
-step (demand/workforce Jacobi fields, normalized-gradient goods and worker flow,
-worker-gated mine output, and the multi-size scaling kernel). All buffers are
-allocated once in `mapeInit` (including cached per-item `demandView`/`goodsView`
-slices) and mutated in place per tick.
+conservation ledgers and engine selection; `map-diffusion.js` owns the shared
+field step, signed diffusion, gradient haulage and worker-gated mine output.
+`map-market-flow.js` owns catchment and queue rules. Shared arrays and per-item
+views are allocated at setup; catchment topology and queue scratch are prepared
+on demand and reused. All three modes mutate buffers in place per tick.
 
 ```
 MAPE_R = 4                       // coal, iron, goods, co2
@@ -198,7 +187,8 @@ State:
 - `factories` (cap 32, SoA): `x, y, state` (building/active/idle), `progress`, `starved`.
 - `mines` (cap 32, SoA): `x, y, site, res, unlocked`.
 - `storages` (cap 96, SoA): `x, y, site` (registered on unlock/build; stock lives in `goods`).
-- `engine`: `MAPE_ENGINE.DIFFUSION` or `MAPE_ENGINE.SITES`; `viewItem`: `0…3`.
+- `engine`: `DIFFUSION`, `CATCHMENT`, or `QUEUE`; `SITES` is reserved for the
+  discrete engine. `viewItem`: `0…3`.
 - Ledger counters (Float64): `initialGoods, massIn, massOut, dissipated, minedTotal, transportWork, initialPop, popDelta`.
 
 Memory: double-buffered `demand`, `goods`, `pop` and `workforce` plus `jobNeed`,
@@ -282,6 +272,32 @@ closing `factory → jobs → migration → production`.
    Start locked; once unlocked, extract at `MAPE_MINE_RATE * productivity` into
    local `goods` and `storages` until deposit stock hits zero.
 
+## Catchment A and Queue B
+
+Both replace the settlement coal/goods stock sink with a population-based
+import signal. Coal and goods demand decay at `0.32/s` instead of `0.008/s`;
+haulage uses `3.6/s` with gradient half-saturation `0.004`. Iron, CO2 and
+workforce still use the shared field rules. Actual household use is separate
+from import pull, and debits the stock ledger without changing population or
+emitting CO2 during the intake comparison.
+
+- **A · Catchment:** sum all stock reachable in four cardinal steps, never across
+  water. If `rate` is population × per-person usage, inject a fraction
+  `1 / (1 + stock / (16 × rate))` of normal demand. After hauling, draw up to
+  `rate × dt` proportionally from the same catchment; there is no delivery cap.
+- **B · Queue:** read existing stock at the settlement cell. Import pull falls
+  linearly to 50% as it fills a `0.25 × rate` intake buffer. Service uses up to
+  `min(rate × dt, stock × (1 − exp(−dt / 0.1)))` **before** arrivals. Competing
+  shipments share the remaining room in proportion to their requests; rejected
+  cargo stays at its source. Existing market stock and sales above the buffer
+  are kept and used normally, not clipped. Other tiles have no stock cap.
+- **Stock lowers demand** turns off both alternative multipliers (100% pull),
+  but does not turn off uptake or queue capacity. In Diffusion it disables
+  the signed stock sink. Neighboring stock doesn't cool B until it arrives.
+
+The selector and comparison scenario use game units, terrain and four-neighbor
+fields, not the standalone coal labs' map, tuning, or rendering loops.
+
 ## Site engine (Phase 4)
 
 Implemented after Phases 0–3 validate rates, balance and conservation on
@@ -302,14 +318,17 @@ HUD and atmospheric CO2 diffusion, replacing goods routing and placement scoring
 ## Selectable interface
 
 ```
-mapeInit(mode)      // allocate/reset and seed for DIFFUSION or SITES
-mapeStep(seconds)   // advance one tick, dispatching to the active engine
+mapeInit(mode)      // allocate/reset the world economy, keeping the selected engine unless specified
+mapeStep(seconds)   // tick the shared economy with the active field strategy
 mapeField(kind, r)  // return Float32Array slice for rendering and experiments
-mapeSetEngine(mode) // switch engine and cleanly re-seed map-economy state
+mapeSetEngine(mode) // switch on the live map, without reseeding physical state
 ```
 
-Hybrid operation (settlement pool + field diffusion) is a flag on the diffusion
-engine rather than a third engine; not enabled by default.
+Switching field strategies rebuilds only coal and goods demand from current
+stock and settlements (two simulated seconds of signal warmup, no clock advance).
+Inventory, market funds, residents, worker demand, mines, deposit stock, party
+progress and atmosphere do not reset. Tests start from identical layouts when
+comparing curves; live switches preserve the consequences of earlier ticks.
 
 ## Player role
 
@@ -357,7 +376,8 @@ path, and `mapeField` returns cached typed-array views. Measured kernel scaling
   water stays blue.
 - **Demand**: diverging per selected item (`sqrt` curve) — surplus green, zero
   dark grey, unmet need red; water is deep blue for land items and blue-tinted
-  atmosphere for `CO2`.
+  atmosphere for `CO2`. Coal and goods share a `1.5` scale across all engines;
+  iron and CO2 retain `6`.
 - **Supply**: dark → bright cyan-ivory by `goods` stock of selected item
   (rendered over water for `CO2` with a faint shoreline tint).
 - **Workforce**: dark → amber-gold by `workforce[i]`.
@@ -367,10 +387,11 @@ switch when `demand` or `supply` is active, using the same single-writer `change
 handler and fine-pointer hover preview. Map markers show settlements (batched
 cream dots sized by pop), storages (small teal squares), mines (triangles, muted
 lock tint while locked), and factories (squares: amber building, bright active,
-grey idle). The HUD `economy` block shows the engine radiogroup (`diffusion` /
-`sites`), settlement summary, hovered/selected cell's coordinates, terrain, `pop`,
-`workforce`, per-item `demand` and `goods`, and deposit lock state. The `around`
-block reports nearest settlement distance and population.
+grey idle). The `economy` block under the clock includes the engine selector,
+stock feedback toggle and inspector. The inspector shows cell coordinates,
+terrain, population, workforce, per-item demand and stock, and deposit lock;
+A and B also show the hovered settlement's import pull as a percent of hungry
+pull. The `around` block reports nearest settlement distance and population.
 
 ## Prototype phases
 
@@ -449,13 +470,13 @@ emitters, exact conservation `< 1e-6`). Divergences recorded in findings.
 
 ### Phase 5 — Selectable engine comparison and victory integration
 
-Deliverable: enable HUD `sites` switch with clean runtime re-seed, `+10%` player
-influence boost on growth, victory stability checks (total population not
-declining over last `60 s`, no unmanaged factory/mine cell with `d ≥ 0.25`),
-`experiments/mape_compare.js` comparing both engines on identical seeds.
+Deliverable: enable HUD `sites` once shipments can switch without loss, `+10%`
+player influence boost on growth, victory stability checks (total population not
+declining over last `60 s`, no unmanaged factory/mine cell with `d ≥ 0.25`), and
+extend `experiments/mape_compare.js` to compare sites on identical seeds.
 
-Gate: runtime switch re-seeds cleanly both ways, both engines pass `smoke` and
-`dom_smoke`, comparison metrics logged.
+Gate: runtime switches preserve the stock ledger, all engines pass `smoke` and
+`dom_smoke`, comparison metrics are logged.
 
 ## Manual pass list
 
@@ -465,6 +486,9 @@ Gate: runtime switch re-seeds cleanly both ways, both engines pass `smoke` and
 - Switching views `1`…`9` (click, fine-pointer hover, keys) updates the canvas
   cleanly; `demand` and `supply` reveal the `coal / iron / goods / co2` switch and
   show green surplus vs red need and item stocks.
+- Pause on Demand → Coal and pick Diffusion, A and B. The demand map and help
+  change while the clock, supply and party stay put. Hover a settlement to see
+  its A/B pull; uncheck feedback and resume to restore the full pull.
 - Moving pointer over the map updates the HUD cell inspector (`pop`, `work`, and
   per-item `d`/`s`) without flickering radios or action buttons.
 - Jumping to a settlement shows market funds and prices; selling moves funds and

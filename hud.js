@@ -1,4 +1,4 @@
-// owns: the side panel, view/item/engine switches, cell inspector and under-map nearby list
+// owns: the side panel, view/item switches and under-map nearby list
 // edit for: panel content, action buttons, formatting
 
 const HUD_REFRESH_SECONDS = 0.2;
@@ -16,8 +16,6 @@ const hud = {
 	actionsEl: null,
 	viewsEl: null,
 	itemGroup: null,
-	engineEl: null,
-	inspectEl: null,
 	timeEl: null,
 	victoryEl: null,
 	statusEl: null,
@@ -25,7 +23,6 @@ const hud = {
 	timeButtons: [],
 	viewRadios: [],
 	itemRadios: [],
-	engineRadios: [],
 	acc: 0,
 	key: '',
 	logVersion: -1,
@@ -41,18 +38,13 @@ function hudInit() {
 	hud.nearbyEl = $('ui-nearby');
 	hud.actionsEl = $('ui-actions');
 	hud.viewsEl = $('ui-views');
-	hud.engineEl = $('ui-engine');
-	hud.inspectEl = $('ui-inspect');
 	hud.timeEl = $('ui-time');
 	hud.victoryEl = $('ui-victory');
 	hud.statusEl = $('ui-status');
 	hud.logEl = $('ui-log');
 	hudBuildTime();
 	hudBuildViews();
-	hudBuildEngine();
-	const surplus = $('ui-surplus');
-	surplus.checked = mape.surplusFeedback;
-	surplus.addEventListener('change', () => { mape.surplusFeedback = surplus.checked; });
+	hudEconomyInit();
 	hud.key = '';
 	hud.logVersion = -1;
 	hud.statusVersion = -1;
@@ -140,15 +132,6 @@ function hudBuildViews() {
 	host.appendChild(hud.itemGroup);
 }
 
-function hudBuildEngine() {
-	const host = hud.engineEl;
-	if (!host) return;
-	host.textContent = '';
-	const group = hudMakeSeg('ui-engine-mode', 'economy engine', MAPE_ENGINE_NAME, mape.engine, hud.engineRadios, hudSetEngine, false);
-	hud.engineRadios[MAPE_ENGINE.SITES].disabled = !mape.sitesReady;
-	host.appendChild(group);
-}
-
 function hudSyncItemVisibility() {
 	if (!hud.itemGroup) return;
 	hud.itemGroup.hidden = render.view !== VIEW.DEMAND && render.view !== VIEW.SUPPLY;
@@ -171,20 +154,11 @@ function hudSetItem(item) {
 	renderDraw();
 }
 
-function hudSetEngine(mode) {
-	actionsSetEngine(mode);
-	for (let k = 0; k < hud.engineRadios.length; k++) hud.engineRadios[k].checked = mape.engine === k;
-}
-
 function hudTick(dt) {
 	hud.acc += dt;
 	if (hud.acc < HUD_REFRESH_SECONDS) return;
 	hud.acc = 0;
 	hudRefresh(false);
-}
-
-function hudSigned(value) {
-	return (value >= 0 ? '+' : '') + value.toFixed(1);
 }
 
 function hudRefresh(force) {
@@ -313,27 +287,6 @@ function hudSettlementText(idx) {
 
 function hudUpdateSite() {
 	hud.siteEl.textContent = hudSiteText(sitesAt(party.x, party.y));
-}
-
-function hudUpdateInspect() {
-	if (!hud.inspectEl) return;
-	const x = input.hoverX >= 0 ? input.hoverX : party.x;
-	const y = input.hoverX >= 0 ? input.hoverY : party.y;
-	const n = world.n;
-	const idx = y * world.size + x;
-	const pct = (mape.settleCount / n * 100).toFixed(1);
-	let text = 'Settlements ' + mape.settleCount + ' (' + pct + '%) · pop ' + Math.round(mape.totalPop) +
-		' · ' + MAPE_ENGINE_NAME[mape.engine] +
-		'\nCell ' + x + ',' + y + ' · ' + TERRAIN_NAME[world.terrain[idx]] +
-		' · pop ' + mape.pop[idx].toFixed(1) + ' · work ' + mape.workforce[idx].toFixed(1);
-	for (let r = 0; r < MAPE_R; r++) {
-		const slot = r * n + idx;
-		text += (r % 2 === 0 ? '\n' : ' · ') + MAPE_RES_NAME[r] +
-			' d ' + hudSigned(mape.demand[slot]) + ' s ' + mape.goods[slot].toFixed(1);
-	}
-	const lock = mapeDepositState(x, y);
-	if (lock >= 0) text += '\nDeposit ' + hudMineText(lock, idx);
-	hud.inspectEl.textContent = text;
 }
 
 function hudNearbyState(state) {

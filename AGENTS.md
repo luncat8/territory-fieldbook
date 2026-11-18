@@ -55,7 +55,8 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	economy.js — resources, recipes, biosphere, conservation ledger.
 	sites.js — site pool, discovery, claims, extraction, payouts.
 	map-economy.js — settlements, markets, demand/goods/workforce state, mines, factories.
-	map-diffusion.js — Jacobi demand/workforce diffusion, gradient goods/worker flow, mine output.
+	map-diffusion.js — shared field tick, signed diffusion, gradient goods/worker flow, mine output.
+	map-market-flow.js — A catchments and B local queues for settlement coal and goods.
 	investigate.js — investigation progress, float radius, Euclidean falloff, survey push, nearby list.
 	party.js — members, shared values, skills, movement, camping, hiring.
 	territory.js — per-faction influence fields, control, share, contest.
@@ -64,8 +65,9 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	render.js — canvas painting, view modes, markers.
 	input.js — clicks, hover mark, keyboard bindings.
 	hud.js — side panel, view switch, around-list, context actions, feed.
+	hud-economy.js — economy picker, stock feedback and cell inspector.
 	actions.js — player verbs spanning features (move, work, sell, hire, restore, declare).
-	experiments/ — smoke.js (sim) and dom_smoke.js (boot + UI), never loaded by the page.
+	experiments/ — smoke.js (sim), dom_smoke.js (boot + UI), mape_compare.js (engine comparison), never loaded by the page.
 - new code goes to its owner, never appended "because the file is already there". no owner exists -> new file + header + map entry.
 - file > ~500 lines = defect. split by feature within the same plan.
 - moves are pure moves: contiguous ranges, snap to enclosing declarations, no behavior change.

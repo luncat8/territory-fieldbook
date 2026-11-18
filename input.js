@@ -53,6 +53,8 @@ function inputClick(event) {
 function inputKey(event) {
 	const key = event.key;
 	if (key === ' ') {
+		const tag = event.target && event.target.tagName;
+		if (tag === 'INPUT' || tag === 'BUTTON') return;
 		event.preventDefault();
 		actionsTogglePause();
 		return;

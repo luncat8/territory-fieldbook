@@ -202,7 +202,7 @@ if (!bootError) {
 		result.itemHiddenOnTerrain = result.itemGroup.hidden === true;
 		result.engineRadios = result.engineGroup.children.length;
 		result.engineDiffusionChecked = result.engineGroup.children[0].children[0].checked;
-		result.engineSitesDisabled = result.engineGroup.children[1].children[0].disabled;
+		result.engineSitesDisabled = result.engineGroup.children[3].children[0].disabled;
 		result.actionButtons = run('$("ui-actions").children.length');
 		result.siteText = run('$("ui-site").textContent');
 		result.inspectText = run('$("ui-inspect").textContent');
@@ -291,6 +291,33 @@ if (!bootError) {
 		result.surveyLabel = run('hudActionList()[1].label');
 		result.surveyReady = run('hudActionList()[1].enabled');
 
+		const engines = result.engineGroup.children.map(item => item.children[0]);
+		result.engineGroup.dispatch('pointerover', { target: engines[1] });
+		result.engineClickOnly = engines[0].checked && !engines[1].checked;
+		result.itemGroup.children[0].children[0].click();
+		const beforeSwitch = run('[clock.seconds, party.x, party.y, mapeGoodsTotal(), mape.viewItem].join(":")');
+		const engineSigs = new Set([pixelSignature(pixels)]);
+		for (const radio of engines.slice(1, 3)) {
+			radio.click();
+			engineSigs.add(pixelSignature(pixels));
+		}
+		result.engineViews = engineSigs.size;
+		result.queuesSelected = engines[2].checked && !engines[0].checked && !engines[1].checked;
+		result.queueExplained = /short queue/.test(elements.get('ui-engine-note').textContent);
+		result.switchKeptProgress = beforeSwitch === run('[clock.seconds, party.x, party.y, mapeGoodsTotal(), mape.viewItem].join(":")');
+		const feedback = elements.get('ui-surplus');
+		feedback.tagName = 'INPUT';
+		let prevented = false;
+		windowStub.listeners.keydown[0]({ key: ' ', target: feedback, preventDefault() { prevented = true; } });
+		result.feedbackKeyboard = !prevented && run('clock.speed') === 0;
+		feedback.checked = false;
+		feedback.dispatch('change', { target: feedback });
+		result.feedbackOff = run('!mape.surplusFeedback && mapeMarketPull(MAPE_RES.COAL, mape.settleCells[0]) === 1');
+		feedback.checked = true;
+		feedback.dispatch('change', { target: feedback });
+		engines[0].click();
+		result.switchBack = engines[0].checked && !engines[2].checked;
+
 		run('party.alive = false; party.condition = 0; hudRefresh(true);');
 		const lostButtons = run('$("ui-actions").children.slice()');
 		const restart = lostButtons[lostButtons.length - 1];
@@ -332,7 +359,10 @@ check('canvas_painted', result.litCells > 3000);
 check('time_controls', result.timeButtons === 4);
 check('view_controls', result.viewRadios === 9 && result.distinctViews === 9);
 check('item_controls', result.itemRadios === 4 && result.itemHiddenOnTerrain && result.itemShownOnDemand && result.distinctItems === 4);
-check('engine_controls', result.engineRadios === 2 && result.engineDiffusionChecked && result.engineSitesDisabled);
+check('engine_controls', result.engineRadios === 4 && result.engineDiffusionChecked && result.engineSitesDisabled && result.engineClickOnly);
+check('engine_switch_and_redraw', result.engineViews === 3 && result.queuesSelected && result.queueExplained && result.switchBack);
+check('engine_switch_keeps_progress', result.switchKeptProgress);
+check('engine_feedback_toggle', result.feedbackOff && result.feedbackKeyboard);
 check('starter_coal_trace_visible', result.starterCoalTrace && result.starterCoalListed && result.aroundHasCoordinates);
 check('iron_deposits_deferred', result.ironDepositsDeferred);
 check('around_selection_preserved', result.aroundSelectionPreserved && result.aroundRefreshesAfterSelection);

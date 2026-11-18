@@ -88,6 +88,7 @@ function renderPaintCells() {
 	const pop = mape.pop;
 	const work = mape.workforce;
 	const itemOffset = mape.viewItem * n;
+	const demandMax = mapeIsMarketItem(mape.viewItem) ? MAPE_VIEW_MARKET_DEMAND_MAX : MAPE_VIEW_DEMAND_MAX;
 	const demand = mape.demand;
 	const goods = mape.goods;
 	const originX = party.x;
@@ -187,13 +188,13 @@ function renderPaintCells() {
 				g = 42;
 				b = 48;
 				if (v < 0) {
-					const raw = -v / MAPE_VIEW_DEMAND_MAX;
+					const raw = -v / demandMax;
 					const k = Math.sqrt(raw > 1 ? 1 : raw);
 					r += (44 - r) * k;
 					g += (196 - g) * k;
 					b += (114 - b) * k;
 				} else if (v > 0) {
-					const raw = v / MAPE_VIEW_DEMAND_MAX;
+					const raw = v / demandMax;
 					const k = Math.sqrt(raw > 1 ? 1 : raw);
 					r += (220 - r) * k;
 					g += (76 - g) * k;

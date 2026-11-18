@@ -4,8 +4,8 @@
 const MAPE_R = 4;
 const MAPE_RES = { COAL: 0, IRON: 1, GOODS: 2, CO2: 3 };
 const MAPE_RES_NAME = ['coal', 'iron', 'goods', 'co2'];
-const MAPE_ENGINE = { DIFFUSION: 0, SITES: 1 };
-const MAPE_ENGINE_NAME = ['diffusion', 'sites'];
+const MAPE_ENGINE = { DIFFUSION: 0, CATCHMENT: 1, QUEUE: 2, SITES: 3 };
+const MAPE_ENGINE_NAME = ['Diffusion', 'A · Catchment', 'B · Queue', 'Sites'];
 const MAPE_FIELD = { DEMAND: 0, GOODS: 1, POP: 2, WORKFORCE: 3 };
 const MAPE_FACTORY_STATE = { GONE: 0, BUILDING: 1, ACTIVE: 2, IDLE: 3 };
 const MAPE_CELL_INDUSTRY = 128;
@@ -37,6 +37,7 @@ const MAPE_MONEY_PER_POP = 25;
 const MAPE_MONEY_REGEN = 0.04;
 const MAPE_SUPPLY_GOODS = 0.2;
 const MAPE_VIEW_DEMAND_MAX = 6;
+const MAPE_VIEW_MARKET_DEMAND_MAX = 1.5;
 const MAPE_VIEW_GOODS_MAX = 20;
 const MAPE_VIEW_WORK_MAX = 4;
 
@@ -44,7 +45,6 @@ const mape = {
 	engine: MAPE_ENGINE.DIFFUSION,
 	surplusFeedback: true,
 	viewItem: MAPE_RES.GOODS,
-	sitesReady: false,
 	pop: null,
 	popNext: null,
 	demand: null,
@@ -110,7 +110,7 @@ function mapeInit(mode) {
 			mape.goodsView[r] = mape.goods.subarray(r * n, (r + 1) * n);
 		}
 	}
-	if (mode !== undefined) mape.engine = mode;
+	if (mapeEngineAvailable(mode)) mape.engine = mode;
 	mapeReset();
 }
 
@@ -140,7 +140,7 @@ function mapeReset() {
 	mape.massIn = 0;
 	mape.massOut = 0;
 	mape.dissipated = 0;
-	// Isolated stream so re-seeding on engine switch never shifts world, sites or rivals.
+	// Keep the settlement layout independent of random draws elsewhere in the game.
 	const savedSeed = random.seed;
 	randomSeed(world.seed ^ 0x4a9e1c3d);
 	mapeSeedSettlements();
@@ -150,13 +150,20 @@ function mapeReset() {
 	mapeRebuildSettlements();
 	mape.initialPop = mape.totalPop;
 	mape.initialGoods = mapeGoodsTotal();
-	if (mape.engine === MAPE_ENGINE.DIFFUSION) mapeWarmDemand();
+	mapeMarketFlowPrepare(true);
+	mapeWarmDemand();
+}
+
+function mapeEngineAvailable(mode) {
+	return mode === MAPE_ENGINE.DIFFUSION || mode === MAPE_ENGINE.CATCHMENT || mode === MAPE_ENGINE.QUEUE;
 }
 
 function mapeSetEngine(mode) {
-	if (mode !== MAPE_ENGINE.DIFFUSION && mode !== MAPE_ENGINE.SITES) return false;
+	if (mode === mape.engine || !mapeEngineAvailable(mode)) return false;
 	mape.engine = mode;
-	mapeReset();
+	mapeMarketFlowPrepare();
+	for (let r = 0; r < MAPE_R; r++) if (mapeIsMarketItem(r)) mape.demandView[r].fill(0);
+	mapeWarmDemand(true);
 	return true;
 }
 
@@ -341,15 +348,8 @@ function mapeRecoverMoney(seconds) {
 	}
 }
 
-function mapeStepSites(seconds) {
-	mapeSyncLocks();
-	mapeRecoverMoney(seconds);
-}
-
 function mapeStep(seconds) {
-	if (seconds <= 0) return;
-	if (mape.engine === MAPE_ENGINE.SITES) mapeStepSites(seconds);
-	else mapeStepDiffusion(seconds);
+	if (seconds > 0) mapeStepDiffusion(seconds);
 }
 
 function mapeIsSettlement(idx) {
@@ -477,7 +477,7 @@ function mapePopResidual() {
 
 if (typeof module !== 'undefined') {
 	module.exports = {
-		mape, mapeInit, mapeStep, mapeField, mapeSetEngine, mapeAddStorage, mapeAddFactory, mapeUnlockMine,
+		mape, mapeInit, mapeStep, mapeField, mapeSetEngine, mapeEngineAvailable, mapeAddStorage, mapeAddFactory, mapeUnlockMine,
 		mapeLedgerResidual, mapePopResidual, MAPE_R, MAPE_RES, MAPE_RES_NAME, MAPE_ENGINE, MAPE_ENGINE_NAME, MAPE_FIELD
 	};
 }
