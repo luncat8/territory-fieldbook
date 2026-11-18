@@ -50,6 +50,9 @@ function hudInit() {
 	hudBuildTime();
 	hudBuildViews();
 	hudBuildEngine();
+	const surplus = $('ui-surplus');
+	surplus.checked = mape.surplusFeedback;
+	surplus.addEventListener('change', () => { mape.surplusFeedback = surplus.checked; });
 	hud.key = '';
 	hud.logVersion = -1;
 	hud.statusVersion = -1;

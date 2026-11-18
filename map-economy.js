@@ -22,17 +22,14 @@ const MAPE_MINE_CAP = 32;
 const MAPE_STORAGE_CAP = 96;
 const MAPE_NEED_GOODS = 0.02;
 const MAPE_NEED_COAL = 0.005;
-const MAPE_STOCK_SEC = 60;
 const MAPE_MINE_RATE = 0.6;
 const MAPE_MINE_WORKERS = 6;
-const MAPE_FACTORY_BUILD_SEC = 20;
 const MAPE_FACTORY_BUILD_IRON = 0.2;
 const MAPE_FACTORY_BUILD_WORKERS = 4;
 const MAPE_FACTORY_COAL = 0.5;
 const MAPE_FACTORY_IRON = 0.5;
 const MAPE_FACTORY_CO2 = 0.5;
 const MAPE_FACTORY_WORKERS = 8;
-const MAPE_FACTORY_STOCK_SEC = 30;
 const MAPE_WORKFORCE_PER_UNIT = 0.4;
 const MAPE_CO2_INIT = 0.4;
 const MAPE_FOREST_CO2 = 0.004;
@@ -45,6 +42,7 @@ const MAPE_VIEW_WORK_MAX = 4;
 
 const mape = {
 	engine: MAPE_ENGINE.DIFFUSION,
+	surplusFeedback: true,
 	viewItem: MAPE_RES.GOODS,
 	sitesReady: false,
 	pop: null,
@@ -59,7 +57,6 @@ const mape = {
 	workforceNext: null,
 	jobNeed: null,
 	cellExport: null,
-	cellFactory: null,
 	money: null,
 	settleCells: null,
 	settleCount: 0,
@@ -104,7 +101,6 @@ function mapeInit(mode) {
 		mape.workforceNext = new Float32Array(n);
 		mape.jobNeed = new Float32Array(n);
 		mape.cellExport = new Uint8Array(n);
-		mape.cellFactory = new Uint8Array(n);
 		mape.money = new Float32Array(n);
 		mape.settleCells = new Uint16Array(n);
 		mape.demandView = new Array(MAPE_R);
@@ -129,7 +125,6 @@ function mapeReset() {
 	mape.workforceNext.fill(0);
 	mape.jobNeed.fill(0);
 	mape.cellExport.fill(0);
-	mape.cellFactory.fill(0);
 	mape.money.fill(0);
 	mape.factoryState.fill(MAPE_FACTORY_STATE.GONE);
 	mape.factoryProgress.fill(0);

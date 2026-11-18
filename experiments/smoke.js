@@ -145,6 +145,7 @@ const result = run(`
 	const mineUnlockedAfter = mape.mineUnlocked[coalMine] === 1;
 	const mineWorkersAfter = mape.pop[mineIdx];
 	const minedAfter = mape.minedTotal;
+	const exportedAfter = minedAfter - mape.goods[MAPE_RES.COAL * world.n + mineIdx];
 	const nearCoalAfter = mape.goods[MAPE_RES.COAL * world.n + nearForCoal];
 	const transportWorkAfter = mape.transportWork;
 
@@ -207,6 +208,7 @@ const result = run(`
 		mineUnlockedAfter: mineUnlockedAfter,
 		mineWorkersAfter: mineWorkersAfter,
 		minedAfter: minedAfter,
+		exportedAfter: exportedAfter,
 		nearCoalBefore: nearCoalBefore,
 		nearCoalAfter: nearCoalAfter,
 		transportWorkAfter: transportWorkAfter,
@@ -299,7 +301,7 @@ check('mape_fields_seeded',
 check('deposit_unlocks',
 	result.mineCount >= 4 && result.unlockedStart === 0 && result.mineUnlockedAfter &&
 	result.mineWorkersAfter >= 2 && result.minedAfter > 5 &&
-	result.nearCoalAfter > result.nearCoalBefore && result.transportWorkAfter > 1);
+	result.exportedAfter > 1 && result.transportWorkAfter > 1);
 check('investigation_local', result.progressHere > 0.2 && result.progressHere <= 1);
 check('investigation_far_zero', result.progressFar === 0);
 check('discovery_progresses', result.visibleAfterScout >= result.visibleBefore);

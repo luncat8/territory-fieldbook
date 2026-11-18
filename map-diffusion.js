@@ -6,8 +6,7 @@ const MAPE_DIFFUSE = 0.72;
 const MAPE_DIFFUSE_PASSES = 2;
 const MAPE_DECAY = 0.008;
 const MAPE_DEMAND_GAIN = 8.0;
-const MAPE_STORAGE_SIGNAL = 3.0;
-const MAPE_SURPLUS_SIGNAL = 0.25;
+const MAPE_STOCK_SIGNAL = 0.25;
 const MAPE_CO2_DIFFUSE = 0.45;
 const MAPE_FLOW_SPEED = 1.8;
 const MAPE_GRAD_REF = 0.02;
@@ -28,13 +27,11 @@ function mapeSyncCells() {
 	const size = world.size;
 	const job = mape.jobNeed;
 	const exp = mape.cellExport;
-	const fac = mape.cellFactory;
 	job.fill(0);
 	exp.fill(0);
-	fac.fill(0);
 	for (let m = 0; m < mape.mineCount; m++) {
 		const idx = mape.mineY[m] * size + mape.mineX[m];
-		exp[idx] |= MAPE_CELL_INDUSTRY | (mape.mineUnlocked[m] ? (1 << mape.mineRes[m]) : 0);
+		exp[idx] |= MAPE_CELL_INDUSTRY;
 		if (mapeMineActive(m)) job[idx] += MAPE_MINE_WORKERS;
 	}
 	for (let f = 0; f < mape.factoryCount; f++) {
@@ -42,41 +39,12 @@ function mapeSyncCells() {
 		if (st === MAPE_FACTORY_STATE.GONE) continue;
 		const idx = mape.factoryY[f] * size + mape.factoryX[f];
 		exp[idx] |= MAPE_CELL_INDUSTRY;
-		if (st > fac[idx]) fac[idx] = st;
 		if (st === MAPE_FACTORY_STATE.BUILDING) {
 			job[idx] += MAPE_FACTORY_BUILD_WORKERS;
 		} else if (st === MAPE_FACTORY_STATE.ACTIVE) {
 			job[idx] += MAPE_FACTORY_WORKERS;
-			exp[idx] |= 1 << MAPE_RES.GOODS;
 		}
 	}
-	for (let k = 0; k < mape.storageCount; k++) {
-		if (mape.storageSite[k] < 255) continue;
-		const idx = mape.storageY[k] * size + mape.storageX[k];
-		if (fac[idx] === 0) exp[idx] |= 7;
-	}
-}
-
-function mapeCellReserve(r, i) {
-	if (mape.cellExport[i] & (1 << r)) return 0;
-	let res = 0;
-	const p = mape.pop[i];
-	if (r === MAPE_RES.GOODS && p > 0) res += p * MAPE_NEED_GOODS * MAPE_STOCK_SEC;
-	else if (r === MAPE_RES.COAL && p > 0) res += p * MAPE_NEED_COAL * MAPE_STOCK_SEC;
-	const fState = mape.cellFactory[i];
-	if (fState === MAPE_FACTORY_STATE.ACTIVE) {
-		if (r === MAPE_RES.COAL) res += MAPE_FACTORY_COAL * MAPE_FACTORY_STOCK_SEC;
-		else if (r === MAPE_RES.IRON) res += MAPE_FACTORY_IRON * MAPE_FACTORY_STOCK_SEC;
-	} else if (fState === MAPE_FACTORY_STATE.BUILDING && r === MAPE_RES.IRON) {
-		res += MAPE_FACTORY_BUILD_IRON * MAPE_FACTORY_BUILD_SEC;
-	}
-	return res;
-}
-
-function mapeUnmetRate(rate, stock, bufferSec) {
-	const target = rate * bufferSec;
-	if (target <= 0 || stock >= target) return 0;
-	return rate * (1 - stock / target);
 }
 
 function mapeInjectDemand(dt) {
@@ -88,7 +56,6 @@ function mapeInjectDemand(dt) {
 	const pop = mape.pop;
 	const demand = mape.demand;
 	const goods = mape.goods;
-	const exp = mape.cellExport;
 	const biomass = economy.biomass;
 	const gain = MAPE_DEMAND_GAIN * dt;
 	const coalOff = MAPE_RES.COAL * n;
@@ -103,8 +70,8 @@ function mapeInjectDemand(dt) {
 		if (p > 0) {
 			const needG = p * MAPE_NEED_GOODS;
 			const needC = p * MAPE_NEED_COAL;
-			demand[goodsOff + i] += mapeUnmetRate(needG, goods[goodsOff + i], MAPE_STOCK_SEC) * gain;
-			demand[coalOff + i] += mapeUnmetRate(needC, goods[coalOff + i], MAPE_STOCK_SEC) * gain;
+			demand[goodsOff + i] += needG * gain;
+			demand[coalOff + i] += needC * gain;
 			demand[co2Off + i] -= needC * gain;
 		}
 		const fix = BIO_FIX[t];
@@ -114,25 +81,21 @@ function mapeInjectDemand(dt) {
 		const st = mape.factoryState[f];
 		const idx = mape.factoryY[f] * size + mape.factoryX[f];
 		if (st === MAPE_FACTORY_STATE.BUILDING) {
-			demand[ironOff + idx] += mapeUnmetRate(MAPE_FACTORY_BUILD_IRON, goods[ironOff + idx], MAPE_FACTORY_BUILD_SEC) * gain;
+			demand[ironOff + idx] += MAPE_FACTORY_BUILD_IRON * gain;
 		} else if (st === MAPE_FACTORY_STATE.ACTIVE) {
-			demand[coalOff + idx] += mapeUnmetRate(MAPE_FACTORY_COAL, goods[coalOff + idx], MAPE_FACTORY_STOCK_SEC) * gain;
-			demand[ironOff + idx] += mapeUnmetRate(MAPE_FACTORY_IRON, goods[ironOff + idx], MAPE_FACTORY_STOCK_SEC) * gain;
+			demand[coalOff + idx] += MAPE_FACTORY_COAL * gain;
+			demand[ironOff + idx] += MAPE_FACTORY_IRON * gain;
 			demand[co2Off + idx] -= MAPE_FACTORY_CO2 * gain;
 		}
 	}
-	// Storages and unreserved stock emit negative demand so surplus pushes outward and past full villages.
-	const storeStep = MAPE_STORAGE_SIGNAL * dt;
-	const surplusStep = MAPE_SURPLUS_SIGNAL * dt;
+	if (!mape.surplusFeedback) return;
+	const stockStep = MAPE_STOCK_SIGNAL * dt;
 	for (let r = 0; r < MAPE_RES.CO2; r++) {
 		const off = r * n;
-		const bit = 1 << r;
 		for (let i = 0; i < n; i++) {
 			const stock = goods[off + i];
 			if (stock <= MAPE_EPS || terrain[i] === water) continue;
-			const surplus = stock - mapeCellReserve(r, i);
-			if (surplus <= MAPE_EPS) continue;
-			demand[off + i] -= surplus * ((exp[i] & bit) !== 0 ? storeStep : surplusStep);
+			demand[off + i] -= stock * stockStep;
 		}
 	}
 }
@@ -297,7 +260,7 @@ function mapePushUpGradient(x, y, i, p, size, terrain, field, next, budget, grad
 	return out;
 }
 
-function mapeTransportSlice(r, size, terrain, demand, goods, next, pop, work, workNext, dt, useReserve) {
+function mapeTransportSlice(r, size, terrain, demand, goods, next, pop, work, workNext, dt) {
 	const off = r * size * size;
 	const water = TERRAIN.WATER;
 	let baseFrac = MAPE_FLOW_SPEED * dt;
@@ -311,11 +274,9 @@ function mapeTransportSlice(r, size, terrain, demand, goods, next, pop, work, wo
 			const p = off + i;
 			const stock = goods[p];
 			if (stock <= MAPE_EPS || terrain[i] === water) continue;
-			const avail = useReserve ? stock - mapeCellReserve(r, i) : stock;
-			if (avail <= MAPE_EPS) continue;
 			const popI = pop[i];
 			const staff = popI / (popI + work[i] + MAPE_TRANSPORT_REF_POP);
-			const budget = avail * baseFrac * (MAPE_TRANSPORT_BASE + staffShare * staff);
+			const budget = stock * baseFrac * (MAPE_TRANSPORT_BASE + staffShare * staff);
 			const out = mapePushUpGradient(x, y, i, p, size, terrain, demand, next, budget, MAPE_GRAD_REF, 0, null);
 			if (out <= 0) continue;
 			const effort = out * MAPE_WORKFORCE_PER_UNIT;
@@ -414,7 +375,7 @@ function mapeDiffusionSubstep(dt) {
 	goodsNext.set(goods);
 	workScratch.fill(0);
 	for (let r = 0; r < MAPE_RES.CO2; r++) {
-		mape.transportWork += mapeTransportSlice(r, size, terrain, mape.demand, goods, goodsNext, mape.pop, mape.workforce, workScratch, dt, true);
+		mape.transportWork += mapeTransportSlice(r, size, terrain, mape.demand, goods, goodsNext, mape.pop, mape.workforce, workScratch, dt);
 	}
 	mapeDiffuseCo2Stock(goods, goodsNext, MAPE_RES.CO2 * n, size, dt);
 	goods.set(goodsNext);
@@ -455,7 +416,7 @@ function mapeKernelStep(size, rCount, terrain, demand, demandNext, goods, goodsN
 	workNext.fill(0);
 	const matCount = rCount > 1 ? rCount - 1 : 1;
 	for (let r = 0; r < matCount; r++) {
-		mapeTransportSlice(r, size, terrain, demand, goods, goodsNext, pop, work, workNext, dt, false);
+		mapeTransportSlice(r, size, terrain, demand, goods, goodsNext, pop, work, workNext, dt);
 	}
 	if (rCount > 1) mapeDiffuseCo2Stock(goods, goodsNext, (rCount - 1) * n, size, dt);
 	goods.set(goodsNext);

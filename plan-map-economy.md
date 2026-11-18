@@ -139,11 +139,9 @@ MAPE_POP_SEED_MIN = 8            // seeded settlement persons, low
 MAPE_POP_SEED_MAX = 20           // seeded settlement persons, high
 MAPE_NEED_GOODS = 0.02           // goods per person per s (per day)
 MAPE_NEED_COAL = 0.005           // coal per person per s (heating -> CO2)
-MAPE_STOCK_SEC = 40              // local goods/coal reserve buffer in s
 MAPE_SETTLE_DISTURB = 0.00015    // disturbance per unit goods consumed
 MAPE_DEMAND_GAIN = 8.0           // demand signal scale for unmet need rates
-MAPE_STORAGE_SIGNAL = 3.0        // negative demand per export-stored unit per s
-MAPE_SURPLUS_SIGNAL = 0.25       // negative demand per unreserved stock unit per s
+MAPE_STOCK_SIGNAL = 0.25       // negative demand per stock unit per s
 MAPE_DIFFUSE = 0.72              // 4-neighbour mix per pass (2 passes / 0.2 s tick)
 MAPE_DIFFUSE_PASSES = 2          // Jacobi passes per tick (D = 1.8 cells²/s)
 MAPE_DECAY = 0.008               // demand decay per s (reach sqrt(D/decay) = 15 cells)
@@ -194,8 +192,8 @@ State:
 - `demand, demandNext: Float32Array(R * N)` — double-buffered signed demand.
 - `goods, goodsNext: Float32Array(R * N)` — double-buffered physical stock / CO2.
 - `workforce, workforceNext: Float32Array(N)` — diffused job demand and scratch.
-- `jobNeed: Float32Array(N)`, `cellExport, cellFactory: Uint8Array(N)` — per-cell
-  retained site jobs, export/industry bitmask and active factory state.
+- `jobNeed: Float32Array(N)`, `cellExport: Uint8Array(N)` — per-cell
+  retained site jobs, industry marker.
 - `money: Float32Array(N)` — market cash at settlement cells.
 - `factories` (cap 32, SoA): `x, y, state` (building/active/idle), `progress`, `starved`.
 - `mines` (cap 32, SoA): `x, y, site, res, unlocked`.
@@ -212,22 +210,19 @@ Memory: double-buffered `demand`, `goods`, `pop` and `workforce` plus `jobNeed`,
 allocations; `mapeWarmDemand` relaxes initial demand over `8 s` at boot without
 moving stocks or people:
 
-1. **Demand injection.** Cells with `pop > 0` inject unmet `GOODS` and `COAL`
-   rates (scaled by buffer shortfall over `MAPE_STOCK_SEC`) and negative `CO2`
+1. **Demand injection.** Cells with `pop > 0` inject `GOODS` and `COAL`
+   need rates and negative `CO2`
    emission demand; biosphere cells inject positive `CO2` uptake demand. Building
-   factories inject unmet `IRON` demand; active factories inject unmet `COAL` and
+   factories inject `IRON` demand; active factories inject `COAL` and
    `IRON` demand and negative `CO2` demand. Water cells stay at 0.
-2. **Storage and surplus injection.** Export storages (unlocked mines, active
-   factories, standalone depots) subtract `surplus * MAPE_STORAGE_SIGNAL * dt`;
-   non-export cells holding stock above local reserve subtract
-   `surplus * MAPE_SURPLUS_SIGNAL * dt` so flowing goods push past full villages.
+2. **Stock feedback (checkbox, on by default).** Each land cell subtracts `stock * MAPE_STOCK_SIGNAL * dt` from its item’s demand field at that cell (stock is the cell total). Switching off removes only this source. Existing signals continue to diffuse and decay.
 3. **Demand diffusion.** `MAPE_DIFFUSE_PASSES = 2` symmetric zero-flux Jacobi
    passes per substep (`MAPE_DIFFUSE = 0.72`, `D = 1.8 cells²/s`,
    `MAPE_DECAY = 0.008/s`, reach `15 cells`, subnormal clamp `1e-12`). `COAL`,
    `IRON`, `GOODS` and `workforce` diffuse over walkable 4-neighbours only;
    `CO2` demand and pairwise `CO2` stock diffuse across all cells including water.
 4. **Gradient goods and worker transport.** For `COAL`, `IRON`, `GOODS`, stock
-   above local reserve flows across walkable 4-neighbours up positive demand
+   flows across walkable 4-neighbours up positive demand
    gradients using Michaelis-Menten normalization `g_k / (gSum + MAPE_GRAD_REF)`,
    giving uniform haul speed across 20 cells and around coastlines. Throughput
    scales by `0.5 + 0.5 * pop / (pop + workforce + 1)` and adds

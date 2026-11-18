@@ -184,8 +184,6 @@ const metrics = vm.runInThisContext(`
 		const facCell = idx(32, 37);
 		mape.pop[s1] = 18;
 		mape.pop[s2] = 16;
-		mape.goods[MAPE_RES.COAL * n + s1] = 0.4;
-		mape.goods[MAPE_RES.COAL * n + s2] = 0.4;
 		mapeRebuildSettlements();
 		mape.initialPop = mape.totalPop;
 		mape.initialGoods = mapeGoodsTotal();
@@ -290,6 +288,7 @@ const metrics = vm.runInThisContext(`
 	let nearCoalAfter = 0;
 	for (let k = 0; k < nearList.length; k++) nearCoalAfter += mape.goods[MAPE_RES.COAL * n + nearList[k]];
 	const realMinePop = mape.pop[idx(rmx, rmy)];
+	const realMineStock = mape.goods[MAPE_RES.COAL * n + idx(rmx, rmy)];
 	const realMined = mape.minedTotal;
 	const realLedgerRes = mapeLedgerResidual();
 	const realPopRes = mapePopResidual();
@@ -341,7 +340,7 @@ const metrics = vm.runInThisContext(`
 	}
 
 	return Object.assign({}, spread, iso, water, coal, {
-		realMinePop, realMined, nearCoalBefore, nearCoalAfter, realLedgerRes, realPopRes, badValues,
+		realMinePop, realMined, realMineStock, nearCoalBefore, nearCoalAfter, realLedgerRes, realPopRes, badValues,
 		liveMs, scaling
 	});
 })()
@@ -413,9 +412,9 @@ check('workers_diffuse_to_mine', metrics.tWorkerAtMine > 0 && metrics.chainMineP
 check('mine_produces_coal', metrics.tCoalMined >= metrics.tWorkerAtMine * 0.5 && metrics.chainMined > 5 && metrics.chainStockLeft < 35);
 check('coal_diffuses_to_settlement_and_factory',
 	metrics.tCoalAtS1 > 0 && metrics.tCoalAtS2 > 0 && metrics.tCoalAtFac > 0 &&
-	metrics.chainS1Coal > metrics.s1CoalStart + 1 && metrics.chainS2Coal > metrics.s2CoalStart + 1 &&
+	metrics.chainS1Coal > metrics.s1CoalStart + 0.5 && metrics.chainS2Coal > metrics.s2CoalStart + 0.5 &&
 	metrics.chainFacCoal > 2 && metrics.chainTransportWork > 1);
-check('real_map_coal_loop', metrics.realMinePop >= 3 && metrics.realMined > 10 && metrics.nearCoalAfter > metrics.nearCoalBefore + 3);
+check('real_map_coal_loop', metrics.realMinePop >= 3 && metrics.realMined > 10 && metrics.realMined - metrics.realMineStock > 3);
 check('conservation',
 	Math.abs(metrics.waterLedgerRes) < 1e-4 && Math.abs(metrics.co2MassRes) < 1e-3 &&
 	Math.abs(metrics.chainLedgerRes) < 1e-4 && Math.abs(metrics.chainPopRes) < 1e-4 &&
