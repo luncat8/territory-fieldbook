@@ -66,13 +66,15 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	rivals.js — rival agents: targets, travel, claims, extraction, scouting.
 	victory.js — victory conditions, declaration, feedback.
 	render.js — shared canvas painting, view modes, markers.
-	render-economy.js — field palettes and animated accepted-flow traces.
+	render-economy.js — display presets, palettes, grid, contours and accepted flow.
+	render-markers.js — settlement/industry markers and cached actor labels.
 	input.js — clicks, hover mark, keyboard bindings.
 	hud.js — side panel, view switch, around-list, context actions, feed.
-	hud-economy.js — economy picker, stock feedback, field legend and cell inspector.
-	hud-scenes.js — scene controls, readouts and paired-map tools.
+	hud-economy.js — economy picker, simulation feedback, both legends and inspector.
+	hud-display.js — look radios, overlay controls and paired-map layout.
+	hud-scenes.js — scene controls, readouts and actor tools.
 	actions.js — player verbs spanning features (move, work, sell, hire, restore, declare).
-	experiments/ — smoke.js (sim), dom_smoke.js (boot + UI), mape_compare.js (engine comparison), mape_scenes.js (scene regressions), never loaded by the page.
+	experiments/ — smoke (sim), dom_smoke + dom_fixture (boot/UI), map_views (display), mape_compare (engines), mape_scenes (scenes); never loaded by the page.
 - new code goes to its owner, never appended "because the file is already there". no owner exists -> new file + header + map entry.
 - file > ~500 lines = defect. split by feature within the same plan.
 - moves are pure moves: contiguous ranges, snap to enclosing declarations, no behavior change.

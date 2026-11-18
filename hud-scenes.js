@@ -1,4 +1,4 @@
-// owns: the economy scene controls, paired-map legend and live coal readouts
+// owns: the economy scene controls and live coal readouts
 // edit for: scene playback controls and actor-tool feedback
 
 const HUD_SCENE_TOOL_NOTE = [
@@ -12,25 +12,19 @@ const hudScene = {
 	tools: [],
 	fills: [],
 	step: null,
-	pressure: null,
 	note: null,
 	stock: null,
 	mined: null,
-	used: null,
-	demandUnit: null,
-	demandScale: null,
-	demandKey: null
+	used: null
 };
 
 function hudSceneInit() {
 	if (!mapScene.id) return;
-	$('ui-app').className = 'ui-scene-active';
-	$('ui-views').hidden = $('ui-around-panel').hidden = $('ui-survey-panel').hidden = true;
-	$('ui-demand-map').hidden = $('ui-scene-tools').hidden = $('ui-scene-stats').hidden = false;
-	$('ui-pressure-control').hidden = $('ui-survey-link').hidden = false;
+	$('ui-around-panel').hidden = $('ui-survey-panel').hidden = true;
+	$('ui-scene-tools').hidden = $('ui-scene-stats').hidden = false;
+	$('ui-survey-link').hidden = false;
 	$('ui-map-kicker').textContent = 'Economy test · ' + mapScene.id.toUpperCase();
 	$('ui-map-title').textContent = MAPE_SCENE_LAYOUTS[mapScene.id].name;
-	$('ui-canvas').setAttribute('aria-label', 'Coal supply map');
 	$('ui-scene-a').target = $('ui-scene-b').target = '_self';
 	$('ui-scene-a').title = 'Open the Catchment layout';
 	$('ui-scene-b').title = 'Open the Queue layout';
@@ -38,9 +32,6 @@ function hudSceneInit() {
 	hudScene.stock = $('ui-scene-stock');
 	hudScene.mined = $('ui-scene-mined');
 	hudScene.used = $('ui-scene-used');
-	hudScene.demandUnit = $('ui-scene-demand-unit');
-	hudScene.demandScale = $('ui-scene-demand-scale');
-	hudScene.demandKey = $('ui-scene-demand-key');
 	hudScene.note = $('ui-scene-note');
 	$('ui-tools').appendChild(hudMakeSeg('ui-scene-tool', 'map tool', MAPE_SCENE_TOOLS, mapScene.tool, hudScene.tools, hudSceneSetTool, false));
 	hudSceneSetTool(mapScene.tool);
@@ -51,25 +42,12 @@ function hudSceneInit() {
 	}
 	hudScene.step = hudButton('Step 0.05s', false, actionsStepScene, 'ui-chip');
 	$('ui-time').appendChild(hudScene.step);
-	const pressure = hudScene.pressure = $('ui-pressure');
-	pressure.checked = mape.localPressure;
-	pressure.addEventListener('change', () => { mape.localPressure = pressure.checked; });
-	hudSyncSceneLegend();
 }
 
 function hudSceneSetTool(tool) {
 	mapScene.tool = tool;
 	for (let k = 0; k < hudScene.tools.length; k++) hudScene.tools[k].checked = k === tool;
 	hudScene.note.textContent = HUD_SCENE_TOOL_NOTE[tool];
-}
-
-function hudSyncSceneLegend() {
-	if (!hudScene.demandUnit) return;
-	const bounded = mape.engine !== MAPE_ENGINE.DIFFUSION;
-	hudScene.pressure.disabled = !bounded;
-	hudScene.demandUnit.textContent = bounded ? 'Pull / 0–1' : 'Signed pull';
-	hudScene.demandScale.className = bounded ? 'ui-scale demand' : 'ui-scale signed';
-	hudScene.demandKey.textContent = bounded ? 'Low → high pull' : 'Surplus → demand';
 }
 
 function hudSceneUpdate() {

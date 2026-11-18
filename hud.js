@@ -46,6 +46,7 @@ function hudInit() {
 	hudBuildViews();
 	hudEconomyInit();
 	hudSceneInit();
+	hudDisplayInit();
 	hud.key = '';
 	hud.logVersion = -1;
 	hud.statusVersion = -1;
@@ -127,7 +128,12 @@ function hudViewFinePointer() {
 function hudBuildViews() {
 	const host = hud.viewsEl;
 	host.textContent = '';
-	host.appendChild(hudMakeSeg('ui-view', 'map view mode', VIEW_NAME, render.view, hud.viewRadios, hudSetView, true));
+	const group = hudMakeSeg('ui-view', 'map view mode', VIEW_NAME, render.view, hud.viewRadios, hudSetView, true);
+	if (mapScene.id) {
+		for (let k = 0; k < VIEW_NAME.length; k++) group.children[k].hidden = !renderIsFieldView(k);
+	}
+	group.children[VIEW.PAIRED].title = 'Supply and demand side by side · key 0';
+	host.appendChild(group);
 	hud.itemGroup = hudMakeSeg('ui-item', 'economy item', MAPE_RES_NAME, mape.viewItem, hud.itemRadios, hudSetItem, true);
 	hudSyncItemVisibility();
 	host.appendChild(hud.itemGroup);
@@ -135,15 +141,16 @@ function hudBuildViews() {
 
 function hudSyncItemVisibility() {
 	if (!hud.itemGroup) return;
-	hud.itemGroup.hidden = !renderIsFieldView(render.view);
+	hud.itemGroup.hidden = !!mapScene.id || !renderIsFieldView(render.view);
 }
 
 function hudSetView(view) {
-	if (render.view === view) return;
+	if (render.view === view || (mapScene.id && !renderIsFieldView(view))) return;
 	render.view = view;
 	for (let k = 0; k < hud.viewRadios.length; k++) hud.viewRadios[k].checked = view === k;
 	hudSyncItemVisibility();
 	hudSyncMapLegend();
+	hudDisplaySync();
 	hudRefresh(true);
 	renderDraw();
 }
@@ -153,6 +160,7 @@ function hudSetItem(item) {
 	mape.viewItem = item;
 	for (let k = 0; k < hud.itemRadios.length; k++) hud.itemRadios[k].checked = item === k;
 	hudSyncMapLegend();
+	hudDisplaySync();
 	hudRefresh(false);
 	renderDraw();
 }

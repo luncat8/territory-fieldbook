@@ -61,11 +61,15 @@ function inputClick(event) {
 
 function inputKey(event) {
 	const key = event.key;
+	const tag = event.target && event.target.tagName;
+	if (tag === 'INPUT' || tag === 'BUTTON' || tag === 'A') return;
 	if (key === ' ') {
-		const tag = event.target && event.target.tagName;
-		if (tag === 'INPUT' || tag === 'BUTTON' || tag === 'A') return;
 		event.preventDefault();
 		actionsTogglePause();
+		return;
+	}
+	if (key === '0') {
+		hudSetView(VIEW.PAIRED);
 		return;
 	}
 	if (mapScene.id) return;

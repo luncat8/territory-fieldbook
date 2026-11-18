@@ -89,3 +89,11 @@ pull: supply would increase congestion, reduce service, and push demand down aga
 fixed service window and a stock-sensitive signal, the backlog can clear and the route can
 recover. Trace accepted transfers, not proposed ones: a full queue can refuse an otherwise
 steep uphill route.
+
+## a second canvas is a resource, not a selected view
+
+Always allocate/bind both field canvases, then derive paired visibility and draw routing from
+the selected mode. Testing `demandCtx` for the active layout couples the survey to scene-only
+boot and silently forces paired rendering once the context exists. Keep looks separate from
+engine changes: palette/overlay switches must not warm demand or mutate stocks. Reduced motion
+should disable animated trace phase, not hide static evidence of accepted transfers.

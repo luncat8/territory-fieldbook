@@ -402,30 +402,54 @@ increasing per-frame work proportionally.
 
 ## Visualization and HUD
 
-`render.js` extends the view switch to nine modes (keys `1`…`9`): `terrain`,
-`investigation`, `influence`, `disturbance`, `biosphere`, `population`, `demand`,
-`supply`, `workforce`.
+### V1 · Independent map presentation
 
-- **Population**: dark land → warm ivory-gold (`sqrt` curve over `MAPE_POP_CAP`),
-  water stays blue.
-- **Demand**: charcoal-red → orange → yellow on bounded 0–1 market fields.
-  Signed fields additionally show green surplus and use a fixed magnitude scale.
-  Water blocks land items but not atmospheric CO2.
-- **Supply**: navy → cyan-white by the current stock; short moving strokes show
-  the direction of accepted transfers, not prospective demand gradients. The
-  overlay can be hidden and stops moving at pause. The survey opens on Supply →
-  goods so workshop traffic is visible before the first new mine.
+`render.js` provides ten map modes: `terrain`, `investigation`, `influence`,
+`disturbance`, `biosphere`, `population`, `demand`, `supply`, `workforce`, and
+`supply + demand`. Keys `1`…`9` retain the original single-map modes; `0` selects
+the paired supply/demand view. Both maps share the selected item, hover and pinned
+cell. The survey opens at 4× on Supply → goods. Reference scenes open on paired
+coal fields and retain supply, demand and paired radios instead of hiding them.
+
+- **Population**: dark land → warm ivory-gold (`sqrt` over `MAPE_POP_CAP`).
 - **Workforce**: dark → amber-gold by `workforce[i]`.
+- **Fieldbook look**: navy/cyan-white stock, warm demand and moving flow traces.
+- **Prototype A look**: crisp logarithmic blue-white stock (0–10/cell),
+  red/orange/yellow demand, green sources and white settlement rings.
+- **Prototype B look**: exposed logarithmic amber stock (0–8/cell), smooth purple
+  demand, isolines, cell grid, labelled sources/consumers and accepted-flow arrows.
 
-An item radiogroup (`coal`, `iron`, `goods`, `co2`) appears next to the view
-switch when `demand` or `supply` is active, using the same single-writer `change`
-handler and fine-pointer hover preview. Field maps use settlement rings, mine
-triangles and workshop diamonds so origins and destinations are readable.
-The `economy` block under the clock includes the engine selector, stock feedback
-and flow toggles, and inspector. The inspector shows cell coordinates,
-terrain, population, workforce, per-item demand and stock, and deposit lock;
-A and B also show the hovered settlement's import pull as a percent of hungry
-pull. The `around` block reports nearest settlement distance and population.
+Look radios apply display defaults only, never switch engines, warm fields,
+advance the clock or change stocks. Scene A defaults to A's look and scene B to
+B's look. Every look supports independent checkboxes for flow, flow animation,
+arrowheads, demand contours, grid, demand smoothing, settlements, sources,
+actor labels, and party/survey markers. Display choices survive engine switches
+and scene replay. Reduced-motion preference disables flow animation at startup
+and when applying a look, but leaves static direction arrows available.
+
+Demand scales remain fixed: 0–1 for bounded market items, ±6 for signed fields,
+with green surplus even in the alternate looks. Water blocks land items, not
+atmospheric CO2. Contours omit water-crossing cells and cap their levels at the
+fixed display range. Grid paths and actor label strings are built at setup;
+per-frame field drawing reuses its raster and contour scratch buffers.
+
+The view and item (`coal`, `iron`, `goods`, `co2`) radiogroups use a single-writer
+`change` handler and fine-pointer hover preview. The coal-only reference scenes
+hide the other layers and item picker. Look radios are click/keyboard-only so
+passing the pointer cannot reset overlay choices. Inapplicable checkboxes are
+disabled without losing their settings. Labels follow visible actors; visual
+marker toggles never stop production or settlement consumption.
+
+`render-economy.js` owns palettes, grid, isolines and flow; `render-markers.js`
+owns settlement/industry markers and cached actor labels. `hud-display.js` owns
+look and overlay controls and paired layout. `hud-economy.js` owns both field
+legends, simulation feedback switches and the inspector. Stock feedback and local
+stock pressure remain separate from display settings; local pressure is available
+in survey and scenes and disabled in Diffusion, where signed feedback owns it.
+
+The inspector shows cell coordinates, terrain, population, workforce, per-item
+demand and stock, and deposit lock; A/B show settlement import pull as a percent
+of hungry pull. The `around` block reports nearest settlement distance and pop.
 
 ## Prototype phases
 
@@ -517,9 +541,20 @@ Gate: runtime switches preserve the stock ledger, all engines pass `smoke` and
   1× and 2× advance 1 and 2 days per real second; pause freezes the traces and clock.
 - Settlement dots read at ~2% density across walkable land, never on water; around
   list shows nearest settlement distance and population.
-- Switching views `1`…`9` (click, fine-pointer hover, keys) updates the canvas
-  cleanly; `demand` and `supply` reveal the `coal / iron / goods / co2` switch and
-  show warm import pull, green signed surplus and cyan item stock.
+- Switching views `1`…`9` (click, fine-pointer hover, keys) updates the canvas;
+  `0` or Supply + demand shows paired fields in the survey as well as the scenes.
+  Changing an item updates both maps and legends; returning to a non-field view
+  restores the single map and hides the item picker.
+- Pause on paired fields and choose each look. A shows blue stock and warm pull;
+  B shows amber stock, purple pull, contours, grid and labelled arrows. Engine,
+  stock, demand and clock do not change. Engine switching and scene replay retain
+  custom overlay settings. In both scenes, select supply/demand alone and back.
+- Toggle each overlay; hidden settlement/source markers do not stop their economy.
+  Turn off flow animation while running: arrows stay still while stock changes.
+  Pause freezes moving traces. With reduced motion, arrows start static.
+- Demand smoothing leaves supply crisp. Contours remain finite on flat, signed
+  and saturated fields and do not cross water for land items. At narrow widths
+  paired maps stack without horizontal scrolling; all controls stay reachable.
 - Pause on Demand → Coal and pick Diffusion, A and B. The demand map and help
   change while the clock, supply and party stay put. Hover a settlement to see
   its A/B pull; uncheck feedback and resume to restore the full pull.

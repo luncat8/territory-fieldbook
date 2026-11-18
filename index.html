@@ -41,8 +41,8 @@ body {
 	flex-direction: column;
 	gap: 10px;
 }
-#ui-app:not(.ui-scene-active) { justify-content: center; }
-#ui-app:not(.ui-scene-active) #ui-mapwrap { max-width: clamp(480px, 100vh - 214px, 768px); }
+#ui-app:not(.ui-paired) { justify-content: center; }
+#ui-app:not(.ui-paired) #ui-mapwrap { max-width: clamp(480px, 100vh - 214px, 768px); }
 #ui-maphead { display: flex; align-items: end; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; }
 #ui-maphead h1 { margin: 1px 0 0; font-size: clamp(21px, 4vw, 30px); font-weight: 660; letter-spacing: -.045em; line-height: 1.1; color: #eef5fa; }
 .ui-kicker, .ui-field-meta span, .ui-scene-controls > span, .ui-scene-stat span {
@@ -64,7 +64,7 @@ body {
 }
 #ui-scene-nav a:hover, #ui-scene-nav a[aria-current="page"] { color: var(--ui-text-strong); border-color: var(--ui-accent-line); }
 #ui-maps { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
-.ui-scene-active #ui-maps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ui-paired #ui-maps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .ui-field { min-width: 0; }
 .ui-field-meta, .ui-field-legend { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .ui-field-meta { margin-bottom: 5px; }
@@ -72,10 +72,14 @@ body {
 .ui-field-legend { justify-content: start; align-items: center; flex-wrap: wrap; margin-top: 5px; color: #98aabd; font-size: 11px; }
 .ui-scale { width: 43px; height: 5px; border-radius: 5px; background: linear-gradient(90deg, #102239, #4594bd, #eff9ff); }
 .ui-scale.demand { background: linear-gradient(90deg, #411723, #d85c36, #ffe77f); }
-.ui-scale.signed { background: linear-gradient(90deg, #40cfa3, #3f232e, #ffe77f); }
+.ui-scale.demand.signed { background: linear-gradient(90deg, #46db9f, #1b0f17, #ffe55b); }
+.ui-scale.look-1 { background: linear-gradient(90deg, #0b1420, #6b7280, #f1f5fa); }
+.ui-scale.look-1.demand { background: linear-gradient(90deg, #230c10, #bf7922, #ffe633); }
+.ui-scale.look-2 { background: linear-gradient(90deg, #19181b, #6d3a26, #e18a36, #fff1c6); }
+.ui-scale.look-2.demand { background: linear-gradient(90deg, #17151f, #634187, #c094e5, #edcfff); }
+.ui-scale.look-1.demand.signed { background: linear-gradient(90deg, #46db9f, #230c10, #ffe633); }
+.ui-scale.look-2.demand.signed { background: linear-gradient(90deg, #46db9f, #17151f, #edcfff); }
 .ui-map-key { margin-left: auto; white-space: nowrap; }
-.ui-town { color: #f4ead5; }
-.ui-source { color: #86edb0; }
 .ui-field canvas {
 	display: block;
 	width: 100%;
@@ -171,6 +175,12 @@ button.ui-chip.on { background: #2c5f6e; border-color: #4f8d9d; color: #f2fbfd; 
 .ui-economy-toggles { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: #c7d6e2; }
 .ui-economy-toggles label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .ui-economy-toggles input { margin: 0; accent-color: #66bdc8; }
+.ui-economy-toggles label:has(input:disabled) { opacity: .42; cursor: default; }
+.ui-economy-toggles input:focus-visible { outline: 2px solid var(--ui-accent-line); outline-offset: 3px; }
+.ui-display-options { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 10px; }
+#ui-look .ui-seg { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; font-size: 12px; text-align: center; }
+#ui-display-note { margin: 7px 0 10px; color: #aabac9; font-size: 12px; }
+.ui-help { margin: 9px 0 0; color: #7f93a6; font-size: 11px; }
 .ui-scene-controls { display: flex; align-items: center; gap: 5px 8px; flex-wrap: wrap; }
 .ui-scene-controls + .ui-scene-controls { margin-top: 6px; }
 #ui-scene-note { margin: 6px 0 0; color: #9eafbf; font-size: 12px; }
@@ -207,7 +217,7 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 #ui-log li:first-child { color: #d5e2ee; }
 @media (max-width: 960px) {
 	#ui-app { flex-direction: column; }
-	#ui-app:not(.ui-scene-active) #ui-mapwrap, #ui-mapwrap { flex: 0 0 auto; max-width: none; width: 100%; }
+	#ui-app:not(.ui-paired) #ui-mapwrap, #ui-mapwrap { flex: 0 0 auto; max-width: none; width: 100%; }
 	#ui-panel { flex: 0 0 auto; width: 100%; max-width: none; max-height: none; }
 	#ui-app.ui-scene-active { gap: 10px; }
 	.ui-scene-active #ui-mapwrap, .ui-scene-active #ui-panel { display: contents; }
@@ -217,7 +227,7 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 }
 @media (max-width: 560px) {
 	#ui-app { padding: 10px; }
-	.ui-scene-active #ui-maps { grid-template-columns: minmax(0, 1fr); }
+	.ui-paired #ui-maps { grid-template-columns: minmax(0, 1fr); }
 	.ui-map-key { margin-left: 0; }
 }
 </style>
@@ -233,7 +243,7 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 				<a id="ui-scene-b" href="?scene=b" target="_blank" rel="noopener" title="Open the Queue test scene in a new tab">Test scene B</a>
 			</nav>
 		</header>
-		<div id="ui-views" class="ui-row"></div>
+		<div id="ui-views" class="ui-row" aria-label="Map layers"></div>
 		<div id="ui-scene-tools" hidden>
 			<div class="ui-scene-controls"><span>Map tool</span><div id="ui-tools" class="ui-row"></div></div>
 			<div class="ui-scene-controls"><span>Replay · initial demand</span><div id="ui-replay" class="ui-row"></div></div>
@@ -241,14 +251,14 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 		</div>
 		<div id="ui-maps">
 			<section class="ui-field">
-				<div id="ui-field-meta" class="ui-field-meta" hidden><h2 id="ui-map-layer">Supply · goods</h2><span id="ui-map-unit">Stock per cell</span></div>
+				<div id="ui-map-meta" class="ui-field-meta" hidden><h2 id="ui-map-layer">Supply · goods</h2><span id="ui-map-unit">Stock per cell</span></div>
 				<canvas id="ui-canvas" aria-label="Survey map"></canvas>
-				<div id="ui-field-legend" class="ui-field-legend" hidden><i id="ui-scale" class="ui-scale" aria-hidden="true"></i><span id="ui-scale-label">Empty → stocked</span><span class="ui-map-key" id="ui-site-key"></span></div>
+				<div id="ui-map-legend" class="ui-field-legend" hidden><i id="ui-map-scale" class="ui-scale" aria-hidden="true"></i><span id="ui-map-range">Empty → stocked</span><span class="ui-map-key" id="ui-map-key"></span></div>
 			</section>
 			<section class="ui-field" id="ui-demand-map" hidden>
-				<div class="ui-field-meta"><h2>Demand · coal</h2><span id="ui-scene-demand-unit">Pull / 0–1</span></div>
+				<div id="ui-demand-meta" class="ui-field-meta"><h2 id="ui-demand-layer">Demand · coal</h2><span id="ui-demand-unit">Pull / 0–1</span></div>
 				<canvas id="ui-demand-canvas" aria-label="Coal demand map"></canvas>
-				<div class="ui-field-legend"><i id="ui-scene-demand-scale" class="ui-scale demand" aria-hidden="true"></i><span id="ui-scene-demand-key">Low → high pull</span><span class="ui-map-key"><span class="ui-town">○</span> Settlement · <span class="ui-source">▲</span> Mine</span></div>
+				<div id="ui-demand-legend" class="ui-field-legend"><i id="ui-demand-scale" class="ui-scale demand" aria-hidden="true"></i><span id="ui-demand-range">Low → high pull</span><span class="ui-map-key" id="ui-demand-key"></span></div>
 			</section>
 		</div>
 		<section id="ui-around-panel" class="ui-block"><h2>around</h2><div id="ui-nearby"></div></section>
@@ -256,14 +266,31 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 	<aside id="ui-panel">
 		<div id="ui-clock">day 1 · 0s · 4×</div>
 		<div id="ui-time" class="ui-row"></div>
+		<section class="ui-block" aria-labelledby="ui-display-title">
+			<h2 id="ui-display-title">map display</h2>
+			<div id="ui-look" class="ui-row"></div>
+			<p id="ui-display-note"></p>
+			<div class="ui-economy-toggles ui-display-options">
+				<label title="Show the direction of actual accepted goods transfers"><input id="ui-flow" type="checkbox" checked> Show flow</label>
+				<label title="Move flow marks with simulation time; off keeps static directions"><input id="ui-flow-motion" type="checkbox" checked> Animate flow</label>
+				<label title="Add direction arrowheads to the flow marks"><input id="ui-flow-arrows" type="checkbox"> Arrowheads</label>
+				<label title="Join equal demand values with contour lines"><input id="ui-contours" type="checkbox"> Demand contours</label>
+				<label title="Show cell boundaries and four-cell reference crosses"><input id="ui-grid" type="checkbox"> Cell grid</label>
+				<label title="Interpolate the demand heatmap between cells; stock stays crisp"><input id="ui-smooth" type="checkbox"> Smooth demand</label>
+				<label title="Show settlement markers without changing their demand or consumption"><input id="ui-settlement-markers" type="checkbox" checked> Settlements</label>
+				<label title="Show mines, workshops and factories without changing production"><input id="ui-source-markers" type="checkbox" checked> Sources</label>
+				<label title="Label consumers C, mines S, workshops W and factories F"><input id="ui-actor-labels" type="checkbox"> Actor labels</label>
+				<label title="Show the party, plus survey reach, sites and rivals on non-economy maps"><input id="ui-survey-markers" type="checkbox" checked> Party & survey</label>
+			</div>
+			<p class="ui-help">Looks set field colors and overlay defaults only. Engine and stock stay unchanged.</p>
+		</section>
 		<section class="ui-block">
 			<h2>economy</h2>
 			<div id="ui-engine" class="ui-row"></div>
 			<p id="ui-engine-note" aria-live="polite"></p>
 			<div class="ui-economy-toggles">
-				<label><input id="ui-surplus" type="checkbox" checked> Stock lowers demand</label>
-				<label><input id="ui-flow" type="checkbox" checked> Show flow</label>
-				<label id="ui-pressure-control" title="Stock lowers the pull on its own tile, even without a settlement nearby" hidden><input id="ui-pressure" type="checkbox"> Stock cools tiles</label>
+				<label title="Stored goods ease settlement import pull; in Diffusion they lower the local signed signal"><input id="ui-surplus" type="checkbox" checked> Stock feedback</label>
+				<label id="ui-pressure-control" title="Stock lowers the pull on its own tile, even without a settlement nearby; Catchment and Queue only"><input id="ui-pressure" type="checkbox"> Stock cools tiles</label>
 			</div>
 			<div id="ui-scene-stats" hidden>
 				<div class="ui-scene-stat"><span>Stored</span><strong id="ui-scene-stock">0.0</strong></div>
@@ -302,9 +329,11 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 <script src="victory.js"></script>
 <script src="render.js"></script>
 <script src="render-economy.js"></script>
+<script src="render-markers.js"></script>
 <script src="input.js"></script>
 <script src="hud.js"></script>
 <script src="hud-economy.js"></script>
+<script src="hud-display.js"></script>
 <script src="hud-scenes.js"></script>
 <script src="actions.js"></script>
 <script src="main.js"></script>

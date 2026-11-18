@@ -1,0 +1,181 @@
+// owns: settlement/industry markers and cached actor labels
+// edit for: marker shapes, visibility and field label placement
+
+const renderMarkers = { towns: [], mines: [], workshops: [], factories: [] };
+
+function renderMarkersInit() {
+	for (let k = 0; k < world.n; k++) renderMarkers.towns[k] = 'C' + (k + 1);
+	for (let k = 0; k < MAPE_MINE_CAP; k++) renderMarkers.mines[k] = 'S' + (k + 1);
+	for (let k = 0; k < MAPE_WORKSHOP_CAP; k++) renderMarkers.workshops[k] = 'W' + (k + 1);
+	for (let k = 0; k < MAPE_FACTORY_CAP; k++) renderMarkers.factories[k] = 'F' + (k + 1);
+}
+
+function renderSettlementRing() {
+	if (render.fieldStyle === RENDER_STYLE.A) return mapScene.id ? 0.9 : 0.55;
+	return mapScene.id ? 0.55 : 0.34;
+}
+
+function renderSettlements(ctx, field) {
+	const count = mape.settleCount;
+	if (count === 0) return;
+	const fancy = field && render.fieldStyle === RENDER_STYLE.B;
+	const ring = renderSettlementRing();
+	ctx.beginPath();
+	for (let k = 0; k < count; k++) {
+		const idx = mape.settleCells[k];
+		const cx = ((idx % world.size) + 0.5) * CELL_PX;
+		const cy = (((idx / world.size) | 0) + 0.5) * CELL_PX;
+		const ratio = mape.pop[idx] / MAPE_POP_CAP;
+		const radius = CELL_PX * (field ? ring : 0.12 + 0.18 * Math.min(1, ratio));
+		ctx.moveTo(cx + radius, cy);
+		ctx.arc(cx, cy, radius, 0, TAU);
+	}
+	if (!field || fancy) {
+		ctx.fillStyle = fancy ? '#514065' : SETTLE_CSS;
+		ctx.fill();
+	}
+	if (!field) return;
+	ctx.strokeStyle = '#1c2733';
+	ctx.lineWidth = 4;
+	ctx.stroke();
+	ctx.strokeStyle = fancy ? '#e6d3ff' : '#ffffff';
+	ctx.lineWidth = fancy ? 1.7 : 1.4;
+	ctx.stroke();
+	if (!fancy) return;
+	ctx.beginPath();
+	for (let k = 0; k < count; k++) {
+		const idx = mape.settleCells[k];
+		const cx = ((idx % world.size) + 0.5) * CELL_PX;
+		const cy = (((idx / world.size) | 0) + 0.5) * CELL_PX;
+		ctx.moveTo(cx + 1.6, cy);
+		ctx.arc(cx, cy, 1.6, 0, TAU);
+	}
+	ctx.fillStyle = '#e6d3ff';
+	ctx.fill();
+}
+
+function renderIndustry(ctx, field, view) {
+	const cell = CELL_PX;
+	ctx.fillStyle = STORAGE_CSS;
+	const box = cell * 0.22;
+	for (let k = 0; k < mape.storageCount; k++) {
+		const slot = mape.storageSite[k];
+		if (field && slot < 255) continue;
+		if (slot < 255 && sites.state[slot] !== SITE_STATE.VISIBLE) continue;
+		ctx.fillRect((mape.storageX[k] + 0.5) * cell - box * 0.5, (mape.storageY[k] + 0.5) * cell - box * 0.5, box, box);
+	}
+	const hideMines = field && view === VIEW.DEMAND && render.fieldStyle === RENDER_STYLE.A;
+	for (let m = 0; m < mape.mineCount; m++) {
+		if (hideMines || (field && mape.mineRes[m] !== mape.viewItem)) continue;
+		const slot = mape.mineSite[m];
+		if (sites.state[slot] !== SITE_STATE.VISIBLE) continue;
+		renderMineMarker(ctx, m, field);
+	}
+	if (!field || mape.viewItem === MAPE_RES.GOODS) renderWorkshops(ctx, field);
+	const fsize = cell * 0.56;
+	for (let f = 0; f < mape.factoryCount; f++) {
+		const st = mape.factoryState[f];
+		if (st === MAPE_FACTORY_STATE.GONE) continue;
+		const cx = (mape.factoryX[f] + 0.5) * cell - fsize * 0.5;
+		const cy = (mape.factoryY[f] + 0.5) * cell - fsize * 0.5;
+		if (st === MAPE_FACTORY_STATE.BUILDING) {
+			ctx.strokeStyle = FACTORY_CSS[st];
+			ctx.lineWidth = 2;
+			ctx.strokeRect(cx, cy, fsize, fsize);
+		} else {
+			ctx.fillStyle = FACTORY_CSS[st];
+			ctx.fillRect(cx, cy, fsize, fsize);
+		}
+	}
+}
+
+function renderMineMarker(ctx, mine, field) {
+	const cx = (mape.mineX[mine] + 0.5) * CELL_PX;
+	const cy = (mape.mineY[mine] + 0.5) * CELL_PX;
+	const open = mape.mineUnlocked[mine] === 1;
+	const size = CELL_PX * (mapScene.id ? 1.5 : 1);
+	const style = field ? render.fieldStyle : RENDER_STYLE.FIELDBOOK;
+	ctx.fillStyle = open ? field ? '#58e187' : RES_CSS[sites.res[mape.mineSite[mine]]] : MINE_LOCK_FILL;
+	if (style === RENDER_STYLE.A) {
+		ctx.fillRect(cx - size * 0.5, cy - size * 0.5, size, size);
+		if (!open) {
+			ctx.strokeStyle = MINE_LOCK_STROKE;
+			ctx.lineWidth = 1.4;
+			ctx.strokeRect(cx - size * 0.5, cy - size * 0.5, size, size);
+		}
+		return;
+	}
+	ctx.beginPath();
+	ctx.moveTo(cx, cy - size * 0.36);
+	if (style === RENDER_STYLE.B) {
+		ctx.lineTo(cx + size * 0.36, cy);
+		ctx.lineTo(cx, cy + size * 0.36);
+		ctx.lineTo(cx - size * 0.36, cy);
+		if (open) ctx.fillStyle = '#77512c';
+	} else {
+		ctx.lineTo(cx + size * 0.30, cy + size * 0.26);
+		ctx.lineTo(cx - size * 0.30, cy + size * 0.26);
+	}
+	ctx.closePath();
+	ctx.fill();
+	ctx.strokeStyle = open ? style === RENDER_STYLE.B ? '#ffdb9f' : '#213b33' : MINE_LOCK_STROKE;
+	ctx.lineWidth = style === RENDER_STYLE.B ? 1.7 : 1;
+	ctx.stroke();
+	if (style !== RENDER_STYLE.B) return;
+	ctx.beginPath();
+	ctx.arc(cx, cy, 1.5, 0, TAU);
+	ctx.fillStyle = ctx.strokeStyle;
+	ctx.fill();
+}
+
+function renderWorkshops(ctx, field) {
+	ctx.strokeStyle = field && render.fieldStyle === RENDER_STYLE.B ? '#ffdb9f' : '#80eabc';
+	ctx.lineWidth = 1.4;
+	ctx.beginPath();
+	for (let k = 0; k < mape.workshopCount; k++) {
+		const i = mape.workshopCells[k];
+		const cx = (i % world.size + 0.5) * CELL_PX;
+		const cy = (((i / world.size) | 0) + 0.5) * CELL_PX;
+		const d = CELL_PX * 0.36;
+		ctx.moveTo(cx, cy - d);
+		ctx.lineTo(cx + d, cy);
+		ctx.lineTo(cx, cy + d);
+		ctx.lineTo(cx - d, cy);
+		ctx.closePath();
+	}
+	ctx.stroke();
+}
+
+function renderActorLabels(ctx, view) {
+	ctx.font = '500 14px ui-monospace, monospace';
+	ctx.textBaseline = 'middle';
+	ctx.textAlign = 'left';
+	if (render.showSettlements) {
+		for (let k = 0; k < mape.settleCount; k++) renderActorLabel(ctx, mape.settleCells[k], renderMarkers.towns[k], false);
+	}
+	if (!render.showSources) return;
+	const hideMines = view === VIEW.DEMAND && render.fieldStyle === RENDER_STYLE.A;
+	for (let k = 0; k < mape.mineCount; k++) {
+		if (hideMines || mape.mineRes[k] !== mape.viewItem || sites.state[mape.mineSite[k]] !== SITE_STATE.VISIBLE) continue;
+		renderActorLabel(ctx, mape.mineY[k] * world.size + mape.mineX[k], renderMarkers.mines[k], true);
+	}
+	if (mape.viewItem === MAPE_RES.GOODS) {
+		for (let k = 0; k < mape.workshopCount; k++) renderActorLabel(ctx, mape.workshopCells[k], renderMarkers.workshops[k], true);
+	}
+	for (let k = 0; k < mape.factoryCount; k++) {
+		if (mape.factoryState[k] === MAPE_FACTORY_STATE.GONE) continue;
+		renderActorLabel(ctx, mape.factoryY[k] * world.size + mape.factoryX[k], renderMarkers.factories[k], true);
+	}
+}
+
+function renderActorLabel(ctx, idx, label, source) {
+	const cx = (idx % world.size + 0.5) * CELL_PX;
+	const cy = (((idx / world.size) | 0) + 0.5) * CELL_PX;
+	const width = label.length * 8.5 + 7;
+	const gap = CELL_PX * 0.8;
+	const left = cx + gap + width < render.size ? cx + gap : cx - gap - width;
+	ctx.fillStyle = 'rgba(18, 18, 25, 0.9)';
+	ctx.fillRect(left, cy - 10, width, 20);
+	ctx.fillStyle = render.fieldStyle === RENDER_STYLE.B ? source ? '#ffd69b' : '#e2cff4' : '#eaf4f8';
+	ctx.fillText(label, left + 3, cy);
+}

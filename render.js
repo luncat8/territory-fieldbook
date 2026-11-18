@@ -1,5 +1,5 @@
 // owns: canvas painting, view modes and map overlays
-// edit for: palette, view modes, marker shapes
+// edit for: view routing, terrain painting and survey overlays
 
 const VIEW = {
 	TERRAIN: 0,
@@ -10,11 +10,12 @@ const VIEW = {
 	POPULATION: 5,
 	DEMAND: 6,
 	SUPPLY: 7,
-	WORKFORCE: 8
+	WORKFORCE: 8,
+	PAIRED: 9
 };
 const VIEW_NAME = [
 	'terrain', 'investigation', 'influence', 'disturbance', 'biosphere',
-	'population', 'demand', 'supply', 'workforce'
+	'population', 'demand', 'supply', 'workforce', 'supply + demand'
 ];
 const CELL_PX = 12;
 const TAU = Math.PI * 2;
@@ -34,7 +35,17 @@ const render = {
 	canvas: null,
 	ctx: null,
 	demandCtx: null,
+	fieldStyle: 0,
 	showFlow: true,
+	animateFlow: true,
+	flowArrows: false,
+	showContours: false,
+	showGrid: false,
+	smoothDemand: false,
+	showSettlements: true,
+	showSources: true,
+	showLabels: false,
+	showSurvey: true,
 	off: null,
 	offCtx: null,
 	image: null,
@@ -49,16 +60,17 @@ function renderInit(canvas, demandCanvas) {
 	render.canvas = canvas;
 	render.size = world.size * CELL_PX;
 	render.ctx = renderMapContext(canvas);
-	if (demandCanvas) render.demandCtx = renderMapContext(demandCanvas);
+	render.demandCtx = renderMapContext(demandCanvas);
 	render.off = document.createElement('canvas');
 	render.off.width = world.size;
 	render.off.height = world.size;
 	render.offCtx = render.off.getContext('2d');
 	render.image = render.offCtx.createImageData(world.size, world.size);
 	render.pixels = render.image.data;
-	render.view = VIEW.SUPPLY;
-	render.showFlow = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-	if (demandCanvas) mape.viewItem = MAPE_RES.COAL;
+	render.view = mapScene.id ? VIEW.PAIRED : VIEW.SUPPLY;
+	if (mapScene.id) mape.viewItem = MAPE_RES.COAL;
+	renderEconomyInit();
+	renderMarkersInit();
 }
 
 function renderMapContext(canvas) {
@@ -69,13 +81,21 @@ function renderMapContext(canvas) {
 }
 
 function renderIsFieldView(view) {
-	return view === VIEW.DEMAND || view === VIEW.SUPPLY;
+	return view === VIEW.DEMAND || view === VIEW.SUPPLY || view === VIEW.PAIRED;
+}
+
+function renderIsPaired() {
+	return render.view === VIEW.PAIRED;
+}
+
+function renderHasSupply() {
+	return render.view === VIEW.SUPPLY || renderIsPaired();
 }
 
 function renderDraw() {
 	if (!render.ctx) return;
-	renderDrawMap(render.ctx, render.demandCtx ? VIEW.SUPPLY : render.view);
-	if (render.demandCtx) renderDrawMap(render.demandCtx, VIEW.DEMAND);
+	renderDrawMap(render.ctx, renderIsPaired() ? VIEW.SUPPLY : render.view);
+	if (renderIsPaired()) renderDrawMap(render.demandCtx, VIEW.DEMAND);
 }
 
 function renderDrawMap(ctx, view) {
@@ -83,17 +103,21 @@ function renderDrawMap(ctx, view) {
 	if (field) renderEconomyCells(view);
 	else renderPaintCells(view);
 	render.offCtx.putImageData(render.image, 0, 0);
+	ctx.imageSmoothingEnabled = view === VIEW.DEMAND && render.smoothDemand;
 	ctx.drawImage(render.off, 0, 0, render.size, render.size);
-	if (view === VIEW.SUPPLY) renderGoodsFlow(ctx);
-	if (!field) renderReach(ctx);
-	renderSettlements(ctx, field);
-	renderIndustry(ctx, field);
-	if (!field) {
-		renderSites(ctx);
-		renderRivals(ctx);
+	if (field) renderEconomyOverlays(ctx, view);
+	if (render.showSettlements) renderSettlements(ctx, field);
+	if (render.showSources) renderIndustry(ctx, field, view);
+	if (field && render.showLabels) renderActorLabels(ctx, view);
+	if (!mapScene.id && render.showSurvey) {
+		if (!field) {
+			renderReach(ctx);
+			renderSites(ctx);
+			renderRivals(ctx);
+		}
+		renderParty(ctx);
 	}
-	if (render.demandCtx) renderHover(ctx);
-	else renderParty(ctx);
+	if (field) renderHover(ctx);
 	renderMark(ctx);
 }
 
@@ -225,107 +249,6 @@ function renderReach(ctx) {
 	ctx.arc((party.x + 0.5) * CELL_PX, (party.y + 0.5) * CELL_PX, reach * CELL_PX, 0, TAU);
 	ctx.stroke();
 	ctx.setLineDash(DASH_NONE);
-}
-
-// One batched path covers all ~82 settlements so marker cost does not scale into per-site draw calls.
-function renderSettlements(ctx, field) {
-	const count = mape.settleCount;
-	if (count === 0) return;
-	const cells = mape.settleCells;
-	const pop = mape.pop;
-	const size = world.size;
-	const cell = CELL_PX;
-	const ring = render.demandCtx ? 0.47 : 0.26;
-	ctx.fillStyle = SETTLE_CSS;
-	ctx.beginPath();
-	for (let k = 0; k < count; k++) {
-		const idx = cells[k];
-		const cx = ((idx % size) + 0.5) * cell;
-		const cy = (((idx / size) | 0) + 0.5) * cell;
-		const ratio = pop[idx] / MAPE_POP_CAP;
-		const radius = cell * (field ? ring : 0.12 + 0.18 * Math.min(1, ratio));
-		ctx.moveTo(cx + radius, cy);
-		ctx.arc(cx, cy, radius, 0, TAU);
-	}
-	if (!field) {
-		ctx.fill();
-		return;
-	}
-	if (render.demandCtx) {
-		ctx.strokeStyle = '#1c2733';
-		ctx.lineWidth = 3.8;
-		ctx.stroke();
-	}
-	ctx.strokeStyle = 'rgba(247, 240, 219, 0.90)';
-	ctx.lineWidth = 1.4;
-	ctx.stroke();
-}
-
-function renderIndustry(ctx, field) {
-	const cell = CELL_PX;
-	ctx.fillStyle = STORAGE_CSS;
-	const box = cell * 0.22;
-	const size = cell * (render.demandCtx ? 1.5 : 1);
-	for (let k = 0; k < mape.storageCount; k++) {
-		const slot = mape.storageSite[k];
-		if (field && slot < 255) continue;
-		if (slot < 255 && sites.state[slot] !== SITE_STATE.VISIBLE) continue;
-		ctx.fillRect((mape.storageX[k] + 0.5) * cell - box * 0.5, (mape.storageY[k] + 0.5) * cell - box * 0.5, box, box);
-	}
-	for (let m = 0; m < mape.mineCount; m++) {
-		if (field && mape.mineRes[m] !== mape.viewItem) continue;
-		const slot = mape.mineSite[m];
-		if (sites.state[slot] !== SITE_STATE.VISIBLE) continue;
-		const cx = (mape.mineX[m] + 0.5) * cell;
-		const cy = (mape.mineY[m] + 0.5) * cell;
-		const open = mape.mineUnlocked[m] === 1;
-		ctx.fillStyle = open ? field ? '#75edaa' : RES_CSS[sites.res[slot]] : MINE_LOCK_FILL;
-		ctx.beginPath();
-		ctx.moveTo(cx, cy - size * 0.32);
-		ctx.lineTo(cx + size * 0.30, cy + size * 0.26);
-		ctx.lineTo(cx - size * 0.30, cy + size * 0.26);
-		ctx.closePath();
-		ctx.fill();
-		if (!open || render.demandCtx) {
-			ctx.strokeStyle = open ? '#213b33' : MINE_LOCK_STROKE;
-			ctx.lineWidth = 1;
-			ctx.stroke();
-		}
-	}
-	if (!field || mape.viewItem === MAPE_RES.GOODS) renderWorkshops(ctx);
-	const fsize = cell * 0.56;
-	for (let f = 0; f < mape.factoryCount; f++) {
-		const st = mape.factoryState[f];
-		if (st === MAPE_FACTORY_STATE.GONE) continue;
-		const cx = (mape.factoryX[f] + 0.5) * cell - fsize * 0.5;
-		const cy = (mape.factoryY[f] + 0.5) * cell - fsize * 0.5;
-		if (st === MAPE_FACTORY_STATE.BUILDING) {
-			ctx.strokeStyle = FACTORY_CSS[st];
-			ctx.lineWidth = 2;
-			ctx.strokeRect(cx, cy, fsize, fsize);
-		} else {
-			ctx.fillStyle = FACTORY_CSS[st];
-			ctx.fillRect(cx, cy, fsize, fsize);
-		}
-	}
-}
-
-function renderWorkshops(ctx) {
-	ctx.strokeStyle = '#80eabc';
-	ctx.lineWidth = 1.4;
-	ctx.beginPath();
-	for (let k = 0; k < mape.workshopCount; k++) {
-		const i = mape.workshopCells[k];
-		const cx = (i % world.size + 0.5) * CELL_PX;
-		const cy = (((i / world.size) | 0) + 0.5) * CELL_PX;
-		const d = CELL_PX * 0.36;
-		ctx.moveTo(cx, cy - d);
-		ctx.lineTo(cx + d, cy);
-		ctx.lineTo(cx, cy + d);
-		ctx.lineTo(cx - d, cy);
-		ctx.closePath();
-	}
-	ctx.stroke();
 }
 
 function renderSites(ctx) {

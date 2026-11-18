@@ -46,9 +46,14 @@ File map:
 | `territory.js` | influence fields per faction, control, share, contest |
 | `rivals.js` | rival agents: target choice, travel, claims, extraction |
 | `victory.js` | victory conditions and declaration feedback |
-| `render.js` | canvas painting, view modes, markers |
+| `render.js` | canvas routing, view modes and survey overlays |
+| `render-economy.js` | field looks, heat palettes, grid, contours and accepted-flow traces |
+| `render-markers.js` | settlement/industry markers and cached actor labels |
 | `input.js` | clicks, hover target, keyboard bindings |
-| `hud.js` | side panel: clock, stats, skills, site, actions, feed |
+| `hud.js` | view/item radios and side panel: clock, stats, skills, site, actions, feed |
+| `hud-display.js` | field look radios, overlay checkboxes and paired layout |
+| `hud-economy.js` | engine and feedback controls, both field legends and inspector |
+| `hud-scenes.js` | reference-scene replay, actor tools and coal readouts |
 | `actions.js` | player verbs and their gates, costs and rewards |
 | `main.js` | boot, wiring, shared clock, tick order |
 
@@ -280,10 +285,10 @@ Around-list (under the map): recording % in the party's cell, current float reac
 settlement distance and population, then nearby marked/visible/spent sites within 8 cells, each
 with Euclidean distance, name, state and that cell's investigation %.
 
-Above the map: the view switch, a joined nine-mode group of real radios (`role="radiogroup"`,
-labelled), and an item switch (`coal / iron / goods / co2`) shown in demand and supply views.
+Above the map: the view switch, a joined ten-mode group of real radios (`role="radiogroup"`,
+labelled), and an item switch (`coal / iron / goods / co2`) shown in demand, supply and paired views.
 The around-list stays below the map. Exactly one writer — each group's `change` handler — applies the mode by
-updating state, refreshing the panel and redrawing; the `1`…`9` keys and the pointer preview
+updating state, refreshing the panel and redrawing; the `1`…`9`/`0` keys and the pointer preview
 route through the same handler. On `(hover: hover) and (pointer: fine)` moving over a mode
 selects it as a preview by checking its radio; touch and stylus stay click-only, and a hover
 that resolves to no mode is ignored. The group is styled from the shared tokens in `index.html`
@@ -291,7 +296,8 @@ that resolves to no mode is ignored. The group is styled from the shared tokens 
 rather than literals.
 
 Side panel, top to bottom: clock (storyline day and seconds) and speeds (pause/1×/2×/4×);
-economy engine, overlays and cell inspector; condition, morale, funds, supplies, items,
+map display (Fieldbook/A/B look radios and independent overlay checkboxes); economy engine,
+stock feedback, local stock pressure and cell inspector; condition, morale, funds, supplies, items,
 members; skills with unlock marks; member rows; current-cell details, market prices and
 context actions; victory declaration and feedback; status line and event feed.
 
@@ -301,12 +307,14 @@ supplies from food, process goods, restore land, dismiss, declare victory. Butto
 run are disabled.
 
 View modes: terrain, investigation, influence, disturbance, biosphere, population, demand,
-supply, workforce. The survey opens on Supply → goods. Economy fields emphasize industry,
-settlement markers and real transfers. Terrain and survey views also show one-shot sites,
-rivals, claims, marked/discoverable sites and the investigation reach.
+supply, workforce, supply + demand. The survey opens on Supply → goods. Paired fields show
+both maps for the selected item, sharing hover and clicked cell. Display presets change no
+simulation state; their flow, animation, arrowheads, contours, grid, smoothing, actor and
+survey markers can each be overridden (`plan-map-economy.md`, V1). Terrain and survey views
+also show one-shot sites, rivals, claims and investigation reach when survey markers are on.
 
 Input: left click jumps the party to a cell; pointer move updates the cell inspector; space
-pauses; `1`…`9` switch views; `i` surveys; `c` camps; `w` works the deposit under the party.
+pauses; `1`…`9` switch single views, `0` shows paired fields; `i` surveys; `c` camps; `w` works the deposit under the party.
 The clicked cell keeps a mark so the jump target is visible.
 
 ## Validation
@@ -320,7 +328,7 @@ The clicked cell keeps a mark so the jump target is visible.
   clicks, keys and every enabled action button — and fails on any page exception.
 - L2 (shared/boot touched): full smoke plus the manual pass list — look, feel, sequence:
   - map reads as six distinct terrains; fog lifts as cells are investigated;
-  - the nine view modes change the picture without hiding markers;
+  - the ten view modes select single/paired maps; display toggles alter no simulation state;
   - click-jump cost shows in condition; camping recovers it;
   - a hidden site turns into "?", then into a named site, and its actions appear;
   - working a deposit raises inventory and disturbance, and the terrain fades there;

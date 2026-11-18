@@ -68,7 +68,7 @@ function mainStep(seconds) {
 function mainBoot() {
 	mainSetup(START_SEED, mapSceneFromQuery(window.location.search));
 	const canvas = $('ui-canvas');
-	const demand = mapScene.id ? $('ui-demand-canvas') : null;
+	const demand = $('ui-demand-canvas');
 	renderInit(canvas, demand);
 	inputInit(canvas, demand);
 	hudInit();
