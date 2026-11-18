@@ -50,6 +50,7 @@
 			<button id="fill0" data-fill="0">0</button>
 			<button id="fill05" data-fill="0.5">0.5</button>
 		</div>
+		<label><input type="checkbox" id="sinkDem"> resources sink demand</label>
 	</div>
 </div>
 <div class="hud" id="hud"></div>
@@ -75,6 +76,10 @@ const SINK      = 7.0;       // resource/sec a fed consumer burns
 const FEED_R    = 3;         // consumer eats from this radius (peak has ~0 gradient)
 const EVAP      = 0.03;      // background resource decay /s
 
+// resource sink: a cell's stock lowers demand there, so resources leave their own
+// source instead of waiting for a consumer to pull them
+const SINK_DEM  = 0.01;      // demand/s subtracted per resource unit
+
 // consumers: hunger drives demand; eating lowers it (feedback)
 const HUNGER    = 0.20;      // need rise /s toward 1
 const DEM_RATE  = 3.0;       // demand/sec injected at full hunger
@@ -98,6 +103,8 @@ const gradY   = new Float32Array(N * N);
 
 const sources   = [];
 const consumers = [];
+
+let sinkEnabled = false;
 
 let rng = 1337;
 let mapSeed = 1337;
@@ -175,6 +182,16 @@ function stepDemand() {
 	// 3. decay: hills fade with distance so a gradient survives (not uniform)
 	const r = 1 - DECAY * DT;
 	for (let i = 0; i < demand.length; i++) demand[i] *= r;
+
+	// 3b. resource sink: stock eats demand where it sits, so a source digs a hole
+	//     and the gradient points outward. dip is allowed below 0 (drives outflow),
+	//     color clamps at 0 — the map still reads 0..1.
+	if (sinkEnabled) {
+		for (let i = 0; i < demand.length; i++) {
+			demand[i] -= res[i] * SINK_DEM * DT;
+			if (demand[i] < -1) demand[i] = -1;
+		}
+	}
 
 	// 4. gradient of demand (central differences)
 	for (let y = 1; y < N - 1; y++) {
@@ -312,8 +329,9 @@ function resColor(v) {
 }
 
 function demColor(v) {
-	// low red -> high yellow
-	const t = Math.min(1, v / demScale);
+	// low red -> high yellow; sink dips clamp to red (map reads 0..1)
+	let t = v / demScale;
+	if (t < 0) t = 0; else if (t > 1) t = 1;
 	const r = (180 + 75 * t) | 0;
 	const g = (40 + 200 * t) | 0;
 	const b = (40 + 40 * t) | 0;
@@ -427,8 +445,17 @@ scaleCanvas(resCanvas, N);
 scaleCanvas(demCanvas, N);
 
 // new map with a uniform demand seed: 0 = no ambient demand, 0.5 = half hunger everywhere
+let fillValue = 0;
+
 document.querySelectorAll('[data-fill]').forEach(btn => {
-	btn.addEventListener('click', () => init(parseFloat(btn.dataset.fill)));
+	btn.addEventListener('click', () => {
+		fillValue = parseFloat(btn.dataset.fill);
+		init(fillValue);
+	});
+});
+
+document.getElementById('sinkDem').addEventListener('change', e => {
+	sinkEnabled = e.target.checked;
 });
 
 init();
