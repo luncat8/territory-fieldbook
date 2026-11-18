@@ -1,465 +1,220 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Economy Prototype</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Economy field lab</title>
 <style>
-	:root { color-scheme: dark; }
-	body {
-		margin: 0; background: #0d1117; color: #c9d1d9;
-		font: 12px/1.4 system-ui, sans-serif;
-		display: flex; flex-direction: column; align-items: center;
-		padding: 12px;
-	}
-	h1 { font-size: 14px; font-weight: 600; margin: 0 0 8px; letter-spacing: .04em; }
-	.wrap { display: flex; gap: 20px; flex-wrap: wrap; }
-	.panel { display: flex; flex-direction: column; gap: 4px; }
-	.label { text-transform: uppercase; font-size: 10px; letter-spacing: .1em; color: #8b949e; }
-	canvas {
-		width: 480px; height: 480px; image-rendering: pixelated;
-		border: 1px solid #30363d; border-radius: 4px; display: block;
-	}
-	.hud { display: flex; gap: 24px; margin-top: 10px; flex-wrap: wrap; }
-	.stat { display: flex; gap: 6px; }
-	.stat b { color: #58a6ff; font-variant-numeric: tabular-nums; }
-	.legend { font-size: 11px; color: #8b949e; margin-top: 6px; }
-	.buttons { display: flex; gap: 6px; align-items: center; }
-	button {
-		background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
-		border-radius: 4px; padding: 3px 10px; font: inherit; cursor: pointer;
-	}
-	button:hover { background: #30363d; }
+:root { color-scheme: dark; font: 13px/1.45 system-ui, sans-serif; background: #0d1117; color: #d5dde7; }
+body { max-width: 1240px; margin: auto; padding: 18px; }
+h1 { font-size: 19px; margin: 0; } h2 { font-size: 13px; margin: 0; }
+p { margin: 4px 0; color: #9baaba; }
+header { margin-bottom: 14px; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 220px; gap: 14px; align-items: start; }
+.panel, aside { min-width: 0; } .map-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+canvas { width: 100%; aspect-ratio: 1; height: auto; image-rendering: pixelated; display: block; background: #111827; border: 1px solid #303d4d; box-sizing: border-box; cursor: crosshair; }
+.legend { font-size: 11px; color: #9baaba; margin-top: 5px; }
+aside { border: 1px solid #303d4d; background: #151c25; border-radius: 5px; padding: 12px; }
+.group { border-top: 1px solid #303d4d; padding-top: 10px; margin-top: 10px; }
+.group:first-child { border: 0; padding: 0; margin: 0; }
+label { display: block; margin: 8px 0; } input { vertical-align: middle; }
+button, select { font: inherit; color: #e1e9f2; background: #263343; border: 1px solid #465569; border-radius: 4px; padding: 5px 8px; cursor: pointer; }
+button:hover, select:hover { background: #34465a; } button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid #82c9ff; }
+select { width: 100%; } .buttons { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
+.hud { display: flex; flex-wrap: wrap; gap: 8px 22px; padding: 12px 0 4px; font-variant-numeric: tabular-nums; }
+.hud span { color: #9baaba; } .hud b { color: #d8eaff; font-weight: 600; }
+.note { font-size: 11px; line-height: 1.45; color: #9baaba; }
+#inspect { min-height: 1.4em; font-variant-numeric: tabular-nums; }
+@media (max-width: 950px) { .layout { grid-template-columns: 1fr 1fr; } aside { grid-column: 1 / -1; } }
+@media (max-width: 560px) { .layout { grid-template-columns: 1fr; } aside { grid-column: auto; } }
 </style>
 </head>
 <body>
-<h1>Economy Prototype</h1>
-<div class="wrap">
-	<div class="panel">
-		<div class="label">1 — resource storage</div>
-		<canvas id="res" width="480" height="480"></canvas>
-		<div class="legend">blue: low → white: high</div>
-	</div>
-	<div class="panel">
-		<div class="label">2 — demand (diffusion)</div>
-		<canvas id="dem" width="480" height="480"></canvas>
-		<div class="legend">red: low → yellow: high</div>
-	</div>
-	<div class="panel">
-		<div class="label">new map — demand fill</div>
-		<div class="buttons">
-			<button id="fill0" data-fill="0">0</button>
-			<button id="fill05" data-fill="0.5">0.5</button>
-		</div>
-		<label><input type="checkbox" id="sinkDem"> resources sink demand</label>
-	</div>
+<header><h1>Economy field lab</h1><p>Coal moves uphill in a slowly changing demand field. Experiment with supply, local stock and feedback.</p></header>
+<div class="layout">
+  <section class="panel"><div class="map-head"><h2>01 / Resource storage</h2><span class="legend">units per cell</span></div><canvas id="res" width="120" height="120" aria-label="Resource storage map"></canvas><div class="legend">dark = empty · blue → white = more coal · green = mine · white ring = settlement</div></section>
+  <section class="panel"><div class="map-head"><h2>02 / Demand</h2><span class="legend">fixed scale 0–1</span></div><canvas id="dem" width="120" height="120" aria-label="Demand map"></canvas><div class="legend">dark red = 0 · orange → yellow = 1 · white ring = settlement</div></section>
+  <aside>
+    <div class="group"><h2>New random map</h2><p class="note">Initial demand everywhere:</p><div class="buttons"><button data-fill="0">New: 0</button><button data-fill="0.5">New: 0.5</button></div><p class="note">Repeat the same layout for an A/B comparison:</p><div class="buttons"><button data-replay="0">Replay: 0</button><button data-replay="0.5">Replay: 0.5</button></div></div>
+    <div class="group"><h2>Settlement demand</h2><label for="feedback">Response to nearby coal</label><select id="feedback"><option value="stock">Stock feedback</option><option value="fixed">Fixed demand</option></select><p class="note">Stock feedback reduces a settlement's signal as coal accumulates. Fixed demand is a comparison without that feedback.</p><label><input id="settlements" type="checkbox" checked> Enable settlements</label></div>
+    <div class="group"><h2>Resource feedback</h2><label><input id="sinkDem" type="checkbox"> Coal lowers demand</label><p class="note">When enabled, ambient demand slowly recovers toward 0.3. Coal depresses it locally, so mines can spread even without settlements. Without this baseline, a field at 0 cannot be lowered further.</p></div>
+    <div class="group"><h2>Simulation</h2><div class="buttons"><button id="pause">Pause</button><button id="step">Step 0.05 s</button></div><label for="speed">Speed</label><select id="speed"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option></select><p class="note">Step while paused. Closed boundaries; no evaporation or storage cap. Hover either map to inspect a cell.</p></div>
+  </aside>
 </div>
-<div class="hud" id="hud"></div>
-
+<div class="hud" id="hud" aria-live="off"></div><p id="inspect">Hover over a map to inspect a cell.</p>
+<details class="note"><summary>Model notes</summary><p>Demand diffuses with reflecting edges and slowly fades. Settlements consume at a rate proportional to demand at their center, capped by available coal in their catchment. Coal outside the catchment must travel there first. Stock feedback reduces the settlement signal, while fixed demand leaves it unchanged.</p><p>Uphill transfers conserve coal, but the grid discretization spreads it as it travels. Color saturates at 10 coal per cell; use the peak and hover readouts for larger values. The balance error checks produced minus consumed against stored coal. Simulation speed may fall behind on slow devices rather than catch up after a stalled frame.</p></details>
 <script>
-// ---------------------------------------------------------------------------
-// Config
-// ---------------------------------------------------------------------------
-const N        = 120;        // grid cells per side
-const SIZE     = 480;        // canvas px
-const CELL     = SIZE / N;   // px per cell
-const DT       = 0.05;       // sim step (s)
+'use strict';
+// Demand is a bounded, diffusing signal; it is not itself a resource. The
+// fixed simulation step and no-flux edges make all rates independent of FPS.
+const N = 120, CELLS = N * N, DT = 0.05;
+const DIFF_PASSES = 20, DIFFUSE = 0.20; // each Jacobi pass is stable (<= 1/4)
+const DECAY = 0.025, AMBIENT = 0.3, AMBIENT_RATE = 0.12;
+const COAL_DEMAND_SINK = 0.32;
+const SOURCE_RATE = 9, CONSUME_RATE = 18, FEED_R = 4;
+const SIGNAL_RATE = 5, STOCK_HALF = 18, RESPONSE = 0.5;
+const FLOW = 7, GRAD_HALF = 0.002; // cells/s, saturation of uphill differences
+const res = new Float64Array(CELLS), resNext = new Float64Array(CELLS);
+const demand = new Float64Array(CELLS), tmpDem = new Float64Array(CELLS);
+const filtered = new Float64Array(CELLS);
+const sources = [], consumers = [];
+let sinkEnabled = false, settlementsEnabled = true, feedback = 'stock';
+let seed = 1337, rng = seed, time = 0, produced = 0, consumed = 0;
+let paused = false, speed = 1, accumulator = 0;
+const idx = (x, y) => y * N + x;
+function rand() { rng = (Math.imul(rng, 1664525) + 1013904223) >>> 0; return rng / 4294967296; }
+function clamp01(v) { return Math.max(0, Math.min(1, v)); }
 
-// demand field: diffuses from consumers, decays so hills stay local (gradient lives)
-const DIFF_PASS = 25;        // Jacobi passes per step (sets how far demand spreads)
-const DIFFUSE   = 0.18;      // per-pass factor (<= 0.2 stable)
-const DECAY     = 0.15;      // demand decay /s (sets hill reach)
-
-// resource advection along the demand gradient (semi-Lagrangian backtrace)
-const FLOW      = 25.0;      // cells/s drift toward higher demand
-const CAP       = 500;       // per-cell resource cap
-const SINK      = 7.0;       // resource/sec a fed consumer burns
-const FEED_R    = 3;         // consumer eats from this radius (peak has ~0 gradient)
-const EVAP      = 0.03;      // background resource decay /s
-
-// resource sink: a cell's stock lowers demand there, so resources leave their own
-// source instead of waiting for a consumer to pull them
-const SINK_DEM  = 0.01;      // demand/s subtracted per resource unit
-
-// consumers: hunger drives demand; eating lowers it (feedback)
-const HUNGER    = 0.20;      // need rise /s toward 1
-const DEM_RATE  = 3.0;       // demand/sec injected at full hunger
-const BELLY     = 14;        // resource units to go full->empty need
-const STARVE_T  = 8.0;       // sec without food before death
-
-// sources and consumers
-const SOURCES   = 5;         // constant producers
-const CONSUMERS = 7;         // demand creators
-const SRC_RATE  = 9.0;       // resource/sec per source
-
-// ---------------------------------------------------------------------------
-// Grid + fields (Float32Array, row-major, y*N + x)
-// ---------------------------------------------------------------------------
-const res     = new Float32Array(N * N);
-const resNext = new Float32Array(N * N);   // advection scratch
-const demand  = new Float32Array(N * N);
-const tmpDem  = new Float32Array(N * N);
-const gradX   = new Float32Array(N * N);
-const gradY   = new Float32Array(N * N);
-
-const sources   = [];
-const consumers = [];
-
-let sinkEnabled = false;
-
-let rng = 1337;
-let mapSeed = 1337;
-function rand() { rng = (rng * 1664525 + 1013904223) >>> 0; return rng / 4294967296; }
-
-// ---------------------------------------------------------------------------
-// Setup
-// ---------------------------------------------------------------------------
-function idx(x, y) { return y * N + x; }
-
-function init(fill = 0) {
-	rng = (mapSeed = (mapSeed * 1664525 + 1013904223) >>> 0);
-	res.fill(0); resNext.fill(0); demand.fill(fill); tmpDem.fill(0);
-	gradX.fill(0); gradY.fill(0);
-	sources.length = 0; consumers.length = 0;
-
-	for (let i = 0; i < SOURCES; i++) {
-		sources.push({
-			x: 15 + Math.floor(rand() * (N - 30)),
-			y: 15 + Math.floor(rand() * (N - 30)),
-			r: 6 + Math.floor(rand() * 5),
-		});
-	}
-	for (let i = 0; i < CONSUMERS; i++) {
-		consumers.push({
-			x: 15 + Math.floor(rand() * (N - 30)),
-			y: 15 + Math.floor(rand() * (N - 30)),
-			alive: true,
-			need: 0.5,      // 0 fed .. 1 starving
-			starve: 0,
-		});
-	}
-
-	// seed a little resource around sources so the field is visible on frame 1
-	for (const s of sources) {
-		for (let dy = -s.r; dy <= s.r; dy++) {
-			for (let dx = -s.r; dx <= s.r; dx++) {
-				const d = Math.hypot(dx, dy);
-				if (d <= s.r) {
-					const x = s.x + dx, y = s.y + dy;
-					if (x >= 0 && x < N && y >= 0 && y < N) {
-						res[idx(x, y)] = 8 * (1 - d / s.r);
-					}
-				}
-			}
-		}
-	}
+function init(fill, newSeed) {
+  if (newSeed) seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+  rng = seed; time = produced = consumed = accumulator = 0;
+  res.fill(0); resNext.fill(0); demand.fill(fill); tmpDem.fill(0); filtered.fill(fill);
+  sources.length = consumers.length = 0;
+  // Separate points so the comparison starts with distinct mines/settlements.
+  const points = [];
+  for (let i = 0; i < 12; i++) {
+    let p;
+    for (let tries = 0; tries < 200; tries++) {
+      p = {x: 10 + Math.floor(rand() * (N - 20)), y: 10 + Math.floor(rand() * (N - 20))};
+      if (points.every(q => Math.hypot(p.x - q.x, p.y - q.y) >= 18)) break;
+    }
+    points.push(p);
+    if (i < 5) sources.push(p);
+    else consumers.push({...p, signal: 1, stock: 0, lastConsumed: 0});
+  }
 }
 
-// ---------------------------------------------------------------------------
-// Demand: consumers inject by hunger, field diffuses + decays, then gradient
-// ---------------------------------------------------------------------------
+function neighborhood(c, fn) {
+  for (let dy = -FEED_R; dy <= FEED_R; dy++) for (let dx = -FEED_R; dx <= FEED_R; dx++) {
+    if (dx * dx + dy * dy > FEED_R * FEED_R) continue;
+    const x = c.x + dx, y = c.y + dy;
+    if (x >= 0 && x < N && y >= 0 && y < N) fn(idx(x, y), dx, dy);
+  }
+}
+function localStock(c) { let stock = 0; neighborhood(c, i => { stock += res[i]; }); return stock; }
+
 function stepDemand() {
-	// 1. each consumer injects demand scaled by how hungry it is
-	for (const c of consumers) {
-		if (!c.alive) continue;
-		const i = idx(c.x, c.y);
-		demand[i] += c.need * DEM_RATE * DT;
-	}
-
-	// 2. diffusion — Jacobi passes spread each consumer's demand into a hill
-	for (let p = 0; p < DIFF_PASS; p++) {
-		tmpDem.set(demand);
-		for (let y = 1; y < N - 1; y++) {
-			const row = y * N;
-			for (let x = 1; x < N - 1; x++) {
-				const i = row + x;
-				const lap = tmpDem[i - 1] + tmpDem[i + 1] + tmpDem[i - N] + tmpDem[i + N]
-				            - 4 * tmpDem[i];
-				demand[i] = tmpDem[i] + DIFFUSE * lap;
-			}
-		}
-	}
-
-	// 3. decay: hills fade with distance so a gradient survives (not uniform)
-	const r = 1 - DECAY * DT;
-	for (let i = 0; i < demand.length; i++) demand[i] *= r;
-
-	// 3b. resource sink: stock eats demand where it sits, so a source digs a hole
-	//     and the gradient points outward. dip is allowed below 0 (drives outflow),
-	//     color clamps at 0 — the map still reads 0..1.
-	if (sinkEnabled) {
-		for (let i = 0; i < demand.length; i++) {
-			demand[i] -= res[i] * SINK_DEM * DT;
-			if (demand[i] < -1) demand[i] = -1;
-		}
-	}
-
-	// 4. gradient of demand (central differences)
-	for (let y = 1; y < N - 1; y++) {
-		const row = y * N;
-		for (let x = 1; x < N - 1; x++) {
-			const i = row + x;
-			gradX[i] = (demand[i + 1] - demand[i - 1]) * 0.5;
-			gradY[i] = (demand[i + N] - demand[i - N]) * 0.5;
-		}
-	}
+  // Settlements relax a small region toward their target instead of clamping a
+  // single point each pass. Stock feedback responds gradually, not instantly.
+  if (settlementsEnabled) for (const c of consumers) {
+    c.stock = localStock(c);
+    const target = feedback === 'stock' ? 1 / (1 + c.stock / STOCK_HALF) : 1;
+    c.signal += (target - c.signal) * (1 - Math.exp(-RESPONSE * DT));
+    neighborhood(c, (i, dx, dy) => {
+      const weight = Math.max(0, 1 - Math.hypot(dx, dy) / (FEED_R + 1));
+      demand[i] += (c.signal - demand[i]) * (1 - Math.exp(-SIGNAL_RATE * weight * DT));
+    });
+  }
+  // Jacobi with reflecting edges. Every cell, including edges, is updated.
+  // No per-pass clamp/injection: these were easy ways to distort diffusion.
+  for (let p = 0; p < DIFF_PASSES; p++) {
+    tmpDem.set(demand);
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const i = idx(x, y), v = tmpDem[i];
+      const l = x ? tmpDem[i - 1] : v, r = x < N - 1 ? tmpDem[i + 1] : v;
+      const u = y ? tmpDem[i - N] : v, d = y < N - 1 ? tmpDem[i + N] : v;
+      demand[i] = v + DIFFUSE * (l + r + u + d - 4 * v);
+    }
+  }
+  for (let i = 0; i < CELLS; i++) {
+    let v = demand[i] * Math.exp(-DECAY * DT);
+    if (sinkEnabled) {
+      v += (AMBIENT - v) * (1 - Math.exp(-AMBIENT_RATE * DT));
+      v *= Math.exp(-COAL_DEMAND_SINK * res[i] * DT);
+    }
+    demand[i] = clamp01(v);
+  }
 }
 
-// ---------------------------------------------------------------------------
-// Resources: source injection, gradient advection, consumer sink
-// ---------------------------------------------------------------------------
 function stepResources() {
-	// 1. constant sources produce
-	for (const s of sources) {
-		for (let dy = -s.r; dy <= s.r; dy++) {
-			const y = s.y + dy;
-			if (y < 0 || y >= N) continue;
-			for (let dx = -s.r; dx <= s.r; dx++) {
-				const x = s.x + dx;
-				if (x < 0 || x >= N) continue;
-				const d = Math.sqrt(dx * dx + dy * dy);
-				if (d > s.r) continue;
-				const fall = 1 - d / s.r;
-				res[idx(x, y)] += SRC_RATE * DT * fall;
-			}
-		}
-	}
-
-	// 2. advect along the demand gradient — semi-Lagrangian backtrace.
-	//    Velocity = unit gradient * FLOW (toward higher demand). Each cell samples
-	//    where its content came from one step ago, so the whole field drifts
-	//    coherently at FLOW cells/s instead of oozing donor-cell style.
-	const step = FLOW * DT;
-	for (let y = 0; y < N; y++) {
-		const row = y * N;
-		for (let x = 0; x < N; x++) {
-			const i = row + x;
-			const gx = gradX[i], gy = gradY[i];
-			const mag = Math.sqrt(gx * gx + gy * gy);
-			if (mag < 1e-9) { resNext[i] = res[i]; continue; }
-			// backtrace against the flow direction (flow points up-gradient)
-			const sx = x - (gx / mag) * step;
-			const sy = y - (gy / mag) * step;
-			resNext[i] = sampleBilinear(res, sx, sy);
-		}
-	}
-	res.set(resNext);
-
-	// 3. consumers eat from their neighborhood (peak cell has ~0 gradient, so
-	//    resources pile *around* it — skim the area), lower need, starve if dry
-	for (const c of consumers) {
-		if (!c.alive) continue;
-		let got = 0;
-		const want = SINK * DT;
-		for (let dy = -FEED_R; dy <= FEED_R && got < want; dy++) {
-			const y = c.y + dy;
-			if (y < 0 || y >= N) continue;
-			for (let dx = -FEED_R; dx <= FEED_R; dx++) {
-				const x = c.x + dx;
-				if (x < 0 || x >= N) continue;
-				const i = idx(x, y);
-				const take = Math.min(res[i], want - got);
-				res[i] -= take;
-				got += take;
-				if (got >= want) break;
-			}
-		}
-		c.need -= (got / BELLY);            // eating reduces hunger -> demand drops
-		if (c.need < 0) c.need = 0;
-		if (got < want * 0.1) c.starve += DT;
-		else c.starve = 0;
-		if (c.starve > STARVE_T) { c.alive = false; c.need = 0; }
-	}
-
-	// 4. hunger climbs back over time (demand rebuilds -> pulls resources again)
-	for (const c of consumers) {
-		if (!c.alive) continue;
-		c.need += HUNGER * DT;
-		if (c.need > 1) c.need = 1;
-	}
-
-	// 5. background decay + clamp
-	const evap = 1 - EVAP * DT;
-	for (let i = 0; i < res.length; i++) {
-		let v = res[i] * evap;
-		if (v < 0) v = 0; else if (v > CAP) v = CAP;
-		res[i] = v;
-	}
+  for (const s of sources) { res[idx(s.x, s.y)] += SOURCE_RATE * DT; produced += SOURCE_RATE * DT; }
+  // Smooth only the steering field, never the stored resource. A 3x3 box
+  // filter reduces grid noise; positive face differences guarantee uphill flow.
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    let sum = 0, count = 0;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const xx = x + dx, yy = y + dy;
+      if (xx >= 0 && xx < N && yy >= 0 && yy < N) { sum += demand[idx(xx, yy)]; count++; }
+    }
+    filtered[idx(x, y)] = sum / count;
+  }
+  // Conservative donor-cell transport. Each donor apportions a bounded share
+  // of its stock across uphill faces; nothing is created at converging flows.
+  resNext.fill(0);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const i = idx(x, y), v = res[i], d = filtered[i];
+    if (!v) continue;
+    const l = x ? Math.max(0, filtered[i - 1] - d) : 0;
+    const r = x < N - 1 ? Math.max(0, filtered[i + 1] - d) : 0;
+    const u = y ? Math.max(0, filtered[i - N] - d) : 0;
+    const b = y < N - 1 ? Math.max(0, filtered[i + N] - d) : 0;
+    const gradient = l + r + u + b;
+    if (gradient > 0) {
+      const moved = v * Math.min(1, FLOW * DT * gradient / (gradient + GRAD_HALF));
+      const unit = moved / gradient;
+      resNext[i] += v - moved;
+      if (l) resNext[i - 1] += unit * l;
+      if (r) resNext[i + 1] += unit * r;
+      if (u) resNext[i - N] += unit * u;
+      if (b) resNext[i + N] += unit * b;
+    } else resNext[i] += v;
+  }
+  res.set(resNext);
+  // Each settlement consumes at most rate * local demand; proportional removal
+  // from its catchment avoids scan-order bias. Never consume more than exists.
+  if (settlementsEnabled) for (const c of consumers) {
+    const stock = localStock(c);
+    const wanted = CONSUME_RATE * demand[idx(c.x, c.y)] * DT;
+    const take = Math.min(stock, wanted);
+    if (stock > 0) neighborhood(c, i => { res[i] *= 1 - take / stock; });
+    c.lastConsumed = take / DT; c.stock = stock - take; consumed += take;
+  } else for (const c of consumers) { c.lastConsumed = 0; c.stock = localStock(c); }
 }
+function tick() { stepDemand(); stepResources(); time += DT; }
 
-// bilinear sample of a field at floating coords, clamped to grid
-function sampleBilinear(field, tx, ty) {
-	if (tx < 0) tx = 0; else if (tx > N - 1.001) tx = N - 1.001;
-	if (ty < 0) ty = 0; else if (ty > N - 1.001) ty = N - 1.001;
-	const x0 = tx | 0, y0 = ty | 0;
-	const fx = tx - x0, fy = ty - y0;
-	const x1 = x0 + 1 < N ? x0 + 1 : x0;
-	const y1 = y0 + 1 < N ? y0 + 1 : y0;
-	const i00 = idx(x0, y0), i10 = idx(x1, y0);
-	const i01 = idx(x0, y1), i11 = idx(x1, y1);
-	return field[i00] * (1 - fx) * (1 - fy) +
-	       field[i10] * fx * (1 - fy) +
-	       field[i01] * (1 - fx) * fy +
-	       field[i11] * fx * fy;
-}
-
-// ---------------------------------------------------------------------------
-// Render
-// ---------------------------------------------------------------------------
-const resCanvas = document.getElementById('res');
-const demCanvas = document.getElementById('dem');
-const resCtx = resCanvas.getContext('2d');
-const demCtx = demCanvas.getContext('2d');
-const resImg = resCtx.createImageData(N, N);
-const demImg = demCtx.createImageData(N, N);
-
-function scaleCanvas(canvas, n) {
-	canvas.width = n; canvas.height = n;
-}
-
-let resScale = 120;          // smoothed color max (auto-calibrated in render)
-let demScale = 0.01;
-
-function resColor(v) {
-	// low blue -> high white
-	const t = Math.min(1, v / resScale);
-	const r = (40 + 215 * t) | 0;
-	const g = (90 + 165 * t) | 0;
-	const b = (200 + 55 * t) | 0;
-	return [r, g, b];
-}
-
-function demColor(v) {
-	// low red -> high yellow; sink dips clamp to red (map reads 0..1)
-	let t = v / demScale;
-	if (t < 0) t = 0; else if (t > 1) t = 1;
-	const r = (180 + 75 * t) | 0;
-	const g = (40 + 200 * t) | 0;
-	const b = (40 + 40 * t) | 0;
-	return [r, g, b];
-}
-
-// track the field peak and ease the color scale toward it (keeps contrast)
-function easeScale(cur, peak, rate) {
-	const target = peak > 1e-6 ? peak : cur;
-	return cur + (target - cur) * rate;
-}
-
+const resCanvas = document.getElementById('res'), demCanvas = document.getElementById('dem');
+const resCtx = resCanvas.getContext('2d'), demCtx = demCanvas.getContext('2d');
+const resImg = resCtx.createImageData(N, N), demImg = demCtx.createImageData(N, N);
+const hud = document.getElementById('hud'), inspect = document.getElementById('inspect');
+let hover = null;
 function render() {
-	// resources
-	let resPeak = 0;
-	const rd = resImg.data;
-	for (let i = 0, p = 0; i < res.length; i++, p += 4) {
-		const v = res[i];
-		if (v > resPeak) resPeak = v;
-	}
-	resScale = easeScale(resScale, resPeak * 0.9, 0.05);
-	for (let i = 0, p = 0; i < res.length; i++, p += 4) {
-		const c = resColor(res[i]);
-		rd[p] = c[0]; rd[p + 1] = c[1]; rd[p + 2] = c[2]; rd[p + 3] = 255;
-	}
-	resCtx.putImageData(resImg, 0, 0);
-
-	// demand
-	let demPeak = 0;
-	const dd = demImg.data;
-	for (let i = 0, p = 0; i < demand.length; i++, p += 4) {
-		const v = demand[i];
-		if (v > demPeak) demPeak = v;
-	}
-	demScale = easeScale(demScale, demPeak, 0.05);
-	for (let i = 0, p = 0; i < demand.length; i++, p += 4) {
-		const c = demColor(demand[i]);
-		dd[p] = c[0]; dd[p + 1] = c[1]; dd[p + 2] = c[2]; dd[p + 3] = 255;
-	}
-	demCtx.putImageData(demImg, 0, 0);
-
-	// overlay markers
-	drawMarkers(resCtx, sources, '#3fb950', 3);
-	drawMarkers(resCtx, consumers.map(c => ({ x: c.x, y: c.y, alive: c.alive })), '#f85149', 2.5);
-	drawMarkers(demCtx, consumers.map(c => ({ x: c.x, y: c.y, alive: c.alive })), '#f85149', 2.5);
-
-	updateHud();
+  let total = 0, peak = 0, demMin = 1, demMax = 0;
+  for (let i = 0, p = 0; i < CELLS; i++, p += 4) {
+    const v = res[i], d = demand[i], t = Math.min(1, Math.log1p(v) / Math.log(11));
+    total += v; peak = Math.max(peak, v); demMin = Math.min(demMin, d); demMax = Math.max(demMax, d);
+    resImg.data[p] = 11 + 230 * t; resImg.data[p + 1] = 20 + 225 * t; resImg.data[p + 2] = 32 + 218 * t; resImg.data[p + 3] = 255;
+    demImg.data[p] = 35 + 220 * Math.sqrt(d); demImg.data[p + 1] = 12 + 218 * d; demImg.data[p + 2] = 16 + 35 * d; demImg.data[p + 3] = 255;
+  }
+  resCtx.putImageData(resImg, 0, 0); demCtx.putImageData(demImg, 0, 0);
+  for (const ctx of [resCtx, demCtx]) {
+    if (ctx === resCtx) for (const s of sources) { ctx.fillStyle = '#58e187'; ctx.fillRect(s.x - 1, s.y - 1, 3, 3); }
+    if (settlementsEnabled) for (const c of consumers) { ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.arc(c.x + 0.5, c.y + 0.5, 2.2, 0, Math.PI * 2); ctx.stroke(); }
+  }
+  const error = total - (produced - consumed);
+  hud.innerHTML = `<span>Time <b>${time.toFixed(1)} s</b></span><span>Coal <b>${total.toFixed(1)}</b></span><span>Produced <b>${produced.toFixed(1)}</b></span><span>Consumed <b>${consumed.toFixed(1)}</b></span><span>Balance error <b>${error.toFixed(4)}</b></span><span>Peak coal/cell <b>${peak.toFixed(2)}</b></span><span>Demand range <b>${demMin.toFixed(3)}–${demMax.toFixed(3)}</b></span>`;
+  if (hover) { const i = idx(hover.x, hover.y); inspect.textContent = `Cell ${hover.x}, ${hover.y} · coal ${res[i].toFixed(3)} · demand ${demand[i].toFixed(3)}`; }
 }
-
-function drawMarkers(ctx, list, color, radius) {
-	ctx.fillStyle = color;
-	for (const m of list) {
-		if (m.alive === false) continue;
-		ctx.beginPath();
-		ctx.arc((m.x + 0.5) * CELL, (m.y + 0.5) * CELL, radius, 0, 7);
-		ctx.fill();
-	}
+for (const canvas of [resCanvas, demCanvas]) {
+  canvas.addEventListener('pointermove', e => { const box = canvas.getBoundingClientRect(); hover = {x: Math.max(0, Math.min(N - 1, Math.floor((e.clientX - box.left) / box.width * N))), y: Math.max(0, Math.min(N - 1, Math.floor((e.clientY - box.top) / box.height * N)))}; });
+  canvas.addEventListener('pointerleave', () => { hover = null; inspect.textContent = 'Hover over a map to inspect a cell.'; });
 }
-
-// ---------------------------------------------------------------------------
-// HUD
-// ---------------------------------------------------------------------------
-const hud = document.getElementById('hud');
-let fps = 0, frames = 0, fpsClock = 0;
-
-function updateHud() {
-	let totalRes = 0, totalDem = 0, aliveCons = 0;
-	for (let i = 0; i < res.length; i++) { totalRes += res[i]; totalDem += demand[i]; }
-	for (const c of consumers) if (c.alive) aliveCons++;
-
-	hud.innerHTML =
-		stat('res', totalRes.toFixed(0)) +
-		stat('dem', totalDem.toFixed(1)) +
-		stat('alive', aliveCons + '/' + consumers.length) +
-		stat('fps', fps);
-}
-
-function stat(label, val) {
-	return `<div class="stat">${label} <b>${val}</b></div>`;
-}
-
-// ---------------------------------------------------------------------------
-// Main loop (fixed step)
-// ---------------------------------------------------------------------------
+document.querySelectorAll('[data-fill]').forEach(btn => btn.addEventListener('click', () => { init(Number(btn.dataset.fill), true); render(); }));
+document.querySelectorAll('[data-replay]').forEach(btn => btn.addEventListener('click', () => { init(Number(btn.dataset.replay), false); render(); }));
+document.getElementById('sinkDem').addEventListener('change', e => { sinkEnabled = e.target.checked; });
+document.getElementById('settlements').addEventListener('change', e => { settlementsEnabled = e.target.checked; });
+document.getElementById('feedback').addEventListener('change', e => { feedback = e.target.value; });
+document.getElementById('speed').addEventListener('change', e => { speed = Number(e.target.value); });
+document.getElementById('pause').addEventListener('click', e => { paused = !paused; e.currentTarget.textContent = paused ? 'Resume' : 'Pause'; accumulator = 0; });
+document.getElementById('step').addEventListener('click', () => { if (paused) { tick(); render(); } });
 let last = performance.now();
-let acc = 0;
-
 function frame(now) {
-	const elapsed = (now - last) / 1000;
-	last = now;
-	acc += elapsed;
-
-	frames++;
-	fpsClock += elapsed;
-	if (fpsClock >= 0.5) { fps = Math.round(frames / fpsClock); frames = 0; fpsClock = 0; }
-
-	while (acc >= DT) {
-		stepDemand();
-		stepResources();
-		acc -= DT;
-	}
-
-	render();
-	requestAnimationFrame(frame);
+  // Drop excess wall time after a background tab or a slow frame; never run an
+  // unbounded catch-up loop that locks the page.
+  const elapsed = Math.min(0.15, Math.max(0, (now - last) / 1000)); last = now;
+  if (!paused) { accumulator = Math.min(0.4, accumulator + elapsed * speed); let steps = 0; while (accumulator >= DT && steps++ < 8) { tick(); accumulator -= DT; } }
+  render(); requestAnimationFrame(frame);
 }
-
-// ---------------------------------------------------------------------------
-// Boot
-// ---------------------------------------------------------------------------
-scaleCanvas(resCanvas, N);
-scaleCanvas(demCanvas, N);
-
-// new map with a uniform demand seed: 0 = no ambient demand, 0.5 = half hunger everywhere
-let fillValue = 0;
-
-document.querySelectorAll('[data-fill]').forEach(btn => {
-	btn.addEventListener('click', () => {
-		fillValue = parseFloat(btn.dataset.fill);
-		init(fillValue);
-	});
-});
-
-document.getElementById('sinkDem').addEventListener('change', e => {
-	sinkEnabled = e.target.checked;
-});
-
-init();
-requestAnimationFrame(frame);
+init(0, false); render(); requestAnimationFrame(frame);
 </script>
 </body>
 </html>
