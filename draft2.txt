@@ -230,6 +230,36 @@ else if keep sites : this make possible factories call for resources in more det
 
 Can we implement both approaches (sites and diffusion-based) as selectable game engine?
 
+Replace towns. 2% of cells is random settlements that start with small random population and grow if good  situation with their needs.
+
+to model loop, better use
+coal, iron ore, goods, 
+
+settlements
+	need cause growth
+		goods = waste (dont forget waste is territory property)
+		coal = co2
+		forest = co2
+
+fab
+	need
+		coal + iron ore = goods + waste + co2
+
+forest cause growth
+	need
+		co2 = growth
+
+player Observe + unlock sites or territories with deposits to be available for mine resources
+
+i suggest firstly do all plan with one of engine : diffusion or sites. to choose what should be first think what result will be more easy to get and will be useful as starting for another, or what will be more helpful to solve possible pitfalls that is geleral for both engines.
+
+after prototype done next is, add Oxygen to co2 cycle. so o2 is another need and low o2 also limit production speed.
+
+#### time units
+
+i dislike "construction 24h".
+better use real time seconds to better prototype that 1s correspond to 1day in storyline, so typical build will be 10-30sec on 1x speed.
+
 ### 4.2 Layers
 
 - **Resources:** easy, concentrated deposits are extracted first. Later, recovery of dispersed material needs investigation and processing knowledge.
