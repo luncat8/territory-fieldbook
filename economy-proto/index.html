@@ -25,7 +25,7 @@
 
     <section class="control-panel" aria-label="Simulation controls">
       <div class="run-controls">
-        <button class="primary-button" id="run-button" type="button"><span class="play-icon" aria-hidden="true">Ⅱ</span><span>Pause</span></button>
+        <button class="primary-button" id="run-button" type="button" aria-label="Pause simulation"><span class="play-icon" aria-hidden="true">Ⅱ</span><span>Pause</span></button>
         <div class="speed-control">
           <label for="speed">SIM SPEED</label>
           <select id="speed" aria-label="Simulation speed">
@@ -58,10 +58,10 @@
       <div class="maps-grid">
         <article class="map-card">
           <div class="map-card-head">
-            <div class="map-title"><span class="map-index">01</span><div><h3>Resources</h3><p>Stored quantity per cell</p></div></div>
+            <div class="map-title"><span class="map-index">01</span><div><h3>Resources</h3><p>Stored quantity per cell · Dashes show flow</p></div></div>
             <span class="unit-pill">0 — 1</span>
           </div>
-          <div class="canvas-wrap"><canvas id="resource-map" aria-label="Resource storage map"></canvas><div class="canvas-tooltip" aria-live="polite"></div></div>
+          <div class="canvas-wrap"><canvas id="resource-map" aria-label="Resource storage map"></canvas><div class="canvas-tooltip"></div></div>
           <div class="map-footer"><div class="gradient-legend resource-legend"><span>EMPTY</span><i></i><span>FULL</span></div><span class="map-stat" id="resource-total">TOTAL <b>0.00</b></span></div>
         </article>
         <article class="map-card">
@@ -69,9 +69,14 @@
             <div class="map-title"><span class="map-index">02</span><div><h3>Demand</h3><p>Diffused need per cell</p></div></div>
             <span class="unit-pill">0 — 1</span>
           </div>
-          <div class="canvas-wrap"><canvas id="demand-map" aria-label="Demand field map"></canvas><div class="canvas-tooltip" aria-live="polite"></div></div>
+          <div class="canvas-wrap"><canvas id="demand-map" aria-label="Demand field map"></canvas><div class="canvas-tooltip"></div></div>
           <div class="map-footer"><div class="gradient-legend demand-legend"><span>LOW</span><i></i><span>HIGH</span></div><span class="map-stat" id="demand-mean">MEAN <b>0.00</b></span></div>
         </article>
+      </div>
+      <div class="economy-stats" aria-label="Resource throughput">
+        <span class="map-stat">PRODUCED <b id="supply-rate">0.00/s</b></span>
+        <span class="map-stat">CONSUMED <b id="uptake-rate">0.00/s</b></span>
+        <span class="map-stat">TOTAL DELIVERED <b id="consumed-total">0.00</b></span>
       </div>
     </section>
 
@@ -80,24 +85,26 @@
         <div class="panel-heading"><div><span class="section-kicker">EDIT THE WORLD</span><h2>Place actors</h2></div><span class="actor-count" id="actor-count">2 SOURCES · 3 CONSUMERS</span></div>
         <p class="panel-description">Choose a tool, then click either map to add an actor. Click an existing actor with Erase selected to remove it.</p>
         <div class="tool-buttons" role="group" aria-label="Map editing tool">
-          <button class="tool-button active" data-tool="inspect" type="button"><span class="tool-symbol inspect-symbol">⌖</span>Inspect</button>
-          <button class="tool-button" data-tool="source" type="button"><span class="tool-symbol source-symbol">＋</span>Source</button>
-          <button class="tool-button" data-tool="consumer" type="button"><span class="tool-symbol consumer-symbol">−</span>Consumer</button>
-          <button class="tool-button" data-tool="erase" type="button"><span class="tool-symbol erase-symbol">×</span>Erase</button>
+          <button class="tool-button active" data-tool="inspect" type="button" aria-pressed="true"><span class="tool-symbol" aria-hidden="true">•</span>Inspect</button>
+          <button class="tool-button" data-tool="source" type="button" aria-pressed="false"><span class="tool-symbol source-symbol" aria-hidden="true">+</span>Source</button>
+          <button class="tool-button" data-tool="consumer" type="button" aria-pressed="false"><span class="tool-symbol consumer-symbol" aria-hidden="true">−</span>Consumer</button>
+          <button class="tool-button" data-tool="erase" type="button" aria-pressed="false"><span class="tool-symbol erase-symbol" aria-hidden="true">×</span>Erase</button>
+          <button class="tool-button" id="clear-consumers" type="button">Clear consumers</button>
         </div>
-        <div class="actor-key"><span><i class="key-source">＋</i> Producer</span><span><i class="key-consumer">−</i> Consumer</span></div>
+        <div class="actor-key"><span><i class="key-source" aria-hidden="true">+</i> Producer</span><span><i class="key-consumer" aria-hidden="true">−</i> Consumer</span></div>
       </article>
       <article class="rules-card">
         <div class="panel-heading"><div><span class="section-kicker">MODEL NOTES</span><h2>How it moves</h2></div><span class="formula-mark">ƒ(x)</span></div>
         <ul class="rules-list">
-          <li><span class="rule-number">01</span><span>Producers add a steady stream of resources to their cell.</span></li>
-          <li><span class="rule-number">02</span><span>Consumers create a nearby demand field and consume local resources.</span></li>
-          <li><span class="rule-number">03</span><span>A filtered demand gradient steers supply. Settlement uptake scales with local demand, while resource pressure can push stock outward—even from an empty-demand start.</span></li>
+          <li><span class="rule-number">01</span><span>Each source produces 0.34 units per simulated second while its cell has room.</span></li>
+          <li><span class="rule-number">02</span><span>Consumer demand diffuses outward and adjusts to local stock. Only the consumer cell uses stock, at up to 0.95 × its demand per second.</span></li>
+          <li><span class="rule-number">03</span><span>Stock follows the diffused demand uphill. With resource pressure on, stock lowers local demand and can spread even when demand is zero everywhere.</span></li>
         </ul>
       </article>
     </section>
     <footer class="footer"><span>FIELD ECONOMY <span class="footer-sep">/</span> DIFFUSION STUDY</span><span id="sim-time">SIM TIME&nbsp; 00:00</span></footer>
   </main>
+  <script src="simulation.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
