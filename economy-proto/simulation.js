@@ -1,44 +1,45 @@
-// Owns: the demand field, stock transport, and the production/uptake ledger.
+// Owns: the bounded demand field, conservative face transfers and resource ledger.
 'use strict';
 
-const ECONOMY_WIDTH = 36;
-const ECONOMY_HEIGHT = 24;
+const ECONOMY_WIDTH = 48;
+const ECONOMY_HEIGHT = 28;
 const ECONOMY_SIZE = ECONOMY_WIDTH * ECONOMY_HEIGHT;
 const ECONOMY_DT = 1 / 60;
 const ECONOMY_SOURCE = 1;
 const ECONOMY_CONSUMER = 2;
 const SOURCE_RATE = 0.34;
 const UPTAKE_RATE = 0.95;
+const QUEUE_SECONDS = 0.25;
+const SERVICE_SHARE = 1 - Math.exp(-ECONOMY_DT / 0.1);
 const DEMAND_DIFFUSION = 15;
 const DEMAND_RECOVERY = 0.08;
 const NEED_RESPONSE = 1.4;
-const STOCK_PRESSURE = 1;
+const STOCK_PRESSURE = 2.4;
 const FLOW_RATE = 7;
-const GRADIENT_KNEE = 0.0012;
-const DEMAND_FLOOR_BAND = 0.001;
+const GRADIENT_KNEE = 0.0001;
+const STEERING_BLEND = ECONOMY_DT / (0.18 + ECONOMY_DT);
+const FLOOR_BAND = 0.001;
 const FLOOR_SPREAD_RATE = 1.8;
-const economyClamp = (value) => Math.max(0, Math.min(1, value));
+const economyClamp = value => Math.max(0, Math.min(1, value));
 const economyIndex = (x, y) => y * ECONOMY_WIDTH + x;
 
 const DIRECTIONS = [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [-1, -1], [1, -1]]
 	.map(([x, y]) => {
-		const inverseLength = x && y ? Math.SQRT1_2 : 1;
-		return { x, y, inverseLength, ux: x * inverseLength, uy: y * inverseLength, weight: x && y ? 1 : 4 };
+		const inv = x && y ? Math.SQRT1_2 : 1;
+		return { x, y, inv, ux: x * inv, uy: y * inv, weight: x && y ? 1 : 4 };
 	});
 const DEGREE = DIRECTIONS.length;
 const NEIGHBORS = buildEconomyNeighbors();
+const REFERENCE_SOURCES = [[7, 8], [22, 21], [39, 7]];
+const REFERENCE_CONSUMERS = [[19, 5], [9, 20], [34, 18]];
 
 function buildEconomyNeighbors() {
 	const result = new Int16Array(ECONOMY_SIZE * DEGREE).fill(-1);
 	for (let i = 0; i < ECONOMY_SIZE; i++) {
-		const x = i % ECONOMY_WIDTH;
-		const y = Math.floor(i / ECONOMY_WIDTH);
 		for (let k = 0; k < DEGREE; k++) {
-			const nx = x + DIRECTIONS[k].x;
-			const ny = y + DIRECTIONS[k].y;
-			if (nx >= 0 && nx < ECONOMY_WIDTH && ny >= 0 && ny < ECONOMY_HEIGHT) {
-				result[i * DEGREE + k] = economyIndex(nx, ny);
-			}
+			const x = i % ECONOMY_WIDTH + DIRECTIONS[k].x;
+			const y = Math.floor(i / ECONOMY_WIDTH) + DIRECTIONS[k].y;
+			if (x >= 0 && x < ECONOMY_WIDTH && y >= 0 && y < ECONOMY_HEIGHT) result[i * DEGREE + k] = economyIndex(x, y);
 		}
 	}
 	return result;
@@ -51,9 +52,13 @@ class DiffusionEconomy {
 		this.demand = new Float64Array(ECONOMY_SIZE);
 		this.nextDemand = new Float64Array(ECONOMY_SIZE);
 		this.requests = new Float64Array(NEIGHBORS.length);
+		this.room = new Float64Array(ECONOMY_SIZE);
 		this.receiving = new Float64Array(ECONOMY_SIZE);
 		this.stockDelta = new Float64Array(ECONOMY_SIZE);
-		this.flowTo = new Int16Array(ECONOMY_SIZE);
+		this.headingX = new Float64Array(ECONOMY_SIZE);
+		this.headingY = new Float64Array(ECONOMY_SIZE);
+		this.flowX = new Float64Array(ECONOMY_SIZE);
+		this.flowY = new Float64Array(ECONOMY_SIZE);
 		this.flowRate = new Float64Array(ECONOMY_SIZE);
 		this.pressure = false;
 		this.reset(0);
@@ -62,24 +67,22 @@ class DiffusionEconomy {
 	reset(fill) {
 		this.baseline = economyClamp(fill);
 		this.actors.fill(0);
-		this.actors[economyIndex(5, 12)] = ECONOMY_SOURCE;
-		this.actors[economyIndex(29, 5)] = ECONOMY_SOURCE;
-		this.actors[economyIndex(13, 6)] = ECONOMY_CONSUMER;
-		this.actors[economyIndex(13, 18)] = ECONOMY_CONSUMER;
-		this.actors[economyIndex(29, 14)] = ECONOMY_CONSUMER;
-		this.stock.fill(0);
+		for (const [x, y] of REFERENCE_SOURCES) this.actors[economyIndex(x, y)] = ECONOMY_SOURCE;
+		for (const [x, y] of REFERENCE_CONSUMERS) this.actors[economyIndex(x, y)] = ECONOMY_CONSUMER;
 		this.demand.fill(this.baseline);
-		this.flowTo.fill(-1);
+		this.stock.fill(0);
+		this.headingX.fill(0);
+		this.headingY.fill(0);
+		this.flowX.fill(0);
+		this.flowY.fill(0);
 		this.flowRate.fill(0);
-		this.ticks = 0;
-		this.produced = 0;
-		this.consumed = 0;
-		this.productionRate = 0;
-		this.uptakeRate = 0;
+		this.ticks = this.produced = this.consumed = this.productionRate = this.uptakeRate = 0;
 	}
 
 	setActor(i, kind) {
-		if (!kind || !this.actors[i]) this.actors[i] = kind;
+		if (kind && this.actors[i]) return false;
+		this.actors[i] = kind;
+		return true;
 	}
 
 	clearConsumers() {
@@ -93,18 +96,19 @@ class DiffusionEconomy {
 		let produced = 0;
 		let consumed = 0;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			if (this.actors[i] !== ECONOMY_SOURCE) continue;
-			const amount = Math.min(1 - this.stock[i], SOURCE_RATE * ECONOMY_DT);
-			this.stock[i] += amount;
-			produced += amount;
-		}
-		this.transportStock();
-		for (let i = 0; i < ECONOMY_SIZE; i++) {
+			if (this.actors[i] === ECONOMY_SOURCE) {
+				const amount = Math.min(1 - this.stock[i], SOURCE_RATE * ECONOMY_DT);
+				this.stock[i] += amount;
+				produced += amount;
+			}
 			if (this.actors[i] !== ECONOMY_CONSUMER) continue;
-			const amount = Math.min(this.stock[i], UPTAKE_RATE * this.demand[i] * ECONOMY_DT);
+			// Service existing stock before arrivals. Even a tiny shipment has a residence time.
+			const ready = Math.min(this.stock[i] * SERVICE_SHARE, UPTAKE_RATE * ECONOMY_DT);
+			const amount = this.demand[i] * ready;
 			this.stock[i] -= amount;
 			consumed += amount;
 		}
+		this.transportStock();
 		this.produced += produced;
 		this.consumed += consumed;
 		this.productionRate = produced / ECONOMY_DT;
@@ -117,8 +121,8 @@ class DiffusionEconomy {
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			const here = demand[i];
 			if (actors[i] === ECONOMY_CONSUMER) {
-				// Anchoring the peak at the consumer puts the end of the route on the sink.
-				const need = 1 - (pressure ? 0.3 : 0.2) * stock[i];
+				const queue = Math.min(1, stock[i] / (QUEUE_SECONDS * UPTAKE_RATE));
+				const need = 1 - (pressure ? 0.5 : 0.35) * queue;
 				nextDemand[i] = here + ECONOMY_DT * NEED_RESPONSE * (need - here);
 				continue;
 			}
@@ -129,7 +133,7 @@ class DiffusionEconomy {
 				if (to >= 0) laplacian += DIRECTIONS[k].weight * (demand[to] - here);
 			}
 			const recovery = DEMAND_RECOVERY * (baseline - here);
-			const suppression = pressure ? STOCK_PRESSURE * stock[i] * here : 0;
+			const suppression = pressure ? STOCK_PRESSURE * stock[i] : 0;
 			nextDemand[i] = economyClamp(here + ECONOMY_DT * (DEMAND_DIFFUSION / 6 * laplacian + recovery - suppression));
 		}
 		this.demand = nextDemand;
@@ -137,109 +141,111 @@ class DiffusionEconomy {
 	}
 
 	transportStock() {
-		const { stock, requests, receiving, stockDelta, flowTo, flowRate } = this;
+		const { actors, stock, demand, room, requests, receiving, stockDelta } = this;
 		requests.fill(0);
 		receiving.fill(0);
 		stockDelta.fill(0);
-		flowTo.fill(-1);
-		flowRate.fill(0);
+		this.flowX.fill(0);
+		this.flowY.fill(0);
+		this.flowRate.fill(0);
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			if (stock[i] > 0) this.planOutflow(i);
+			// A consumer admits only what it can process in one short service window.
+			const capacity = actors[i] === ECONOMY_CONSUMER ? UPTAKE_RATE * demand[i] * QUEUE_SECONDS : 1;
+			room[i] = Math.max(0, capacity - stock[i]);
 		}
-		// Resolve against pre-transfer room so sharing a destination never drops stock.
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			if (receiving[i] > 0) receiving[i] = Math.min(1, (1 - stock[i]) / receiving[i]);
+			if (stock[i] > 1e-12 && actors[i] !== ECONOMY_CONSUMER) this.planOutflow(i);
 		}
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			if (stock[i] === 0) continue;
-			const base = i * DEGREE;
-			let strongest = 0;
-			for (let k = 0; k < DEGREE; k++) {
-				const requested = requests[base + k];
-				if (requested === 0) continue;
-				const to = NEIGHBORS[base + k];
-				const amount = requested * receiving[to];
-				stockDelta[i] -= amount;
-				stockDelta[to] += amount;
-				if (amount > strongest) {
-					strongest = amount;
-					flowTo[i] = to;
-				}
-			}
-			flowRate[i] = strongest / ECONOMY_DT;
+			if (receiving[i] > 0) receiving[i] = Math.min(1, room[i] / receiving[i]);
+		}
+		for (let i = 0; i < ECONOMY_SIZE; i++) {
+			if (stock[i] <= 1e-12 || actors[i] === ECONOMY_CONSUMER) continue;
+			this.acceptTransfers(i);
 		}
 		for (let i = 0; i < ECONOMY_SIZE; i++) stock[i] = economyClamp(stock[i] + stockDelta[i]);
 	}
 
 	planOutflow(i) {
-		const { demand, requests } = this;
+		const { demand, requests, room } = this;
 		const base = i * DEGREE;
 		const here = demand[i];
-		let highest = here;
-		let gx = 0;
-		let gy = 0;
-		let steepest = 0;
-		// Demand diffusion supplies the smoothing. Use actual uphill faces so a centered
-		// slope cannot send stock past a peak or skip a diagonal ascent.
+		let highest = here, gx = 0, gy = 0, steepest = 0;
 		for (let k = 0; k < DEGREE; k++) {
 			const to = NEIGHBORS[base + k];
 			if (to < 0 || demand[to] <= here) continue;
 			highest = Math.max(highest, demand[to]);
+			if (room[to] <= 0) continue;
 			const dir = DIRECTIONS[k];
-			const slope = (demand[to] - here) * dir.inverseLength;
+			const slope = (demand[to] - here) * dir.inv;
 			requests[base + k] = slope;
 			steepest = Math.max(steepest, slope);
 			gx += dir.ux * slope;
 			gy += dir.uy * slope;
 		}
-		if (steepest > 0) this.routeUphill(i, gx, gy, steepest);
-		if (this.pressure && highest < DEMAND_FLOOR_BAND) {
-			this.spreadAtFloor(i, 1 - highest / DEMAND_FLOOR_BAND);
-		}
+		this.headingX[i] += STEERING_BLEND * (gx - this.headingX[i]);
+		this.headingY[i] += STEERING_BLEND * (gy - this.headingY[i]);
+		if (steepest > 0) this.routeUphill(i, steepest);
+		if (this.pressure && highest < FLOOR_BAND) this.spreadAtFloor(i, 1 - highest / FLOOR_BAND);
 	}
 
-	routeUphill(i, gx, gy, steepest) {
+	routeUphill(i, steepest) {
 		const { stock, requests, receiving } = this;
 		const base = i * DEGREE;
-		const magnitude = Math.sqrt(gx * gx + gy * gy) || 1;
-		gx /= magnitude;
-		gy /= magnitude;
+		const length = Math.hypot(this.headingX[i], this.headingY[i]) || 1;
+		const gx = this.headingX[i] / length, gy = this.headingY[i] / length;
 		let sum = 0;
 		for (let k = 0; k < DEGREE; k++) {
-			const slope = requests[base + k];
-			if (slope === 0) continue;
+			const edge = base + k;
+			if (!requests[edge]) continue;
 			const dir = DIRECTIONS[k];
-			const alignment = Math.max(0, gx * dir.ux + gy * dir.uy);
-			const weight = slope * (0.25 + 0.75 * alignment);
-			requests[base + k] = weight;
-			sum += weight;
+			// Smooth steering, but gate every face by its current uphill slope: no coasting past a peak.
+			requests[edge] *= 0.25 + 0.75 * Math.max(0, gx * dir.ux + gy * dir.uy);
+			sum += requests[edge];
 		}
 		const outflow = stock[i] * FLOW_RATE * ECONOMY_DT * steepest / (steepest + GRADIENT_KNEE);
 		for (let k = 0; k < DEGREE; k++) {
 			const edge = base + k;
-			if (requests[edge] === 0) continue;
-			const amount = outflow * (requests[edge] / sum);
-			requests[edge] = amount;
-			receiving[NEIGHBORS[edge]] += amount;
+			if (!requests[edge]) continue;
+			requests[edge] *= outflow / sum;
+			receiving[NEIGHBORS[edge]] += requests[edge];
 		}
 	}
 
 	spreadAtFloor(i, blend) {
-		// A zero plateau cannot be lowered. Spread by stock difference there instead
-		// of inventing a negative demand field that the map doesn't show.
+		// At zero there is no lower demand to encode. Only here, use the stock gradient to relieve pressure.
 		const { stock, requests, receiving } = this;
 		const base = i * DEGREE;
 		for (let k = 0; k < DEGREE; k++) {
 			const to = NEIGHBORS[base + k];
-			if (to < 0 || stock[to] >= stock[i]) continue;
-			const weight = DIRECTIONS[k].weight / 20;
-			const amount = (stock[i] - stock[to]) * blend * FLOOR_SPREAD_RATE * ECONOMY_DT * weight;
+			if (to < 0 || stock[to] >= stock[i] || this.demand[to] < this.demand[i] || !this.room[to]) continue;
+			const amount = (stock[i] - stock[to]) * blend * FLOOR_SPREAD_RATE * ECONOMY_DT * DIRECTIONS[k].weight / 20;
 			requests[base + k] += amount;
 			receiving[to] += amount;
 		}
 	}
+
+	acceptTransfers(i) {
+		const { requests, receiving, stockDelta } = this;
+		const base = i * DEGREE;
+		let amountOut = 0, vx = 0, vy = 0;
+		for (let k = 0; k < DEGREE; k++) {
+			const edge = base + k;
+			if (!requests[edge]) continue;
+			const to = NEIGHBORS[edge];
+			const amount = requests[edge] * receiving[to];
+			stockDelta[to] += amount;
+			amountOut += amount;
+			vx += DIRECTIONS[k].ux * amount;
+			vy += DIRECTIONS[k].uy * amount;
+		}
+		stockDelta[i] -= amountOut;
+		this.flowRate[i] = amountOut / ECONOMY_DT;
+		this.flowX[i] = vx / ECONOMY_DT;
+		this.flowY[i] = vy / ECONOMY_DT;
+	}
 }
 
 if (typeof module !== 'undefined') {
-	module.exports = { DiffusionEconomy, ECONOMY_DT, ECONOMY_WIDTH, ECONOMY_HEIGHT, ECONOMY_SOURCE, ECONOMY_CONSUMER, economyIndex, SOURCE_RATE, UPTAKE_RATE };
+	module.exports = { DiffusionEconomy, ECONOMY_DT, ECONOMY_WIDTH, ECONOMY_HEIGHT, ECONOMY_SOURCE, ECONOMY_CONSUMER, economyIndex, SOURCE_RATE, UPTAKE_RATE, QUEUE_SECONDS };
 }

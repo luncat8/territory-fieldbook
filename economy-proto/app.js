@@ -1,272 +1,180 @@
-// Owns: the prototype controls, animation clock, and the two canvas views.
+// Owns: lab controls, linked cell inspection and the fixed-step playback clock.
 'use strict';
 
-const $ = (id) => document.getElementById(id);
-const PALETTE_STEPS = 512;
-
-function makePalette(stops) {
-	const colors = [];
-	let upper = 1;
-	for (let i = 0; i <= PALETTE_STEPS; i++) {
-		const t = i / PALETTE_STEPS;
-		while (t > stops[upper][0]) upper++;
-		const [a, r, g, b] = stops[upper - 1];
-		const [z, rr, gg, bb] = stops[upper];
-		const mix = (t - a) / (z - a);
-		colors[i] = `rgb(${Math.round(r + (rr - r) * mix)} ${Math.round(g + (gg - g) * mix)} ${Math.round(b + (bb - b) * mix)})`;
-	}
-	return colors;
-}
-
-function mapView(id, palette, isResource) {
-	const canvas = $(id);
-	return { canvas, context: canvas.getContext('2d'), tooltip: canvas.nextElementSibling, palette, isResource };
-}
-
-function drawMap(view, model) {
-	const { canvas, context, palette, isResource } = view;
-	const values = isResource ? model.stock : model.demand;
-	const cw = canvas.width / ECONOMY_WIDTH;
-	const ch = canvas.height / ECONOMY_HEIGHT;
-	for (let y = 0; y < ECONOMY_HEIGHT; y++) {
-		for (let x = 0; x < ECONOMY_WIDTH; x++) {
-			context.fillStyle = palette[Math.round(values[economyIndex(x, y)] * PALETTE_STEPS)];
-			context.fillRect(x * cw, y * ch, Math.ceil(cw), Math.ceil(ch));
-		}
-	}
-	context.strokeStyle = 'rgba(8, 16, 12, .28)';
-	context.lineWidth = Math.max(0.5, canvas.width / 1500);
-	context.beginPath();
-	for (let x = 1; x < ECONOMY_WIDTH; x++) {
-		context.moveTo(x * cw, 0);
-		context.lineTo(x * cw, canvas.height);
-	}
-	for (let y = 1; y < ECONOMY_HEIGHT; y++) {
-		context.moveTo(0, y * ch);
-		context.lineTo(canvas.width, y * ch);
-	}
-	context.stroke();
-	if (isResource) drawFlow(context, cw, ch, model);
-	drawActors(context, cw, ch, model.actors);
-}
-
-function drawFlow(context, cw, ch, model) {
-	const phase = model.ticks * ECONOMY_DT * 2.4;
-	context.strokeStyle = '#d8f696';
-	context.lineWidth = Math.max(1, Math.min(cw, ch) * 0.115);
-	context.lineCap = 'round';
-	for (let i = 0; i < ECONOMY_SIZE; i++) {
-		const rate = model.flowRate[i];
-		if (rate < 0.006) continue;
-		const to = model.flowTo[i];
-		const x = i % ECONOMY_WIDTH;
-		const y = Math.floor(i / ECONOMY_WIDTH);
-		const dx = to % ECONOMY_WIDTH - x;
-		const dy = Math.floor(to / ECONOMY_WIDTH) - y;
-		const start = (phase + i * 0.618) % 1;
-		const end = Math.min(1, start + 0.24);
-		context.globalAlpha = Math.min(0.86, 0.28 + rate * 5);
-		context.beginPath();
-		context.moveTo((x + 0.5 + start * dx) * cw, (y + 0.5 + start * dy) * ch);
-		context.lineTo((x + 0.5 + end * dx) * cw, (y + 0.5 + end * dy) * ch);
-		context.stroke();
-	}
-	context.globalAlpha = 1;
-	context.lineCap = 'butt';
-}
-
-function drawActors(context, cw, ch, actors) {
-	const marker = Math.max(7, Math.min(cw, ch) * 0.62);
-	context.font = `700 ${marker * 1.05}px sans-serif`;
-	context.textAlign = 'center';
-	context.textBaseline = 'middle';
-	context.lineWidth = Math.max(1, marker * 0.1);
-	for (let i = 0; i < actors.length; i++) {
-		if (!actors[i]) continue;
-		const source = actors[i] === ECONOMY_SOURCE;
-		const color = source ? '#d0f582' : '#f0c16f';
-		const x = (i % ECONOMY_WIDTH + 0.5) * cw;
-		const y = (Math.floor(i / ECONOMY_WIDTH) + 0.5) * ch;
-		context.beginPath();
-		context.arc(x, y, marker * 0.64, 0, Math.PI * 2);
-		context.fillStyle = source ? '#263520' : '#3b2c1c';
-		context.fill();
-		context.strokeStyle = color;
-		context.stroke();
-		context.fillStyle = color;
-		context.fillText(source ? '+' : '−', x, y + 0.5);
-	}
-}
+const $ = id => document.getElementById(id);
+const ICON_PATHS = {
+	book:'M12 6c-3-2-7-2-10-1v13c3-1 7-1 10 1 3-2 7-2 10-1V5c-3-1-7-1-10 1Zm0 0v13',
+	pause:'M9 5v14M15 5v14',play:'m8 4 12 8-12 8z',step:'m5 5 10 7-10 7zM19 5v14',chevron:'m6 9 6 6 6-6',
+	box:'m3 7 9-5 9 5v10l-9 5-9-5zM3 7l9 5 9-5M12 12v10',
+	radio:'M12 10a2 2 0 1 0 .01 0M7.8 7.8a6 6 0 0 0 0 8.4m8.4-8.4a6 6 0 0 1 0 8.4M5 4.8a10 10 0 0 0 0 14.4M19 4.8a10 10 0 0 1 0 14.4',
+	up:'M3 17l6-6 4 4 8-10m-7 0h7v7',down:'m3 7 6 6 4-4 8 10m-7 0h7v-7',
+	grid:'M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18',check:'m5 12 4 4L19 6',
+	layers:'m2 8 10-5 10 5-10 5zM2 12l10 5 10-5M2 16l10 5 10-5',
+	contour:'M3 12c0-4 3-4 5-7 4-5 11-2 11 3 0 4 5 6 2 10-2 4-6 1-10 3-5 1-9-3-8-9Zm4 0c0-2 3-3 4-5 3-2 5 0 5 3 0 3 4 5 1 7-2 1-3-1-6 0-3 1-5-2-4-5Zm4 0c1-3 4-3 4 1 0 3-4 3-4-1Z',
+	sliders:'M3 7h4m5 0h9M3 17h10m5 0h3M7 4h5v6H7zM13 14h5v6h-5z',
+	cursor:'m4 3 6.5 18 3.2-7.5L21 10z',crosshair:'M12 3v5m0 8v5M3 12h5m8 0h5M19 12a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z',
+	diamond:'m12 2 10 10-10 10L2 12z',circle:'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z',
+	erase:'m3 14 10-10a2 2 0 0 1 3 0l5 5a2 2 0 0 1 0 3l-8 8H9l-6-6Zm6-6 8 8M12 20h9',
+	reset:'M3 4v6h6M4 9a8 8 0 1 1 .7 8',clear:'M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7',close:'m6 6 12 12M18 6 6 18'
+};
+const labIcon = name => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON_PATHS[name]}"/></svg>`;
+const TOOL_HINTS = { inspect:'Select a cell on either map to inspect its values.', source:'Select an empty cell on either map to place a source.', consumer:'Select an empty cell on either map to place a consumer.', erase:'Select an actor to remove it. Stored stock stays in its cell.' };
 
 function bootEconomy() {
+	for (const node of document.querySelectorAll('[data-icon]')) node.outerHTML = labIcon(node.dataset.icon);
 	const model = new DiffusionEconomy();
-	const resourceView = mapView('resource-map', makePalette([
-		[0, 20, 34, 27], [0.018, 37, 73, 46], [0.06, 51, 108, 59],
-		[0.28, 101, 160, 71], [1, 198, 235, 112]
-	]), true);
-	const demandView = mapView('demand-map', makePalette([
-		[0, 22, 40, 48], [0.2, 27, 70, 81], [0.48, 40, 119, 129],
-		[0.76, 115, 164, 131], [1, 233, 194, 103]
-	]), false);
-	const views = [resourceView, demandView];
-	const runButton = $('run-button');
-	const runLabel = runButton.querySelector('span:last-child');
-	const runIcon = runButton.querySelector('.play-icon');
-	const speedSelect = $('speed');
-	const negativeToggle = $('negative-demand');
-	const clearButton = $('clear-consumers');
-	const toolButtons = document.querySelectorAll('[data-tool]');
-	const actorCount = $('actor-count');
-	const resourceTotal = $('resource-total').querySelector('b');
-	const demandMean = $('demand-mean').querySelector('b');
-	const supplyRate = $('supply-rate');
-	const uptakeRate = $('uptake-rate');
-	const consumedTotal = $('consumed-total');
-	const timeLabel = $('sim-time');
-	let running = true;
-	let speed = Number(speedSelect.value);
-	let tool = 'inspect';
-	let lastFrame = performance.now();
-	let lastStats = lastFrame;
-	let accumulator = 0;
-	let hoveredView = null;
-	let hoveredCell = 0;
-	model.pressure = negativeToggle.checked;
+	const plots = [new FieldPlot($('resource-map'),true),new FieldPlot($('demand-map'),false)];
+	const stats = new EconomyTelemetry();
+	const guide = $('field-guide'), runButton = $('run-button'), runState = $('run-state');
+	const speedSelect = $('speed'), pressure = $('negative-demand'), flow = $('show-flow');
+	const toolButtons = document.querySelectorAll('[data-tool]'), clearButton = $('clear-consumers');
+	const message = $('edit-message'), stepButton = $('step-button');
+	let running = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+	let speed = Number(speedSelect.value), tool = 'inspect';
+	let selected = -1, owner = null, pinned = false, dirty = true;
+	let lastFrame = performance.now(), lastPaint = 0, lastStats = 0, accumulator = 0;
+	model.pressure = pressure.checked;
+	$('grid-size').textContent = `${ECONOMY_WIDTH} × ${ECONOMY_HEIGHT}`;
+	$('source-note').textContent = SOURCE_RATE.toFixed(2);
+	$('uptake-note').textContent = UPTAKE_RATE.toFixed(2);
 
-	function render() {
-		for (const view of views) drawMap(view, model);
+	function syncActors() {
+		let sources = 0, consumers = 0;
+		for (const kind of model.actors) {
+			if (kind === ECONOMY_SOURCE) sources++;
+			if (kind === ECONOMY_CONSUMER) consumers++;
+		}
+		$('actor-count').textContent = `${sources} source${sources === 1 ? '' : 's'} · ${consumers} consumer${consumers === 1 ? '' : 's'}`;
+		clearButton.disabled = !consumers;
+		for (const plot of plots) plot.readActors(model.actors);
+		dirty = true;
 	}
 
-	function fitCanvases() {
-		for (const { canvas } of views) {
-			const ratio = window.devicePixelRatio || 1;
-			const width = Math.max(1, Math.round(canvas.clientWidth * ratio));
-			const height = Math.max(1, Math.round(canvas.clientHeight * ratio));
-			if (canvas.width !== width) canvas.width = width;
-			if (canvas.height !== height) canvas.height = height;
-		}
-		render();
+	function paint() {
+		for (const plot of plots) plot.draw(model,selected,flow.checked);
+		dirty = false;
 	}
 
-	function updateStats(now = performance.now()) {
-		lastStats = now;
-		let total = 0;
-		let need = 0;
-		let sources = 0;
-		let consumers = 0;
-		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			total += model.stock[i];
-			need += model.demand[i];
-			if (model.actors[i] === ECONOMY_SOURCE) sources++;
-			if (model.actors[i] === ECONOMY_CONSUMER) consumers++;
+	function fit() {
+		for (const plot of plots) plot.fit();
+		stats.fit(); stats.refresh(model); paint(); readings();
+	}
+
+	function readings() {
+		for (const plot of plots) plot.showReading(plot === owner ? selected : -1,model,pinned);
+	}
+
+	function selectCell(plot, i) {
+		owner = plot; selected = i; dirty = true;
+		readings();
+	}
+
+	function clearSelection() {
+		pinned = false; selectCell(null,-1);
+	}
+
+	function applyTool(plot, i) {
+		if (i < 0) return;
+		if (tool === 'inspect') {
+			pinned = !(pinned && owner === plot && selected === i);
+			selectCell(plot,i);
+			message.textContent = pinned ? `Pinned cell ${cellName(i)}.` : 'Both maps are linked.';
+			return;
 		}
-		actorCount.textContent = `${sources} ${sources === 1 ? 'SOURCE' : 'SOURCES'} · ${consumers} ${consumers === 1 ? 'CONSUMER' : 'CONSUMERS'}`;
-		clearButton.disabled = consumers === 0;
-		resourceTotal.textContent = total.toFixed(2);
-		demandMean.textContent = (need / ECONOMY_SIZE).toFixed(2);
-		supplyRate.textContent = `${(running ? model.productionRate : 0).toFixed(2)}/s`;
-		uptakeRate.textContent = `${(running && consumers ? model.uptakeRate : 0).toFixed(2)}/s`;
-		consumedTotal.textContent = model.consumed.toFixed(2);
-		const seconds = Math.floor(model.ticks * ECONOMY_DT);
-		timeLabel.textContent = `SIM TIME  ${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
-		updateTooltip();
+		const kind = tool === 'source' ? ECONOMY_SOURCE : tool === 'consumer' ? ECONOMY_CONSUMER : 0;
+		if (kind === 0 && !model.actors[i]) { message.textContent = 'No actor in this cell.'; return; }
+		if (!model.setActor(i,kind)) { message.textContent = 'Cell occupied. Erase its actor first.'; return; }
+		message.textContent = `Actor ${kind ? 'placed' : 'removed'} at ${cellName(i)}.`;
+		syncActors(); selectCell(plot,i);
+	}
+
+	function tick() {
+		model.step(); stats.record(model); dirty = true;
 	}
 
 	function frame(now) {
-		const dt = Math.min(0.05, Math.max(0, (now - lastFrame) / 1000));
+		const elapsed = Math.min(0.15,Math.max(0,now-lastFrame)/1000);
 		lastFrame = now;
 		if (running) {
-			accumulator += dt * speed;
-			const previousTick = model.ticks;
-			while (accumulator >= ECONOMY_DT) {
-				model.step();
-				accumulator -= ECONOMY_DT;
-			}
-			if (model.ticks !== previousTick) render();
-			if (now - lastStats >= 250) updateStats(now);
+			accumulator += elapsed*speed;
+			while (accumulator >= ECONOMY_DT) { tick(); accumulator -= ECONOMY_DT; }
 		}
+		if (dirty && now-lastPaint >= 1000/30) { paint(); lastPaint = now; }
+		if (running && now-lastStats >= 250) { stats.refresh(model); readings(); lastStats = now; }
 		requestAnimationFrame(frame);
 	}
 
-	function reset(fill) {
-		model.reset(fill);
-		accumulator = 0;
-		lastFrame = performance.now();
-		updateStats();
-		render();
-	}
-
-	function updateTooltip() {
-		if (!hoveredView) return;
-		const i = hoveredCell;
-		const x = i % ECONOMY_WIDTH + 1;
-		const y = Math.floor(i / ECONOMY_WIDTH) + 1;
-		const kind = hoveredView.isResource ? 'STOCK' : 'DEMAND';
-		const value = hoveredView.isResource ? model.stock[i] : model.demand[i];
-		const actor = model.actors[i] === ECONOMY_SOURCE ? ' · PRODUCER' : model.actors[i] === ECONOMY_CONSUMER ? ' · CONSUMER' : '';
-		hoveredView.tooltip.textContent = `${x}, ${y}  ·  ${kind} ${value.toFixed(3)}${actor}`;
-	}
-
-	function pointAt(view, event) {
-		const { canvas, tooltip } = view;
-		const rect = canvas.getBoundingClientRect();
-		const px = event.clientX - rect.left;
-		const py = event.clientY - rect.top;
-		const x = Math.floor(economyClamp(px / rect.width) * ECONOMY_WIDTH);
-		const y = Math.floor(economyClamp(py / rect.height) * ECONOMY_HEIGHT);
-		hoveredView = view;
-		hoveredCell = economyIndex(Math.min(x, ECONOMY_WIDTH - 1), Math.min(y, ECONOMY_HEIGHT - 1));
-		updateTooltip();
-		tooltip.style.display = 'block';
-		tooltip.style.left = `${Math.max(0, Math.min(px, rect.width - tooltip.offsetWidth - 8))}px`;
-		tooltip.style.top = `${Math.max(0, Math.min(py, rect.height - tooltip.offsetHeight - 8))}px`;
-	}
-
-	runButton.addEventListener('click', () => {
-		running = !running;
-		runLabel.textContent = running ? 'Pause' : 'Resume';
-		runIcon.textContent = running ? 'Ⅱ' : '▶';
+	function syncPlayback() {
+		runButton.firstElementChild.outerHTML = labIcon(running ? 'pause' : 'play');
+		runButton.lastElementChild.textContent = running ? 'Pause' : 'Resume';
 		runButton.setAttribute('aria-label', running ? 'Pause simulation' : 'Resume simulation');
+		runState.classList.toggle('paused',!running);
+		runState.lastElementChild.textContent = running ? 'Running' : 'Paused';
+		stepButton.hidden = running;
 		lastFrame = performance.now();
-		updateStats();
-	});
-	speedSelect.addEventListener('change', () => { speed = Number(speedSelect.value); });
-	negativeToggle.addEventListener('change', () => { model.pressure = negativeToggle.checked; });
-	$('new-zero').addEventListener('click', () => reset(0));
-	$('new-half').addEventListener('click', () => reset(0.5));
-	clearButton.addEventListener('click', () => {
-		model.clearConsumers();
-		updateStats();
-		render();
-	});
-	for (const button of toolButtons) {
-		button.addEventListener('click', () => {
-			tool = button.dataset.tool;
-			for (const candidate of toolButtons) {
-				candidate.classList.toggle('active', candidate === button);
-				candidate.setAttribute('aria-pressed', candidate === button);
-			}
-			for (const { canvas } of views) canvas.parentElement.style.cursor = tool === 'inspect' ? 'crosshair' : 'cell';
+	}
+
+	function toggleRun() { running = !running; syncPlayback(); stats.refresh(model); readings(); }
+
+	function reset(fill) {
+		model.reset(fill); stats.reset(model); syncActors(); clearSelection();
+		accumulator = 0; lastFrame = performance.now();
+		message.textContent = `New map · initial demand ${fill}.`;
+		stats.refresh(model); paint();
+	}
+
+	for (const plot of plots) {
+		const { canvas } = plot;
+		canvas.addEventListener('pointermove',event => { if (!pinned) selectCell(plot,plot.cellAt(event)); });
+		canvas.addEventListener('pointerleave',() => { if (!pinned) clearSelection(); });
+		canvas.addEventListener('click',event => applyTool(plot,plot.cellAt(event)));
+		canvas.addEventListener('focus',() => { if (!pinned && canvas.matches(':focus-visible')) selectCell(plot,economyIndex(ECONOMY_WIDTH/2,ECONOMY_HEIGHT/2)); });
+		canvas.addEventListener('blur',() => { if (!pinned) clearSelection(); });
+		canvas.addEventListener('keydown',event => {
+			if (event.key === 'Enter') { event.preventDefault(); applyTool(plot,selected); return; }
+			if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) return;
+			event.preventDefault(); pinned = false;
+			const i = Math.max(0,selected);
+			const x = i%ECONOMY_WIDTH + (event.key === 'ArrowRight') - (event.key === 'ArrowLeft');
+			const y = Math.floor(i/ECONOMY_WIDTH) + (event.key === 'ArrowDown') - (event.key === 'ArrowUp');
+			selectCell(plot,economyIndex(Math.max(0,Math.min(ECONOMY_WIDTH-1,x)),Math.max(0,Math.min(ECONOMY_HEIGHT-1,y))));
 		});
 	}
-	for (const view of views) {
-		view.canvas.addEventListener('pointermove', (event) => pointAt(view, event));
-		view.canvas.addEventListener('pointerleave', () => {
-			view.tooltip.style.display = 'none';
-			hoveredView = null;
-		});
-		view.canvas.addEventListener('click', (event) => {
-			pointAt(view, event);
-			if (tool === 'inspect') return;
-			const kind = tool === 'source' ? ECONOMY_SOURCE : tool === 'consumer' ? ECONOMY_CONSUMER : 0;
-			model.setActor(hoveredCell, kind);
-			updateStats();
-			render();
-		});
-	}
-	window.addEventListener('resize', fitCanvases);
-	fitCanvases();
-	updateStats();
+	for (const button of toolButtons) button.addEventListener('click',() => {
+		tool = button.dataset.tool;
+		for (const candidate of toolButtons) candidate.setAttribute('aria-pressed',candidate === button);
+		$('tool-hint').textContent = TOOL_HINTS[tool]; message.textContent = 'Both maps are linked.';
+		for (const plot of plots) plot.canvas.style.cursor = tool === 'inspect' ? 'crosshair' : 'cell';
+		clearSelection();
+	});
+	runButton.addEventListener('click',toggleRun);
+	stepButton.addEventListener('click',() => { tick(); stats.refresh(model); readings(); paint(); });
+	speedSelect.addEventListener('change',() => { speed = Number(speedSelect.value); });
+	pressure.addEventListener('change',() => { model.pressure = pressure.checked; message.textContent = `Resource pressure ${model.pressure ? 'enabled' : 'disabled'}.`; });
+	flow.addEventListener('change',() => { dirty = true; });
+	$('new-zero').addEventListener('click',() => reset(0));
+	$('new-half').addEventListener('click',() => reset(0.5));
+	clearButton.addEventListener('click',() => { model.clearConsumers(); syncActors(); readings(); message.textContent = 'Consumers removed. The field relaxes over time.'; });
+	$('guide-button').addEventListener('click',() => guide.showModal());
+	$('close-guide').addEventListener('click',() => guide.close());
+	guide.addEventListener('click',event => {
+		if (event.target !== guide) return;
+		const r = guide.getBoundingClientRect();
+		if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) guide.close();
+	});
+	document.addEventListener('keydown',event => {
+		if (guide.open || event.repeat || event.ctrlKey || event.altKey || event.metaKey) return;
+		if (event.key === '?') { guide.showModal(); return; }
+		if (event.key === 'Escape') { clearSelection(); message.textContent = 'Both maps are linked.'; return; }
+		if (event.code !== 'Space' || event.target.closest('button,select,input')) return;
+		event.preventDefault(); toggleRun();
+	});
+	document.addEventListener('visibilitychange',() => { lastFrame = performance.now(); accumulator = 0; });
+	window.addEventListener('resize',fit);
+	stats.reset(model);
+	for (let n = 0; n < Math.round(12/ECONOMY_DT); n++) tick();
+	syncActors(); syncPlayback(); fit();
+	document.fonts.ready.then(fit);
 	requestAnimationFrame(frame);
 }
 
