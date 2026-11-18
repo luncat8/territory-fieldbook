@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101613">
+  <title>Field Economy — Diffusion Prototype</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="Field Economy prototype home">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span>FIELDNOTE <b>/ ECONOMY LAB</b></span>
+      </a>
+      <div class="prototype-tag"><span class="live-dot"></span> SIMULATION PROTOTYPE</div>
+    </header>
+
+    <section class="intro">
+      <div class="eyebrow">SYSTEMS EXPERIMENT 01 <span>·</span> SPATIAL ECONOMY</div>
+      <h1>Supply follows <em>need.</em></h1>
+      <p>Watch a resource field respond to a slowly adapting demand landscape. Producers replenish, consumers draw down, and gradients guide the flow.</p>
+    </section>
+
+    <section class="control-panel" aria-label="Simulation controls">
+      <div class="run-controls">
+        <button class="primary-button" id="run-button" type="button"><span class="play-icon" aria-hidden="true">Ⅱ</span><span>Pause</span></button>
+        <div class="speed-control">
+          <label for="speed">SIM SPEED</label>
+          <select id="speed" aria-label="Simulation speed">
+            <option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option>
+            <option value="2">2×</option>
+            <option value="4">4×</option>
+          </select>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="map-start-controls">
+        <span class="control-label">START A NEW MAP</span>
+        <button class="preset-button" id="new-zero" type="button"><span class="preset-swatch zero"></span>Demand <b>0</b></button>
+        <button class="preset-button" id="new-half" type="button"><span class="preset-swatch half"></span>Demand <b>0.5</b></button>
+      </div>
+      <div class="divider"></div>
+      <label class="toggle-row" for="negative-demand">
+        <span class="toggle-copy"><strong>Resource pressure</strong><small>Resources lower local demand</small></span>
+        <input id="negative-demand" type="checkbox">
+        <span class="toggle-ui" aria-hidden="true"></span>
+      </label>
+    </section>
+
+    <section class="map-section" aria-label="Simulation maps">
+      <div class="map-heading">
+        <div><span class="section-kicker">LIVE FIELDS</span><h2>One world, two layers</h2></div>
+        <div class="map-size"><span class="tiny-grid" aria-hidden="true"></span> 36 × 24 CELLS</div>
+      </div>
+      <div class="maps-grid">
+        <article class="map-card">
+          <div class="map-card-head">
+            <div class="map-title"><span class="map-index">01</span><div><h3>Resources</h3><p>Stored quantity per cell</p></div></div>
+            <span class="unit-pill">0 — 1</span>
+          </div>
+          <div class="canvas-wrap"><canvas id="resource-map" aria-label="Resource storage map"></canvas><div class="canvas-tooltip" aria-live="polite"></div></div>
+          <div class="map-footer"><div class="gradient-legend resource-legend"><span>EMPTY</span><i></i><span>FULL</span></div><span class="map-stat" id="resource-total">TOTAL <b>0.00</b></span></div>
+        </article>
+        <article class="map-card">
+          <div class="map-card-head">
+            <div class="map-title"><span class="map-index">02</span><div><h3>Demand</h3><p>Diffused need per cell</p></div></div>
+            <span class="unit-pill">0 — 1</span>
+          </div>
+          <div class="canvas-wrap"><canvas id="demand-map" aria-label="Demand field map"></canvas><div class="canvas-tooltip" aria-live="polite"></div></div>
+          <div class="map-footer"><div class="gradient-legend demand-legend"><span>LOW</span><i></i><span>HIGH</span></div><span class="map-stat" id="demand-mean">MEAN <b>0.00</b></span></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="lower-grid">
+      <article class="tool-card">
+        <div class="panel-heading"><div><span class="section-kicker">EDIT THE WORLD</span><h2>Place actors</h2></div><span class="actor-count" id="actor-count">2 SOURCES · 3 CONSUMERS</span></div>
+        <p class="panel-description">Choose a tool, then click either map to add an actor. Click an existing actor with Erase selected to remove it.</p>
+        <div class="tool-buttons" role="group" aria-label="Map editing tool">
+          <button class="tool-button active" data-tool="inspect" type="button"><span class="tool-symbol inspect-symbol">⌖</span>Inspect</button>
+          <button class="tool-button" data-tool="source" type="button"><span class="tool-symbol source-symbol">＋</span>Source</button>
+          <button class="tool-button" data-tool="consumer" type="button"><span class="tool-symbol consumer-symbol">−</span>Consumer</button>
+          <button class="tool-button" data-tool="erase" type="button"><span class="tool-symbol erase-symbol">×</span>Erase</button>
+        </div>
+        <div class="actor-key"><span><i class="key-source">＋</i> Producer</span><span><i class="key-consumer">−</i> Consumer</span></div>
+      </article>
+      <article class="rules-card">
+        <div class="panel-heading"><div><span class="section-kicker">MODEL NOTES</span><h2>How it moves</h2></div><span class="formula-mark">ƒ(x)</span></div>
+        <ul class="rules-list">
+          <li><span class="rule-number">01</span><span>Producers add a steady stream of resources to their cell.</span></li>
+          <li><span class="rule-number">02</span><span>Consumers create a nearby demand field and consume local resources.</span></li>
+          <li><span class="rule-number">03</span><span>A filtered demand gradient steers supply. Settlement uptake scales with local demand, while resource pressure can push stock outward—even from an empty-demand start.</span></li>
+        </ul>
+      </article>
+    </section>
+    <footer class="footer"><span>FIELD ECONOMY <span class="footer-sep">/</span> DIFFUSION STUDY</span><span id="sim-time">SIM TIME&nbsp; 00:00</span></footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
