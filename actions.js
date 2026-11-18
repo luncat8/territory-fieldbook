@@ -61,6 +61,10 @@ function actionsToggleWork() {
 		eventsStatus('No workable deposit here.');
 		return;
 	}
+	if (sites.res[i] === RES.FUEL || sites.res[i] === RES.ORE) {
+		eventsStatus('Map mines recruit workers automatically.');
+		return;
+	}
 	party.working = !party.working;
 	eventsStatus(party.working ? 'Working the ' + sitesName(i) + '.' : 'Stopped work.');
 	hudRefresh(true);

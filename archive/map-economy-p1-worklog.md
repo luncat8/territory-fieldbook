@@ -11,3 +11,11 @@ decisions: pulled worker-gated mine extraction and workforce migration into P1 s
 decisions: used Michaelis-Menten normalized gradients g_k/(gSum+ref) to prevent 2D K_0(r/L) falloff stalling haulage, and paired slow settlement departure (0.035/s) with fast transit walk (1.8/s) + site-only job retention so diffusion lag never drains villages.
 pitfalls: Float32Array-slot rounding beats Math.fround for exact 0 residual; 1e-12 floor prevents subnormals; vm.createContext inflates tight cross-script loops 3–5x vs vm.runInThisContext (findings).
 next: implement Phase 2 (population dynamics and settlement metabolism) — goods + coal consumption and satisfaction, growth/decline under productivity cap, attraction-biased migration, settlement waste + CO2 emission, and experiments/mape_population.js.
+
+plan: plan-map-economy.md — current prototype playability fixes
+changed: sites.js, hud.js, actions.js — guarantee a marked starter coal trace, defer iron deposits and duplicate manual mining, expose nearby coordinates and coal name, preserve selected around text
+changed: experiments/dom_smoke.js, experiments/smoke.js — starter coal, around selection, and stable coal/market scenario checks
+changed: plan-map-economy.md — document Phase 1 playable scope and deferred iron/manual mining
+validation: node --check touched JS; `dom_smoke` 27/27 (starter trace listed, iron deferred, selection retained); `smoke` 17/17 (mine workers 10.4, mined 70.9, near coal 2.6→3.2, residuals 0); `mape_spread` 13/13 (unlock→worker→mine→settlement/factory; live 0.594 ms/tick)
+Pitfalls: around content updates must not replace selected text even when simulation values change.
+next: implement Phase 2 settlement consumption, satisfaction and population dynamics.

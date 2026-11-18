@@ -402,11 +402,15 @@ pass.
 ### Phase 1 — Demand diffusion, workforce migration and mine loop (diffusion)
 
 Deliverable: `map-diffusion.js` owning population/factory/biosphere/storage
-demand injection, 2-pass Jacobi diffusion (walkable-only for coal/iron/goods and
+demand injection, 2-pass Jacobi diffusion (walkable-only for coal/goods and
 workforce, full-map for CO2 demand and stock), mass-conserving normalized-gradient
 goods and worker advection, transport workforce accumulation, and worker-gated
-unlocked mine extraction (closing `discover deposit → workforce demand → worker
-diffusion → mine output → settlement/factory supply`); `experiments/mape_spread.js`.
+unlocked coal extraction (closing `discover deposit → workforce demand → worker
+diffusion → mine output → settlement/factory supply`). Seed one marked coal trace
+inside the starting party's around-list range so the loop is playable immediately.
+Defer iron deposits and player-operated coal/iron extraction until factories
+consume iron; keep the alternate sites engine disabled until Phase 4. Includes
+`experiments/mape_spread.js`.
 
 Gate: midpoint across 20 walkable cells crosses zero within `15 s` on 1×, axial vs
 diagonal arrival ratio within 15% (isotropic spread), water blocks material and
@@ -470,5 +474,6 @@ Gate: runtime switch re-seeds cleanly both ways, both engines pass `smoke` and
   per-item `d`/`s`) without flickering radios or action buttons.
 - Jumping to a settlement shows market funds and prices; selling moves funds and
   stock, buying supplies deducts goods, hiring recruits a resident.
-- Coal and iron deposits show locked state until recorded to 100% and held, then
-  flip to unlocked.
+- The around list gives the nearby marked coal trace coordinates; recording the
+  deposit to 100% and holding it unlocks the mine. Iron deposits and manual mining
+  stay absent until factory demand makes them useful.

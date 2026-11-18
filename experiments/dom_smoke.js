@@ -111,7 +111,11 @@ function makeElement(id, isCanvas) {
 const elements = new Map();
 elements.set('ui-canvas', makeElement('ui-canvas', true));
 
+let activeSelection = null;
 const documentStub = {
+	getSelection() {
+		return activeSelection;
+	},
 	getElementById(id) {
 		if (!elements.has(id)) elements.set(id, makeElement(id, false));
 		return elements.get(id);
@@ -202,6 +206,19 @@ if (!bootError) {
 		result.actionButtons = run('$("ui-actions").children.length');
 		result.siteText = run('$("ui-site").textContent');
 		result.inspectText = run('$("ui-inspect").textContent');
+		result.starterCoalTrace = run('Array.from({ length: SITE_CAP }, (_, i) => i).some(i => sites.kind[i] === SITE.DEPOSIT && sites.res[i] === RES.FUEL && sites.state[i] === SITE_STATE.MARKED && (sites.x[i] - world.startX) ** 2 + (sites.y[i] - world.startY) ** 2 <= 64)');
+		result.aroundHasCoordinates = /\n[^\n]*\d+,\d+/.test(elements.get('ui-nearby').textContent);
+		result.starterCoalListed = run('Array.from({ length: SITE_CAP }, (_, i) => i).some(i => sites.kind[i] === SITE.DEPOSIT && sites.res[i] === RES.FUEL && sites.state[i] !== SITE_STATE.GONE && $("ui-nearby").textContent.indexOf(sites.x[i] + "," + sites.y[i]) >= 0)');
+		result.ironDepositsDeferred = run('Array.from({ length: SITE_CAP }, (_, i) => i).every(i => sites.kind[i] !== SITE.DEPOSIT || sites.res[i] !== RES.ORE || sites.state[i] === SITE_STATE.GONE)');
+		const around = elements.get('ui-nearby');
+		const aroundBeforeSelection = around.textContent;
+		activeSelection = { isCollapsed: false, anchorNode: around, focusNode: around };
+		run('investigation.progress[party.y * world.size + party.x] = 0.99; hudUpdateNearby()');
+		result.aroundSelectionPreserved = around.textContent === aroundBeforeSelection;
+		activeSelection.isCollapsed = true;
+		run('hudUpdateNearby()');
+		result.aroundRefreshesAfterSelection = around.textContent !== aroundBeforeSelection;
+		activeSelection = null;
 		result.victoryText = run('$("ui-victory").textContent');
 		result.logItems = run('$("ui-log").children.length');
 
@@ -301,6 +318,7 @@ console.log('frames=' + (result.frames || 0) + ' clock_sec=' + (result.clockSec 
 console.log('lit_cells=' + result.litCells + ' distinct_views=' + result.distinctViews + ' distinct_items=' + result.distinctItems);
 console.log('clock_initial=' + JSON.stringify(result.initialClock || '') + ' clock_after=' + JSON.stringify(result.clockText || ''));
 console.log('buttons_time=' + result.timeButtons + ' buttons_actions=' + result.actionButtons);
+console.log('starter_coal_trace=' + result.starterCoalTrace + ' listed=' + result.starterCoalListed + ' iron_deferred=' + result.ironDepositsDeferred + ' around_coordinates=' + result.aroundHasCoordinates + ' selection_preserved=' + result.aroundSelectionPreserved);
 console.log('buttons_view=' + result.viewRadios + ' buttons_item=' + result.itemRadios + ' buttons_engine=' + result.engineRadios);
 console.log('view_click=' + result.viewAfterClick + ' hover=' + result.viewAfterHover + ' coarse_checked=' + result.coarseHoverChecked + ' stray_ignored=' + result.strayHoverIgnored);
 console.log('view_after_key=' + result.viewAfterKey + ' radio_follows_key=' + result.viewRadioChecked + ' speed_after_space=' + result.speedAfterSpace);
@@ -315,6 +333,9 @@ check('time_controls', result.timeButtons === 4);
 check('view_controls', result.viewRadios === 9 && result.distinctViews === 9);
 check('item_controls', result.itemRadios === 4 && result.itemHiddenOnTerrain && result.itemShownOnDemand && result.distinctItems === 4);
 check('engine_controls', result.engineRadios === 2 && result.engineDiffusionChecked && result.engineSitesDisabled);
+check('starter_coal_trace_visible', result.starterCoalTrace && result.starterCoalListed && result.aroundHasCoordinates);
+check('iron_deposits_deferred', result.ironDepositsDeferred);
+check('around_selection_preserved', result.aroundSelectionPreserved && result.aroundRefreshesAfterSelection);
 check('view_group_labelled', result.radiogroupRole === 'radiogroup' && result.radiogroupLabel.length > 0);
 check('view_click_selects', result.viewAfterClick === 0);
 check('view_hover_selects', result.viewAfterHover === 5 && result.hoverCheckedRadio === true);

@@ -123,9 +123,16 @@ const result = run(`
 	const markedDiscovered = sites.state[markedSite] === SITE_STATE.VISIBLE || sites.state[markedSite] === SITE_STATE.DONE;
 
 	// Unlock a coal deposit by recording its cell to 100%; verify workers arrive, mine extracts and coal spreads.
-	let coalMine = 0;
+	let coalMine = -1;
+	let coalDistance = Infinity;
 	for (let m = 0; m < mape.mineCount; m++) {
-		if (mape.mineRes[m] === MAPE_RES.COAL && sites.claim[mape.mineSite[m]] === 0) coalMine = m;
+		if (mape.mineRes[m] !== MAPE_RES.COAL || sites.claim[mape.mineSite[m]] !== 0) continue;
+		const dx = mape.mineX[m] - world.startX;
+		const dy = mape.mineY[m] - world.startY;
+		const distance = dx * dx + dy * dy;
+		if (distance >= coalDistance) continue;
+		coalDistance = distance;
+		coalMine = m;
 	}
 	const mineSlot = mape.mineSite[coalMine];
 	const mineIdx = mape.mineY[coalMine] * world.size + mape.mineX[coalMine];
@@ -143,7 +150,19 @@ const result = run(`
 
 	// Trade ore, buy supplies and hire at the nearest settlement.
 	economyAddResource(RES.ORE, 4);
-	const settle = mapeNearestSettlement(party.x, party.y);
+	let settle = -1;
+	let marketDistance = Infinity;
+	for (let k = 0; k < mape.settleCount; k++) {
+		const candidate = mape.settleCells[k];
+		if (mape.goods[MAPE_RES.GOODS * world.n + candidate] < MAPE_SUPPLY_GOODS * 5) continue;
+		const dx = candidate % world.size - party.x;
+		const dy = ((candidate / world.size) | 0) - party.y;
+		const distance = dx * dx + dy * dy;
+		if (distance >= marketDistance) continue;
+		marketDistance = distance;
+		settle = candidate;
+	}
+	if (settle < 0) settle = mapeNearestSettlement(party.x, party.y);
 	move(settle % world.size, (settle / world.size) | 0);
 	const fundsBefore = party.funds;
 	const moneyBefore = mape.money[settle];

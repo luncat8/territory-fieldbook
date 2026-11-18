@@ -264,7 +264,9 @@ function hudSiteText(i) {
 	}
 	if (state === SITE_STATE.DONE) return 'Spent: ' + sitesName(i) + '.';
 	if (kind === SITE.DEPOSIT) {
-		let text = 'Deposit: ' + RES_NAME[sites.res[i]] + '. ';
+		const mineRes = mapeResOf(sites.res[i]);
+		const depositName = mineRes >= 0 ? MAPE_RES_NAME[mineRes] : RES_NAME[sites.res[i]];
+		let text = 'Deposit: ' + depositName + '. ';
 		if (party.unlocks.assay) text += 'Stock ' + sites.stock[i].toFixed(1) + ' of ' + SITE_DEPOSIT_STOCK[sites.res[i]] + '.';
 		else text += 'Stock unassessed — field assay would read it.';
 		text += hudClaimText(i);
@@ -338,6 +340,24 @@ function hudNearbyState(state) {
 	return '';
 }
 
+function hudNearbyName(i) {
+	if (sites.kind[i] === SITE.DEPOSIT) {
+		const mineRes = mapeResOf(sites.res[i]);
+		if (mineRes >= 0) return MAPE_RES_NAME[mineRes] + ' deposit';
+	}
+	return sitesName(i);
+}
+
+function hudSetNearbyText(text) {
+	const host = hud.nearbyEl;
+	if (host.textContent === text) return;
+	if (typeof document !== 'undefined' && document.getSelection) {
+		const selection = document.getSelection();
+		if (selection && !selection.isCollapsed && (host.contains(selection.anchorNode) || host.contains(selection.focusNode))) return;
+	}
+	host.textContent = text;
+}
+
 function hudUpdateNearby() {
 	if (!hud.nearbyEl) return;
 	investigationCollectNearby();
@@ -355,7 +375,7 @@ function hudUpdateNearby() {
 	const count = investigation.nearbyCount;
 	if (count === 0) {
 		text += '\nNo recorded sites within ' + INV_NEARBY_RANGE + ' cells.';
-		hud.nearbyEl.textContent = text;
+		hudSetNearbyText(text);
 		return;
 	}
 	for (let k = 0; k < count; k++) {
@@ -365,10 +385,10 @@ function hudUpdateNearby() {
 		const dist = Math.sqrt(dx * dx + dy * dy);
 		const cell = sites.y[i] * size + sites.x[i];
 		const rec = Math.round(investigation.progress[cell] * 100);
-		const label = sites.state[i] === SITE_STATE.MARKED ? 'unidentified' : sitesName(i);
-		text += '\n' + dist.toFixed(1) + '  ' + label + '  ' + hudNearbyState(sites.state[i]) + '  rec ' + rec + '%';
+		const label = sites.state[i] === SITE_STATE.MARKED ? 'unidentified' : hudNearbyName(i);
+		text += '\n' + dist.toFixed(1) + '  ' + sites.x[i] + ',' + sites.y[i] + '  ' + label + '  ' + hudNearbyState(sites.state[i]) + '  rec ' + rec + '%';
 	}
-	hud.nearbyEl.textContent = text;
+	hudSetNearbyText(text);
 }
 
 function hudVictoryText() {
@@ -443,7 +463,9 @@ function hudActionList() {
 	list.push({ label: party.camped ? 'Break camp' : 'Make camp', enabled: true, run: actionsCamp, primary: true });
 	const surveyLeft = investigationSurveyCooldown();
 	list.push({ label: surveyLeft > 0 ? 'Survey in progress (' + surveyLeft + 's)' : 'Survey the ground', enabled: surveyLeft === 0, run: actionsSurvey });
-	if (ready && kind === SITE.DEPOSIT) list.push({ label: party.working ? 'Stop working the deposit' : 'Work the deposit', enabled: true, run: actionsToggleWork, primary: true });
+	if (ready && kind === SITE.DEPOSIT && sites.res[i] !== RES.FUEL && sites.res[i] !== RES.ORE) {
+		list.push({ label: party.working ? 'Stop working the deposit' : 'Work the deposit', enabled: true, run: actionsToggleWork, primary: true });
+	}
 	if (ready && kind === SITE.GATHER) list.push({ label: 'Gather ' + RES_NAME[sites.res[i]], enabled: true, run: actionsGather, primary: true });
 	if (ready && kind === SITE.ITEM) list.push({ label: 'Take the relic', enabled: true, run: actionsTakeItem, primary: true });
 	if (ready && kind === SITE.SKILL) list.push({ label: 'Train ' + SKILL_NAME[sites.res[i]], enabled: true, run: actionsTrain, primary: true });

@@ -105,13 +105,13 @@ function sitesPlaceStarter() {
 	if (timber >= 0) sitesPlace(SITE.DEPOSIT, timber, RES.TIMBER, SITE_DEPOSIT_STOCK[RES.TIMBER], SITE_STATE.VISIBLE, 0, 0);
 	const task = sitesFindCellNear(sx, sy, 5, -1);
 	if (task >= 0) sitesPlace(SITE.TASK, task, randomInt(SKILL_COUNT), randomRange(28, 45), SITE_STATE.VISIBLE, 0, 0);
-	const ore = sitesFindCellNear(sx, sy, 9, TERRAIN.HILLS);
-	if (ore >= 0) sitesPlace(SITE.DEPOSIT, ore, RES.ORE, SITE_DEPOSIT_STOCK[RES.ORE], SITE_STATE.MARKED, 0, 0.08);
+	const coal = sitesFindCellNear(sx, sy, 4, -1);
+	if (coal >= 0) sitesPlace(SITE.DEPOSIT, coal, RES.FUEL, SITE_DEPOSIT_STOCK[RES.FUEL], SITE_STATE.MARKED, 0, 0.08);
 }
 
 function sitesPlaceDeposits() {
-	const order = [RES.FOOD, RES.TIMBER, RES.ORE, RES.FUEL, RES.CRYSTAL, RES.ORE, RES.FUEL];
-	const wanted = [TERRAIN.MEADOW, TERRAIN.FOREST, TERRAIN.HILLS, TERRAIN.SWAMP, TERRAIN.HILLS, TERRAIN.HILLS, TERRAIN.SWAMP];
+	const order = [RES.FOOD, RES.TIMBER, RES.FUEL, RES.CRYSTAL, RES.FUEL];
+	const wanted = [TERRAIN.MEADOW, TERRAIN.FOREST, TERRAIN.SWAMP, TERRAIN.HILLS, TERRAIN.SWAMP];
 	for (let k = 0; k < 12; k++) {
 		const res = order[k % order.length];
 		const anchor = worldRandomWalkable();
@@ -265,6 +265,7 @@ function sitesStep(seconds) {
 
 function sitesWorkTick(i, seconds) {
 	if (sites.kind[i] !== SITE.DEPOSIT || sites.state[i] !== SITE_STATE.VISIBLE) return;
+	if (sites.res[i] === RES.FUEL || sites.res[i] === RES.ORE) return;
 	if (!sitesWorkable(i)) return;
 	sitesExtract(i, economyDepositRate(sites.res[i]) * party.workFactor() * seconds, FACTION_PLAYER);
 }
