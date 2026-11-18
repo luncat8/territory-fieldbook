@@ -191,12 +191,13 @@ function sitesExtract(i, amount, owner) {
 	landDisturb(idx, units * LAND_DISTURB_PER_UNIT);
 	economyAccountMining(units);
 	if (owner === FACTION_PLAYER) economyAddResource(sites.res[i], units * EXTRACT_SHARE);
-	sitesClaim(i, owner);
+	if (owner >= 0) sitesClaim(i, owner);
 	if (sites.stock[i] <= 0.05) {
+		sites.remainingStock -= sites.stock[i];
 		sites.stock[i] = 0;
 		sites.state[i] = SITE_STATE.DONE;
 		sites.version++;
-		if (owner === FACTION_PLAYER) party.working = false;
+		if (party.working && party.x === sites.x[i] && party.y === sites.y[i]) party.working = false;
 		eventsAdd(sitesName(i) + ' is exhausted.');
 	}
 	return units;

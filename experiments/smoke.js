@@ -122,13 +122,24 @@ const result = run(`
 	main.step(60);
 	const markedDiscovered = sites.state[markedSite] === SITE_STATE.VISIBLE || sites.state[markedSite] === SITE_STATE.DONE;
 
-	// Unlock a coal/iron deposit by recording its cell to 100% and claiming it.
-	const mineSlot = mape.mineSite[0];
+	// Unlock a coal deposit by recording its cell to 100%; verify workers arrive, mine extracts and coal spreads.
+	let coalMine = 0;
+	for (let m = 0; m < mape.mineCount; m++) {
+		if (mape.mineRes[m] === MAPE_RES.COAL && sites.claim[mape.mineSite[m]] === 0) coalMine = m;
+	}
+	const mineSlot = mape.mineSite[coalMine];
+	const mineIdx = mape.mineY[coalMine] * world.size + mape.mineX[coalMine];
+	const nearForCoal = mapeNearestSettlement(mape.mineX[coalMine], mape.mineY[coalMine]);
+	const nearCoalBefore = mape.goods[MAPE_RES.COAL * world.n + nearForCoal];
 	sites.state[mineSlot] = SITE_STATE.VISIBLE;
 	sites.claim[mineSlot] = 0;
-	move(mape.mineX[0], mape.mineY[0]);
+	move(mape.mineX[coalMine], mape.mineY[coalMine]);
 	main.step(60);
-	const mineUnlockedAfter = mape.mineUnlocked[0] === 1;
+	const mineUnlockedAfter = mape.mineUnlocked[coalMine] === 1;
+	const mineWorkersAfter = mape.pop[mineIdx];
+	const minedAfter = mape.minedTotal;
+	const nearCoalAfter = mape.goods[MAPE_RES.COAL * world.n + nearForCoal];
+	const transportWorkAfter = mape.transportWork;
 
 	// Trade ore, buy supplies and hire at the nearest settlement.
 	economyAddResource(RES.ORE, 4);
@@ -150,6 +161,7 @@ const result = run(`
 	const popAfterHire = mape.pop[settle];
 	const membersAfter = party.members.length;
 	const mapeResidual = mapeLedgerResidual();
+	const popResidual = mapePopResidual();
 
 	party.camped = true;
 	main.step(240);
@@ -174,6 +186,11 @@ const result = run(`
 		mineCount: mineCount,
 		unlockedStart: unlockedStart,
 		mineUnlockedAfter: mineUnlockedAfter,
+		mineWorkersAfter: mineWorkersAfter,
+		minedAfter: minedAfter,
+		nearCoalBefore: nearCoalBefore,
+		nearCoalAfter: nearCoalAfter,
+		transportWorkAfter: transportWorkAfter,
 		itemSpreads: itemSpreads,
 		visibleBefore: visibleBefore,
 		markedBefore: markedBefore,
@@ -191,6 +208,7 @@ const result = run(`
 		massResidual: massResidual,
 		miningResidual: miningResidual,
 		mapeResidual: mapeResidual,
+		popResidual: popResidual,
 		fundsBefore: fundsBefore,
 		fundsAfter: fundsAfter,
 		moneyBefore: moneyBefore,
@@ -231,7 +249,12 @@ for (let t = 0; t < 6; t++) {
 }
 console.log('start=' + result.start.join(',') + ' clock_sec=' + result.clockSec.toFixed(1));
 console.log('settlements=' + result.settleCount + ' settle_pct=' + result.settlePct.toFixed(2) + ' total_pop=' + result.totalPop.toFixed(1));
-console.log('mines=' + result.mineCount + ' unlocked_start=' + result.unlockedStart + ' unlocked_after=' + (result.mineUnlockedAfter ? 1 : 0));
+console.log('mines=' + result.mineCount + ' unlocked_start=' + result.unlockedStart +
+	' unlocked_after=' + (result.mineUnlockedAfter ? 1 : 0) +
+	' mine_workers=' + result.mineWorkersAfter.toFixed(1) +
+	' mined=' + result.minedAfter.toFixed(1) +
+	' near_coal=' + result.nearCoalBefore.toFixed(1) + '->' + result.nearCoalAfter.toFixed(1) +
+	' transport_work=' + result.transportWorkAfter.toFixed(1));
 console.log('sites_visible_before=' + result.visibleBefore + ' sites_marked_before=' + result.markedBefore + ' sites_hidden_before=' + result.hiddenBefore);
 console.log('sites_visible_after_scout=' + result.visibleAfterScout);
 console.log('progress_here=' + result.progressHere.toFixed(3) + ' progress_near=' + result.progressNear.toFixed(3) + ' progress_far=' + result.progressFar.toFixed(3));
@@ -239,7 +262,8 @@ console.log('deposit_stock=' + result.depositStockStart.toFixed(1) + '->' + resu
 console.log('disturbed_cell=' + result.disturbedBefore.toFixed(3) + '->' + result.disturbedAfter.toFixed(3));
 console.log('inventory_timber=' + result.inventoryTimber.toFixed(2));
 console.log('marked_site_discovered=' + (result.markedDiscovered ? 1 : 0));
-console.log('mass_residual=' + result.massResidual.toFixed(6) + ' mining_residual=' + result.miningResidual.toFixed(6) + ' mape_residual=' + result.mapeResidual.toFixed(6));
+console.log('mass_residual=' + result.massResidual.toFixed(6) + ' mining_residual=' + result.miningResidual.toFixed(6) +
+	' mape_residual=' + result.mapeResidual.toFixed(6) + ' pop_residual=' + result.popResidual.toFixed(6));
 console.log('settle_sale_funds=' + result.fundsBefore.toFixed(1) + '->' + result.fundsAfter.toFixed(1) + ' iron=' + result.ironBefore.toFixed(1) + '->' + result.ironAfter.toFixed(1));
 console.log('settle_supply_goods=' + result.goodsBefore.toFixed(1) + '->' + result.goodsAfter.toFixed(1) + ' hire_pop=' + result.popBeforeHire.toFixed(1) + '->' + result.popAfterHire.toFixed(1));
 console.log('rival_claims=' + result.rivalClaims + ' disturbed_cells=' + result.disturbedCells);
@@ -250,15 +274,22 @@ console.log('party_alive=' + (result.partyAlive ? 1 : 0) + ' condition=' + resul
 
 check('terrain_all_present', result.terrain.every(value => value > 0));
 check('settlements_seeded', result.settlePct >= 1.8 && result.settlePct <= 2.2 && result.settleWater === 0 && result.settlePopOut === 0);
-check('mape_fields_seeded', result.itemSpreads.every(s => s.stock > 0 && (s.pos > 0 || s.neg > 0)));
-check('deposit_unlocks', result.mineCount >= 4 && result.unlockedStart === 0 && result.mineUnlockedAfter);
+check('mape_fields_seeded',
+	[0, 2, 3].every(r => result.itemSpreads[r].stock > 0 && (result.itemSpreads[r].pos > 0 || result.itemSpreads[r].neg > 0)) &&
+	result.itemSpreads[1].stock === 0 && result.itemSpreads[1].pos === 0 && result.itemSpreads[1].neg === 0);
+check('deposit_unlocks',
+	result.mineCount >= 4 && result.unlockedStart === 0 && result.mineUnlockedAfter &&
+	result.mineWorkersAfter >= 2 && result.minedAfter > 5 &&
+	result.nearCoalAfter > result.nearCoalBefore && result.transportWorkAfter > 1);
 check('investigation_local', result.progressHere > 0.2 && result.progressHere <= 1);
 check('investigation_far_zero', result.progressFar === 0);
 check('discovery_progresses', result.visibleAfterScout >= result.visibleBefore);
 check('deposit_extracted', result.depositStockEnd < result.depositStockStart && result.inventoryTimber > 0.1);
 check('disturbance_recorded', result.disturbedAfter > result.disturbedBefore);
 check('marked_site_discovered', result.markedDiscovered);
-check('mass_balanced', Math.abs(result.massResidual) < 1e-6 && Math.abs(result.miningResidual) < 1e-6 && Math.abs(result.mapeResidual) < 1e-4);
+check('mass_balanced',
+	Math.abs(result.massResidual) < 1e-6 && Math.abs(result.miningResidual) < 1e-6 &&
+	Math.abs(result.mapeResidual) < 1e-4 && Math.abs(result.popResidual) < 1e-4);
 check('settlement_market', result.fundsAfter > result.fundsBefore && result.moneyAfter < result.moneyBefore && result.ironAfter > result.ironBefore && result.goodsAfter < result.goodsBefore);
 check('settlement_hire', result.membersAfter === result.membersBefore + 1 && Math.abs(result.popBeforeHire - result.popAfterHire - 1) < 1e-5);
 check('rivals_active', result.rivalClaims > 0 && result.disturbedCells > 0);

@@ -44,8 +44,7 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 
 ## files
 
-- every source file starts with a 1-2 line header (`// owns: ...` / `// edit for: ...`);
-  head -12 decides relevance — never read a full file just to learn what it is.
+- every source file starts with a 1-2 line header (`// owns: ...` / `// edit for: ...`); `head -12` decides relevance — never read a full file just to learn what it is.
 
 - keep this map updated when ownership changes:
 	main.js — boot, shared clock, tick order, speeds.
@@ -55,7 +54,8 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	land.js — disturbed fraction, productivity, recovery, restoration.
 	economy.js — resources, recipes, biosphere, conservation ledger.
 	sites.js — site pool, discovery, claims, extraction, payouts.
-	map-economy.js — settlements, markets, demand/goods/workforce fields, mines, factories.
+	map-economy.js — settlements, markets, demand/goods/workforce state, mines, factories.
+	map-diffusion.js — Jacobi demand/workforce diffusion, gradient goods/worker flow, mine output.
 	investigate.js — investigation progress, float radius, Euclidean falloff, survey push, nearby list.
 	party.js — members, shared values, skills, movement, camping, hiring.
 	territory.js — per-faction influence fields, control, share, contest.
@@ -141,7 +141,7 @@ Before all topics has minimal implementation Do not try to implement 100% of som
 - experiment files cover the loop: smoke (sim), dom_smoke (boot + UI), survey_spread. run
   smoke + dom_smoke after touching main.js, index.html or load order.
 - keep every file under ~500 lines; a new feature gets a new file, header and map entry.
-- next phase: map-economy prototype (plan-map-economy.md) — diffusion engine through P1–P3,
+- next phase: map-economy prototype (plan-map-economy.md) — diffusion engine through P2–P3,
   then sites engine (P4) and comparison/integration (P5), then O2 throttle cycle.
 
 ## housekeeping

@@ -4,7 +4,7 @@
 const HUD_REFRESH_SECONDS = 0.2;
 const HUD_LOG_LINES = 8;
 const HUD_SPEED_LABEL = ['pause', '1×', '2×', '4×'];
-const HUD_LOCK_TEXT = ['locked — record 100% and hold cell', 'unlocked', 'unlocked (contested)'];
+const HUD_LOCK_TEXT = ['locked — record 100% and hold cell', 'unlocked', 'unlocked (contested)', 'exhausted'];
 
 const hud = {
 	clockEl: null,
@@ -251,24 +251,25 @@ function hudUpdateMembers() {
 function hudSiteText(i) {
 	if (!party.alive) return 'The party is lost.';
 	const idx = party.y * world.size + party.x;
-	if (mapeIsSettlement(idx)) return hudSettlementText(idx);
-	if (i < 0) return 'Open ' + TERRAIN_NAME[world.terrain[idx]] + ' at ' + party.x + ',' + party.y + '. Nothing recorded here.';
+	const state = i >= 0 ? sites.state[i] : SITE_STATE.GONE;
+	if (state === SITE_STATE.GONE || state === SITE_STATE.HIDDEN) {
+		if (mapeIsSettlement(idx)) return hudSettlementText(idx);
+		return 'Open ' + TERRAIN_NAME[world.terrain[idx]] + ' at ' + party.x + ',' + party.y + '. Nothing recorded here.';
+	}
 	const kind = sites.kind[i];
-	const state = sites.state[i];
 	if (state === SITE_STATE.MARKED) {
 		const chance = sites.discover[i] * investigation.progress[idx];
 		if (chance < 0.002) return 'Unidentified trace at ' + party.x + ',' + party.y + '. Investigate this cell.';
 		return 'Unidentified trace. Identify chance ' + Math.round(chance * 100) + '%/s.';
 	}
 	if (state === SITE_STATE.DONE) return 'Spent: ' + sitesName(i) + '.';
-	if (state === SITE_STATE.GONE) return 'Open ' + TERRAIN_NAME[world.terrain[idx]] + '.';
 	if (kind === SITE.DEPOSIT) {
 		let text = 'Deposit: ' + RES_NAME[sites.res[i]] + '. ';
 		if (party.unlocks.assay) text += 'Stock ' + sites.stock[i].toFixed(1) + ' of ' + SITE_DEPOSIT_STOCK[sites.res[i]] + '.';
 		else text += 'Stock unassessed — field assay would read it.';
 		text += hudClaimText(i);
 		const lock = mapeDepositState(party.x, party.y);
-		if (lock >= 0) text += ' Mine ' + HUD_LOCK_TEXT[lock] + '.';
+		if (lock >= 0) text += ' Mine ' + hudMineText(lock, idx) + '.';
 		return text;
 	}
 	if (kind === SITE.GATHER) return 'Cache: ' + sites.stock[i].toFixed(1) + ' ' + RES_NAME[sites.res[i]] + '.' + hudClaimText(i);
@@ -277,6 +278,11 @@ function hudSiteText(i) {
 	let text = 'Local task, reward ' + sites.stock[i].toFixed(0) + ' funds. Checks ' + SKILL_NAME[sites.res[i]] + '.';
 	if (sites.trust[i] && !party.unlocks.trust) text += ' Needs local trust.';
 	return text + hudClaimText(i);
+}
+
+function hudMineText(lock, idx) {
+	if (lock !== 1 && lock !== 2) return HUD_LOCK_TEXT[lock];
+	return HUD_LOCK_TEXT[lock] + ' (' + mape.pop[idx].toFixed(1) + '/' + MAPE_MINE_WORKERS + ' workers)';
 }
 
 function hudClaimText(i) {
@@ -321,7 +327,7 @@ function hudUpdateInspect() {
 			' d ' + hudSigned(mape.demand[slot]) + ' s ' + mape.goods[slot].toFixed(1);
 	}
 	const lock = mapeDepositState(x, y);
-	if (lock >= 0) text += '\nDeposit ' + HUD_LOCK_TEXT[lock];
+	if (lock >= 0) text += '\nDeposit ' + hudMineText(lock, idx);
 	hud.inspectEl.textContent = text;
 }
 

@@ -1,0 +1,28 @@
+Phase 1 of `plan-map-economy.md` is implemented, including the full deposit discovery loop (`discover coal → workforce demand → workers diffuse across the map to the mine → mine extracts coal → coal flows to settlements and factories`).
+
+### P0 review & P1 refinements
+- **Dormant locked mines**: removed static P0 preview fill and initial mined stock/storage on locked deposits; deposits stay completely idle until discovered, recorded to 100%, and held under uncontested player control, then register export storage and open jobs.
+- **Module split (`map-diffusion.js`)**: split diffusion/advection and mine output into `map-diffusion.js` (loaded after `map-economy.js` in `index.html`) to keep every module under 500 lines.
+- **Normalized gradient flow & stable recruitment**: switched goods/worker advection to Michaelis-Menten normalized gradients `g_k / (gSum + ref)` so 2D screened-diffusion falloff does not stall long-distance haulage, and paired site-only job retention + gradual village departure (`0.035/s`) with fast transit walking (`1.8/s`) so diffusion lag never empties nearby settlements. Industry cells (`MAPE_CELL_INDUSTRY`) hold resident workers and count toward `totalPop` without masquerading as town markets.
+- **Exact Float32 conservation & zero allocations**: edge transfers round directly through `Float32Array` slots (with a `1e-12` subnormal floor), `mapeField` returns cached typed-array views, `mapeReset` preserves live `random.seed`, `render.js` paints `CO2` across water with a `sqrt` demand curve, and `hud.js` reports worker staffing (`X.X/6 workers`) plus exhausted mines.
+
+### Gate & validation results
+- **`experiments/mape_spread.js` — 13/13 pass**
+  - **20-cell response (1×)**: midpoint crosses zero in `6.00 s`, full 20-cell arrival in `10.40 s` (gate `≤ 15 s`).
+  - **Isotropy (`r = 10` axial vs `(6,8)` diagonal)**: arrival ratio `1.0000` (`9.20 s` vs `9.20 s`), amplitude ratio `0.9945` (`0.55%` error; gate `≤ 15%`).
+  - **Water & CO2**: full water wall material/worker leak `0.000000`; `CO2` crosses water (`east_co2_gain = 267.541`, `co2_res = 0.000002`); partial wall routes `3.762` goods around open ends to the far buyer.
+  - **Coal discovery loop**: locked mine stays at `work = 0, pop = 0, mined = 0` (`mined_without_workers = 0.000000`); after unlock (`19.2 s`), workforce reaches settlement in `+3.8 s` → workers reach mine in `+6.6 s` (`mine_pop = 7.92`) → coal mined at `+10.4 s` (`36.67/40` extracted) → coal reaches active factory at `+26.0 s` (`13.95`) and both settlements at `+43.2 s` / `+60.0 s` (`0.40 → 2.22`, `0.40 → 1.58`), `transport_work = 174.48`. On seed `20261117`: `mine_pop = 9.99`, `mined = 30.62`, nearby settlement coal `27.72 → 37.87` (verified across 20 seeds, `0` drained settlements).
+  - **Conservation**: goods `ledger_res = 0.000000`, population `pop_res = 0.000000`, `CO2` `0.000002` (gate `< 1e-4`), `bad_values = 0`.
+  - **Performance**: live `64×64, R = 4` tick `0.62–0.67 ms` (gate `< 2.0 ms`). Kernel scaling (`ms/step`):
+
+| Map size | `R = 1` | `R = 4` | `R = 8` |
+| --- | ---: | ---: | ---: |
+| `64×64` | 0.28–0.30 | 0.81–0.85 | 1.68–1.78 |
+| `128×128` | 1.33–1.37 | 3.67–3.77 | 7.67–7.79 |
+| `256×256` | 4.69–4.82 | 13.50–14.93 | 25.87–29.41 |
+
+  At `256×256, R = 8`, stepping every `N = 4` ticks with scaled `dt` holds cost around `6.5–7.4 ms/tick` (`< 8 ms/tick`).
+- **Full suite**: `node --check` passes on all `.js` files; `smoke` `17/17` (`mine_workers = 11.4`, `mined = 30.3`, `near_coal = 2.7 → 4.5`, `mape_residual = 0.000000`, `pop_residual = 0.000000`), `dom_smoke` `25/25`, and `survey_spread` `7/7` pass. Standing docs (`plan-map-economy.md`, `plan-prototype.md`, `AGENTS.md`, `findings-pitfalls-skills.md`) and `archive/map-economy-p1-worklog.md` are updated and committed one file per commit.
+
+### Next step
+Proceed to **Phase 2 (population dynamics and settlement metabolism)** — implement settlement `goods` and `coal` consumption, combined satisfaction, growth/decline capped by `MAPE_POP_CAP * landProductivity`, satisfaction-plus-workforce biased migration, settlement `goods → waste` disturbance and `coal → CO2` emission (turning mined coal arriving at settlements into rising satisfaction, population growth, and atmospheric CO2), and verify with `experiments/mape_population.js` over `120 s` (supplied settlements grow, unsupplied decline, small village waste equilibrates `< 0.25` while dense cities exceed it, conservation `< 1e-4`, zero NaNs).

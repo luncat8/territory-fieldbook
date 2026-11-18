@@ -67,3 +67,16 @@ and decay must be sized from `sqrt(D / decay)` (~15 cells on a 64×64 map) rathe
 guesses. When stocks live in `Float32Array`, check `sum(goods)` conservation at `1e-4` and
 `Float64` process counters at `1e-6`, recording `after - before` on cell writes so rounding does
 not masquerade as mass creation.
+
+## normalized gradient flow and worker recruitment on a 2D diffused field
+
+Raw gradient flux `goods * (demand[j] - demand[i])` stalls 4–6 cells from a mine because 2D
+screened diffusion (`K_0(r/L)`) flattens rapidly with distance; normalizing by
+`g_k / (gSum + ref)` keeps steady haul speed across 20 cells and bends smoothly around water.
+For diffused workforce, retain permanent residents only at site-job cells (`siteNeed > 0`),
+give villages a slow departure rate (`MAPE_WORK_LEAVE`) paired with fast transit walking
+(`MAPE_WORK_SPEED`) so diffusion lag never empties a village, and mark mine/factory cells so
+arrived workers do not register as settlement markets. Round pairwise edge transfers directly
+through `Float32Array` slots (avoiding `Math.fround` lookups) with a `1e-12` subnormal floor
+for exact zero conservation drift; benchmark classic scripts via `vm.runInThisContext` because
+`vm.createContext` intercepts cross-script globals and inflates tight numerical loops 3–5×.

@@ -1,5 +1,5 @@
-// owns: settlements, settlement markets, demand/goods/workforce fields, mines, factories and engine switch
-// edit for: map-economy rates, field steps, settlement market rules, deposit unlock rules
+// owns: settlements, settlement markets, map-economy fields, mine/factory/storage pools and ledger
+// edit for: map-economy data tables, seeding, deposit unlock rules, settlement market actions
 
 const MAPE_R = 4;
 const MAPE_RES = { COAL: 0, IRON: 1, GOODS: 2, CO2: 3 };
@@ -8,19 +8,34 @@ const MAPE_ENGINE = { DIFFUSION: 0, SITES: 1 };
 const MAPE_ENGINE_NAME = ['diffusion', 'sites'];
 const MAPE_FIELD = { DEMAND: 0, GOODS: 1, POP: 2, WORKFORCE: 3 };
 const MAPE_FACTORY_STATE = { GONE: 0, BUILDING: 1, ACTIVE: 2, IDLE: 3 };
+const MAPE_CELL_INDUSTRY = 128;
 
 // All rates are per sim-second; on 1x speed, 1 s = 1 real second = 1 storyline day.
 const MAPE_SETTLE_TARGET = 0.02;
-const MAPE_SETTLE_MIN = 1;
-const MAPE_HIRE_MIN_POP = 2;
+const MAPE_SETTLE_MIN = 3;
+const MAPE_HIRE_MIN_POP = 4;
 const MAPE_POP_CAP = 120;
 const MAPE_POP_SEED_MIN = 8;
 const MAPE_POP_SEED_MAX = 20;
 const MAPE_FACTORY_CAP = 32;
 const MAPE_MINE_CAP = 32;
-const MAPE_MINE_SEED_STOCK = 18;
 const MAPE_STORAGE_CAP = 96;
+const MAPE_NEED_GOODS = 0.02;
+const MAPE_NEED_COAL = 0.005;
+const MAPE_STOCK_SEC = 60;
+const MAPE_MINE_RATE = 0.6;
+const MAPE_MINE_WORKERS = 6;
+const MAPE_FACTORY_BUILD_SEC = 20;
+const MAPE_FACTORY_BUILD_IRON = 0.2;
+const MAPE_FACTORY_BUILD_WORKERS = 4;
+const MAPE_FACTORY_COAL = 0.5;
+const MAPE_FACTORY_IRON = 0.5;
+const MAPE_FACTORY_CO2 = 0.5;
+const MAPE_FACTORY_WORKERS = 8;
+const MAPE_FACTORY_STOCK_SEC = 30;
+const MAPE_WORKFORCE_PER_UNIT = 0.4;
 const MAPE_CO2_INIT = 0.4;
+const MAPE_FOREST_CO2 = 0.004;
 const MAPE_MONEY_PER_POP = 25;
 const MAPE_MONEY_REGEN = 0.04;
 const MAPE_SUPPLY_GOODS = 0.2;
@@ -33,15 +48,24 @@ const mape = {
 	viewItem: MAPE_RES.GOODS,
 	sitesReady: false,
 	pop: null,
+	popNext: null,
 	demand: null,
 	demandNext: null,
 	goods: null,
 	goodsNext: null,
+	demandView: null,
+	goodsView: null,
 	workforce: null,
+	workforceNext: null,
+	jobNeed: null,
+	cellExport: null,
+	cellFactory: null,
 	money: null,
 	settleCells: null,
 	settleCount: 0,
 	totalPop: 0,
+	initialPop: 0,
+	popDelta: 0,
 	factoryX: new Uint8Array(MAPE_FACTORY_CAP),
 	factoryY: new Uint8Array(MAPE_FACTORY_CAP),
 	factoryState: new Uint8Array(MAPE_FACTORY_CAP),
@@ -60,6 +84,7 @@ const mape = {
 	storageCount: 0,
 	scanTimer: 0,
 	transportWork: 0,
+	minedTotal: 0,
 	initialGoods: 0,
 	massIn: 0,
 	massOut: 0,
@@ -70,13 +95,24 @@ function mapeInit(mode) {
 	const n = world.n;
 	if (!mape.pop || mape.pop.length !== n) {
 		mape.pop = new Float32Array(n);
+		mape.popNext = new Float32Array(n);
 		mape.demand = new Float32Array(MAPE_R * n);
 		mape.demandNext = new Float32Array(MAPE_R * n);
 		mape.goods = new Float32Array(MAPE_R * n);
 		mape.goodsNext = new Float32Array(MAPE_R * n);
 		mape.workforce = new Float32Array(n);
+		mape.workforceNext = new Float32Array(n);
+		mape.jobNeed = new Float32Array(n);
+		mape.cellExport = new Uint8Array(n);
+		mape.cellFactory = new Uint8Array(n);
 		mape.money = new Float32Array(n);
 		mape.settleCells = new Uint16Array(n);
+		mape.demandView = new Array(MAPE_R);
+		mape.goodsView = new Array(MAPE_R);
+		for (let r = 0; r < MAPE_R; r++) {
+			mape.demandView[r] = mape.demand.subarray(r * n, (r + 1) * n);
+			mape.goodsView[r] = mape.goods.subarray(r * n, (r + 1) * n);
+		}
 	}
 	if (mode !== undefined) mape.engine = mode;
 	mapeReset();
@@ -84,11 +120,16 @@ function mapeInit(mode) {
 
 function mapeReset() {
 	mape.pop.fill(0);
+	mape.popNext.fill(0);
 	mape.demand.fill(0);
 	mape.demandNext.fill(0);
 	mape.goods.fill(0);
 	mape.goodsNext.fill(0);
 	mape.workforce.fill(0);
+	mape.workforceNext.fill(0);
+	mape.jobNeed.fill(0);
+	mape.cellExport.fill(0);
+	mape.cellFactory.fill(0);
 	mape.money.fill(0);
 	mape.factoryState.fill(MAPE_FACTORY_STATE.GONE);
 	mape.factoryProgress.fill(0);
@@ -99,16 +140,22 @@ function mapeReset() {
 	mape.storageCount = 0;
 	mape.scanTimer = 0;
 	mape.transportWork = 0;
+	mape.minedTotal = 0;
+	mape.popDelta = 0;
 	mape.massIn = 0;
 	mape.massOut = 0;
 	mape.dissipated = 0;
 	// Isolated stream so re-seeding on engine switch never shifts world, sites or rivals.
+	const savedSeed = random.seed;
 	randomSeed(world.seed ^ 0x4a9e1c3d);
 	mapeSeedSettlements();
 	mapeSeedMines();
+	mapeSeedAtmosphere();
+	random.seed = savedSeed;
 	mapeRebuildSettlements();
-	mapeSeedPreview();
+	mape.initialPop = mape.totalPop;
 	mape.initialGoods = mapeGoodsTotal();
+	if (mape.engine === MAPE_ENGINE.DIFFUSION) mapeWarmDemand();
 }
 
 function mapeSetEngine(mode) {
@@ -119,9 +166,8 @@ function mapeSetEngine(mode) {
 }
 
 function mapeField(kind, r) {
-	const n = world.n;
-	if (kind === MAPE_FIELD.DEMAND) return mape.demand.subarray(r * n, (r + 1) * n);
-	if (kind === MAPE_FIELD.GOODS) return mape.goods.subarray(r * n, (r + 1) * n);
+	if (kind === MAPE_FIELD.DEMAND) return mape.demandView[r];
+	if (kind === MAPE_FIELD.GOODS) return mape.goodsView[r];
 	if (kind === MAPE_FIELD.POP) return mape.pop;
 	return mape.workforce;
 }
@@ -144,6 +190,20 @@ function mapeAddStorage(x, y, site) {
 	mape.storageSite[slot] = site === undefined ? 255 : site;
 	mape.storageCount = slot + 1;
 	return slot;
+}
+
+function mapeAddFactory(x, y, state) {
+	if (mape.factoryCount >= MAPE_FACTORY_CAP) return -1;
+	const f = mape.factoryCount;
+	mape.factoryX[f] = x;
+	mape.factoryY[f] = y;
+	mape.factoryState[f] = state;
+	mape.factoryProgress[f] = state === MAPE_FACTORY_STATE.ACTIVE ? 1 : 0;
+	mape.factoryStarved[f] = 0;
+	mape.factoryCount = f + 1;
+	mape.cellExport[y * world.size + x] |= MAPE_CELL_INDUSTRY;
+	mapeAddStorage(x, y, 255);
+	return f;
 }
 
 function mapePlaceSettlement(idx) {
@@ -193,83 +253,34 @@ function mapeSeedSettlements() {
 	}
 }
 
+// Locked deposits hold zero mined stock and emit no surplus or job demand until discovered and unlocked.
 function mapeSeedMines() {
-	const n = world.n;
 	for (let i = 0; i < SITE_CAP; i++) {
 		if (sites.state[i] === SITE_STATE.GONE || sites.kind[i] !== SITE.DEPOSIT) continue;
 		const mr = mapeResOf(sites.res[i]);
 		if (mr !== MAPE_RES.COAL && mr !== MAPE_RES.IRON) continue;
 		if (mape.mineCount >= MAPE_MINE_CAP) break;
 		const m = mape.mineCount;
-		const x = sites.x[i];
-		const y = sites.y[i];
-		mape.mineX[m] = x;
-		mape.mineY[m] = y;
+		mape.mineX[m] = sites.x[i];
+		mape.mineY[m] = sites.y[i];
 		mape.mineSite[m] = i;
 		mape.mineRes[m] = mr;
 		mape.mineUnlocked[m] = 0;
 		mape.mineCount = m + 1;
-		mapeAddStorage(x, y, i);
-		mape.goods[mr * n + y * world.size + x] += MAPE_MINE_SEED_STOCK;
+		mape.cellExport[sites.y[i] * world.size + sites.x[i]] |= MAPE_CELL_INDUSTRY;
 	}
 }
 
-function mapeAddRadial(field, offset, cx, cy, radius, peak, landOnly) {
-	const size = world.size;
-	const r2 = radius * radius;
-	const span = Math.ceil(radius);
-	const x0 = cx - span < 0 ? 0 : cx - span;
-	const x1 = cx + span >= size ? size - 1 : cx + span;
-	const y0 = cy - span < 0 ? 0 : cy - span;
-	const y1 = cy + span >= size ? size - 1 : cy + span;
-	for (let y = y0; y <= y1; y++) {
-		const dy = y - cy;
-		const row = y * size;
-		for (let x = x0; x <= x1; x++) {
-			const dx = x - cx;
-			const d2 = dx * dx + dy * dy;
-			if (d2 >= r2) continue;
-			const i = row + x;
-			if (landOnly && world.terrain[i] === TERRAIN.WATER) continue;
-			field[offset + i] += peak * (1 - d2 / r2);
-		}
-	}
-}
-
-// Phase 0 seeds static gradients from real settlements, mines and forests so every view reads before P1 dynamics.
-function mapeSeedPreview() {
+function mapeSeedAtmosphere() {
 	const n = world.n;
-	const size = world.size;
-	const demand = mape.demand;
+	const off = MAPE_RES.CO2 * n;
 	const goods = mape.goods;
-	const work = mape.workforce;
-	const co2Demand = MAPE_RES.CO2 * n;
-	const co2Goods = MAPE_RES.CO2 * n;
-	for (let k = 0; k < mape.settleCount; k++) {
-		const idx = mape.settleCells[k];
-		const x = idx % size;
-		const y = (idx / size) | 0;
-		const p = mape.pop[idx];
-		mapeAddRadial(demand, MAPE_RES.GOODS * n, x, y, 7, p * 0.22, true);
-		mapeAddRadial(demand, MAPE_RES.COAL * n, x, y, 6, p * 0.09, true);
-		mapeAddRadial(demand, co2Demand, x, y, 6, p * 0.06, false);
-		mapeAddRadial(work, 0, x, y, 3, p * 0.06, true);
-	}
-	for (let m = 0; m < mape.mineCount; m++) {
-		const x = mape.mineX[m];
-		const y = mape.mineY[m];
-		mapeAddRadial(demand, mape.mineRes[m] * n, x, y, 9, -5.5, true);
-		mapeAddRadial(work, 0, x, y, 5, 1.8, true);
-	}
-	for (let i = 0; i < n; i++) {
-		const b = economy.biomass[i];
-		goods[co2Goods + i] = world.terrain[i] === TERRAIN.WATER ? MAPE_CO2_INIT * 0.5 : MAPE_CO2_INIT * (0.6 + b * 0.8);
-		if (world.terrain[i] === TERRAIN.FOREST) demand[co2Demand + i] -= 2.2 * b;
-	}
+	for (let i = 0; i < n; i++) goods[off + i] = MAPE_CO2_INIT;
 }
 
 function mapeRebuildSettlements() {
 	const pop = mape.pop;
+	const exp = mape.cellExport;
 	const cells = mape.settleCells;
 	let count = 0;
 	let sum = 0;
@@ -277,7 +288,7 @@ function mapeRebuildSettlements() {
 		const p = pop[i];
 		if (p <= 0) continue;
 		sum += p;
-		if (p < MAPE_SETTLE_MIN) continue;
+		if (p < MAPE_SETTLE_MIN || (exp[i] & MAPE_CELL_INDUSTRY) !== 0) continue;
 		cells[count] = i;
 		count++;
 	}
@@ -285,19 +296,37 @@ function mapeRebuildSettlements() {
 	mape.totalPop = sum;
 }
 
+function mapeUnlockMine(m) {
+	if (m < 0 || m >= mape.mineCount || mape.mineUnlocked[m]) return false;
+	const x = mape.mineX[m];
+	const y = mape.mineY[m];
+	mape.mineUnlocked[m] = 1;
+	mapeAddStorage(x, y, mape.mineSite[m]);
+	eventsAdd('Unlocked ' + MAPE_RES_NAME[mape.mineRes[m]] + ' deposit at ' + x + ',' + y + ' — recruiting workers.');
+	return true;
+}
+
+function mapeMineActive(m) {
+	if (!mape.mineUnlocked[m]) return false;
+	const slot = mape.mineSite[m];
+	const state = sites.state[slot];
+	if (state === SITE_STATE.DONE || state === SITE_STATE.GONE || sites.stock[slot] <= 0) return false;
+	return territoryContest(mape.mineY[m] * world.size + mape.mineX[m], FACTION_PLAYER) >= 1;
+}
+
 function mapeSyncLocks() {
 	const size = world.size;
 	const progress = investigation.progress;
+	const control = territory.control;
 	for (let m = 0; m < mape.mineCount; m++) {
 		if (mape.mineUnlocked[m]) continue;
 		const slot = mape.mineSite[m];
 		if (sites.state[slot] !== SITE_STATE.VISIBLE) continue;
-		if (sites.claim[slot] !== FACTION_PLAYER + 1) continue;
 		const idx = mape.mineY[m] * size + mape.mineX[m];
 		if (progress[idx] < 1) continue;
+		if (sites.claim[slot] !== FACTION_PLAYER + 1 && control[idx] !== FACTION_PLAYER) continue;
 		if (territoryContest(idx, FACTION_PLAYER) < 1) continue;
-		mape.mineUnlocked[m] = 1;
-		eventsAdd('Unlocked ' + MAPE_RES_NAME[mape.mineRes[m]] + ' deposit at ' + mape.mineX[m] + ',' + mape.mineY[m] + ' for mining.');
+		mapeUnlockMine(m);
 	}
 }
 
@@ -305,7 +334,8 @@ function mapeRecoverMoney(seconds) {
 	const cells = mape.settleCells;
 	const money = mape.money;
 	const pop = mape.pop;
-	const rate = MAPE_MONEY_REGEN * seconds;
+	let rate = MAPE_MONEY_REGEN * seconds;
+	if (rate > 1) rate = 1;
 	for (let k = 0; k < mape.settleCount; k++) {
 		const idx = cells[k];
 		const cap = pop[idx] * MAPE_MONEY_PER_POP;
@@ -316,23 +346,19 @@ function mapeRecoverMoney(seconds) {
 	}
 }
 
-function mapeStepDiffusion(seconds) {
-	mapeSyncLocks();
-	mapeRecoverMoney(seconds);
-}
-
 function mapeStepSites(seconds) {
 	mapeSyncLocks();
 	mapeRecoverMoney(seconds);
 }
 
 function mapeStep(seconds) {
+	if (seconds <= 0) return;
 	if (mape.engine === MAPE_ENGINE.SITES) mapeStepSites(seconds);
 	else mapeStepDiffusion(seconds);
 }
 
 function mapeIsSettlement(idx) {
-	return idx >= 0 && mape.pop[idx] >= MAPE_SETTLE_MIN;
+	return idx >= 0 && mape.pop[idx] >= MAPE_SETTLE_MIN && (mape.cellExport[idx] & MAPE_CELL_INDUSTRY) === 0;
 }
 
 function mapeNearestSettlement(x, y) {
@@ -363,6 +389,8 @@ function mapeDepositState(x, y) {
 	const m = mapeMineAt(x, y);
 	if (m < 0) return -1;
 	if (!mape.mineUnlocked[m]) return 0;
+	const slot = mape.mineSite[m];
+	if (sites.stock[slot] <= 0 || sites.state[slot] === SITE_STATE.DONE) return 3;
 	return territoryContest(y * world.size + x, FACTION_PLAYER) >= 1 ? 1 : 2;
 }
 
@@ -429,7 +457,9 @@ function mapeCanHire(idx) {
 
 function mapeRecruit(idx, fee) {
 	if (!mapeCanHire(idx)) return false;
-	mape.pop[idx] -= 1;
+	const before = mape.pop[idx];
+	mape.pop[idx] = before - 1;
+	mape.popDelta -= before - mape.pop[idx];
 	mape.money[idx] += fee;
 	mapeRebuildSettlements();
 	return true;
@@ -446,9 +476,13 @@ function mapeLedgerResidual() {
 	return (mapeGoodsTotal() + mape.massOut) - (mape.initialGoods + mape.massIn);
 }
 
+function mapePopResidual() {
+	return mape.totalPop - (mape.initialPop + mape.popDelta);
+}
+
 if (typeof module !== 'undefined') {
 	module.exports = {
-		mape, mapeInit, mapeStep, mapeField, mapeSetEngine,
-		MAPE_R, MAPE_RES, MAPE_RES_NAME, MAPE_ENGINE, MAPE_ENGINE_NAME, MAPE_FIELD
+		mape, mapeInit, mapeStep, mapeField, mapeSetEngine, mapeAddStorage, mapeAddFactory, mapeUnlockMine,
+		mapeLedgerResidual, mapePopResidual, MAPE_R, MAPE_RES, MAPE_RES_NAME, MAPE_ENGINE, MAPE_ENGINE_NAME, MAPE_FIELD
 	};
 }

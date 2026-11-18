@@ -164,7 +164,7 @@ function renderPaintCells() {
 					g += (104 - g) * d * 0.7;
 					b += (70 - b) * d * 0.7;
 				}
-			} else if (t === TERRAIN.WATER) {
+			} else if (t === TERRAIN.WATER && (mape.viewItem !== MAPE_RES.CO2 || (view !== VIEW.DEMAND && view !== VIEW.SUPPLY))) {
 				r *= 0.72;
 				g *= 0.72;
 				b *= 0.78;
@@ -188,23 +188,25 @@ function renderPaintCells() {
 				b = 48;
 				if (v < 0) {
 					const raw = -v / MAPE_VIEW_DEMAND_MAX;
-					const k = raw > 1 ? 1 : raw;
+					const k = Math.sqrt(raw > 1 ? 1 : raw);
 					r += (44 - r) * k;
 					g += (196 - g) * k;
 					b += (114 - b) * k;
 				} else if (v > 0) {
 					const raw = v / MAPE_VIEW_DEMAND_MAX;
-					const k = raw > 1 ? 1 : raw;
+					const k = Math.sqrt(raw > 1 ? 1 : raw);
 					r += (220 - r) * k;
 					g += (76 - g) * k;
 					b += (68 - b) * k;
 				}
+				if (t === TERRAIN.WATER) b += (118 - b) * 0.35;
 			} else if (view === VIEW.SUPPLY) {
 				const raw = goods[itemOffset + i] / MAPE_VIEW_GOODS_MAX;
 				const k = raw <= 0 ? 0 : Math.sqrt(raw > 1 ? 1 : raw);
 				r = 24 + 196 * k;
 				g = 30 + 198 * k;
 				b = 38 + 156 * k;
+				if (t === TERRAIN.WATER) b += (118 - b) * 0.35;
 			} else {
 				const raw = work[i] / MAPE_VIEW_WORK_MAX;
 				const k = raw <= 0 ? 0 : Math.sqrt(raw > 1 ? 1 : raw);

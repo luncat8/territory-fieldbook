@@ -39,7 +39,8 @@ File map:
 | `land.js` | disturbed fraction, productivity, recovery, restoration |
 | `economy.js` | resources, recipes, biosphere, conservation ledger |
 | `sites.js` | site pool, discovery, claims, extraction, site payouts |
-| `map-economy.js` | settlements, markets, demand/goods/workforce fields, mines, factories (`plan-map-economy.md`) |
+| `map-economy.js` | settlements, markets, demand/goods/workforce state, mines, factories (`plan-map-economy.md`) |
+| `map-diffusion.js` | Jacobi demand/workforce diffusion, gradient goods/worker flow, mine output (`plan-map-economy.md`) |
 | `investigate.js` | investigation progress and distance falloff |
 | `party.js` | members, shared values, skills, movement, camping, hiring |
 | `territory.js` | influence fields per faction, control, share, contest |
