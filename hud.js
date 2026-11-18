@@ -45,6 +45,7 @@ function hudInit() {
 	hudBuildTime();
 	hudBuildViews();
 	hudEconomyInit();
+	hudSceneInit();
 	hud.key = '';
 	hud.logVersion = -1;
 	hud.statusVersion = -1;
@@ -134,7 +135,7 @@ function hudBuildViews() {
 
 function hudSyncItemVisibility() {
 	if (!hud.itemGroup) return;
-	hud.itemGroup.hidden = render.view !== VIEW.DEMAND && render.view !== VIEW.SUPPLY;
+	hud.itemGroup.hidden = !renderIsFieldView(render.view);
 }
 
 function hudSetView(view) {
@@ -142,6 +143,7 @@ function hudSetView(view) {
 	render.view = view;
 	for (let k = 0; k < hud.viewRadios.length; k++) hud.viewRadios[k].checked = view === k;
 	hudSyncItemVisibility();
+	hudSyncMapLegend();
 	hudRefresh(true);
 	renderDraw();
 }
@@ -150,6 +152,7 @@ function hudSetItem(item) {
 	if (mape.viewItem === item) return;
 	mape.viewItem = item;
 	for (let k = 0; k < hud.itemRadios.length; k++) hud.itemRadios[k].checked = item === k;
+	hudSyncMapLegend();
 	hudRefresh(false);
 	renderDraw();
 }
@@ -164,6 +167,13 @@ function hudTick(dt) {
 function hudRefresh(force) {
 	if (!hud.clockEl) return;
 	hudUpdateClock();
+	if (mapScene.id) {
+		hudSceneUpdate();
+		hudUpdateInspect();
+		hudUpdateStatus();
+		hudUpdateLog(force);
+		return;
+	}
 	hudUpdateStats();
 	hudUpdateSkills();
 	hudUpdateMembers();
@@ -177,10 +187,10 @@ function hudRefresh(force) {
 }
 
 function hudUpdateClock() {
-	const sec = Math.floor(clock.seconds);
+	const sec = Math.floor(clock.seconds + 1e-8);
 	const day = sec + 1;
 	const speedText = clock.speed === 0 ? 'paused' : HUD_SPEED_LABEL[clock.speed];
-	let text = 'day ' + day + ' · ' + sec + 's · ' + speedText;
+	let text = mapScene.id ? clock.seconds.toFixed(2) + 's · ' + speedText : 'day ' + day + ' · ' + sec + 's · ' + speedText;
 	if (!party.alive) text += ' · lost';
 	hud.clockEl.textContent = text;
 	for (let k = 0; k < hud.timeButtons.length; k++) hud.timeButtons[k].className = clock.speed === k ? 'ui-chip on' : 'ui-chip';

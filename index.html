@@ -24,21 +24,59 @@ body {
 	background: #0d1117;
 	color: #d7dee7;
 	font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+	color-scheme: dark;
 }
 #ui-app {
 	display: flex;
 	align-items: flex-start;
-	gap: 14px;
-	padding: 14px;
+	gap: 20px;
+	padding: 18px;
+	max-width: 1480px;
+	margin: 0 auto;
 }
 #ui-mapwrap {
-	flex: 0 1 768px;
+	flex: 1 1 768px;
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
 	gap: 10px;
 }
-#ui-canvas {
+#ui-app:not(.ui-scene-active) { justify-content: center; }
+#ui-app:not(.ui-scene-active) #ui-mapwrap { max-width: clamp(480px, 100vh - 214px, 768px); }
+#ui-maphead { display: flex; align-items: end; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; }
+#ui-maphead h1 { margin: 1px 0 0; font-size: clamp(21px, 4vw, 30px); font-weight: 660; letter-spacing: -.045em; line-height: 1.1; color: #eef5fa; }
+.ui-kicker, .ui-field-meta span, .ui-scene-controls > span, .ui-scene-stat span {
+	font: 600 10px/1.4 ui-monospace, monospace;
+	letter-spacing: .1em;
+	text-transform: uppercase;
+	color: #96aabc;
+}
+.ui-kicker { color: #79c9d4; }
+#ui-scene-nav { display: flex; flex-wrap: wrap; gap: 5px; }
+#ui-scene-nav a {
+	padding: 3px 8px;
+	text-decoration: none;
+	font-size: 12px;
+	color: var(--ui-text);
+	background: var(--ui-surface);
+	border: 1px solid var(--ui-line);
+	border-radius: var(--ui-radius-sm);
+}
+#ui-scene-nav a:hover, #ui-scene-nav a[aria-current="page"] { color: var(--ui-text-strong); border-color: var(--ui-accent-line); }
+#ui-maps { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.ui-scene-active #ui-maps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ui-field { min-width: 0; }
+.ui-field-meta, .ui-field-legend { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.ui-field-meta { margin-bottom: 5px; }
+.ui-field-meta h2 { margin: 0; font-size: 13px; font-weight: 650; color: #e2edf6; }
+.ui-field-legend { justify-content: start; align-items: center; flex-wrap: wrap; margin-top: 5px; color: #98aabd; font-size: 11px; }
+.ui-scale { width: 43px; height: 5px; border-radius: 5px; background: linear-gradient(90deg, #102239, #4594bd, #eff9ff); }
+.ui-scale.demand { background: linear-gradient(90deg, #411723, #d85c36, #ffe77f); }
+.ui-scale.signed { background: linear-gradient(90deg, #40cfa3, #3f232e, #ffe77f); }
+.ui-map-key { margin-left: auto; white-space: nowrap; }
+.ui-town { color: #f4ead5; }
+.ui-source { color: #86edb0; }
+.ui-field canvas {
 	display: block;
 	width: 100%;
 	height: auto;
@@ -49,11 +87,11 @@ body {
 	cursor: crosshair;
 }
 #ui-panel {
-	flex: 0 0 340px;
+	flex: 0 0 326px;
 	display: flex;
 	flex-direction: column;
 	gap: 10px;
-	max-height: calc(100vh - 28px);
+	max-height: calc(100vh - 36px);
 	overflow-y: auto;
 	padding-right: 4px;
 }
@@ -72,6 +110,8 @@ button.ui-chip {
 	font: inherit;
 	cursor: pointer;
 }
+button.ui-chip:hover:not(:disabled) { border-color: #4f8d9d; }
+button.ui-chip:disabled { opacity: .45; cursor: default; }
 button.ui-chip.on { background: #2c5f6e; border-color: #4f8d9d; color: #f2fbfd; }
 .ui-block {
 	border-top: 1px solid #1d2733;
@@ -127,7 +167,17 @@ button.ui-chip.on { background: #2c5f6e; border-color: #4f8d9d; color: #f2fbfd; 
 	white-space: pre-line;
 	color: #c8d2dd;
 }
-#ui-inspect { font-size: 12px; margin-top: 6px; }
+#ui-inspect { font-size: 12px; margin-top: 8px; }
+.ui-economy-toggles { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: #c7d6e2; }
+.ui-economy-toggles label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.ui-economy-toggles input { margin: 0; accent-color: #66bdc8; }
+.ui-scene-controls { display: flex; align-items: center; gap: 5px 8px; flex-wrap: wrap; }
+.ui-scene-controls + .ui-scene-controls { margin-top: 6px; }
+#ui-scene-note { margin: 6px 0 0; color: #9eafbf; font-size: 12px; }
+#ui-scene-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 9px; }
+.ui-scene-stat { padding: 7px; border-radius: 4px; border: 1px solid var(--ui-line); background: #141d27; }
+.ui-scene-stat strong { display: block; font: 600 15px/1.3 ui-monospace, monospace; color: #dfecf6; }
+#ui-survey-panel { display: flex; flex-direction: column; gap: 10px; }
 #ui-engine-note { margin: 5px 0; color: #aab8c7; font-size: 12px; }
 #ui-site { color: #e6edf4; }
 #ui-actions { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
@@ -155,35 +205,80 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 	gap: 2px;
 }
 #ui-log li:first-child { color: #d5e2ee; }
-@media (max-width: 1000px) {
+@media (max-width: 960px) {
 	#ui-app { flex-direction: column; }
-	#ui-mapwrap { flex: 0 0 auto; width: 100%; }
+	#ui-app:not(.ui-scene-active) #ui-mapwrap, #ui-mapwrap { flex: 0 0 auto; max-width: none; width: 100%; }
 	#ui-panel { flex: 0 0 auto; width: 100%; max-width: none; max-height: none; }
+	#ui-app.ui-scene-active { gap: 10px; }
+	.ui-scene-active #ui-mapwrap, .ui-scene-active #ui-panel { display: contents; }
+	.ui-scene-active #ui-maphead { order: -3; width: 100%; }
+	.ui-scene-active #ui-clock, .ui-scene-active #ui-time { order: -2; }
+	.ui-scene-active #ui-maps { width: 100%; }
+}
+@media (max-width: 560px) {
+	#ui-app { padding: 10px; }
+	.ui-scene-active #ui-maps { grid-template-columns: minmax(0, 1fr); }
+	.ui-map-key { margin-left: 0; }
 }
 </style>
 </head>
 <body>
 <div id="ui-app">
-	<div id="ui-mapwrap">
-		<canvas id="ui-canvas"></canvas>
+	<main id="ui-mapwrap">
+		<header id="ui-maphead">
+			<div><div class="ui-kicker" id="ui-map-kicker">Live survey</div><h1 id="ui-map-title">Territory Fieldbook</h1></div>
+			<nav id="ui-scene-nav" aria-label="Economy test scenes">
+				<a id="ui-survey-link" href="?" title="Start a fresh survey in this tab" hidden>Survey</a>
+				<a id="ui-scene-a" href="?scene=a" target="_blank" rel="noopener" title="Open the Catchment test scene in a new tab">Test scene A</a>
+				<a id="ui-scene-b" href="?scene=b" target="_blank" rel="noopener" title="Open the Queue test scene in a new tab">Test scene B</a>
+			</nav>
+		</header>
 		<div id="ui-views" class="ui-row"></div>
-		<section class="ui-block"><h2>around</h2><div id="ui-nearby"></div></section>
-	</div>
+		<div id="ui-scene-tools" hidden>
+			<div class="ui-scene-controls"><span>Map tool</span><div id="ui-tools" class="ui-row"></div></div>
+			<div class="ui-scene-controls"><span>Replay · initial demand</span><div id="ui-replay" class="ui-row"></div></div>
+			<p id="ui-scene-note">Select a tool, then click either map. The same cell is marked on both.</p>
+		</div>
+		<div id="ui-maps">
+			<section class="ui-field">
+				<div id="ui-field-meta" class="ui-field-meta" hidden><h2 id="ui-map-layer">Supply · goods</h2><span id="ui-map-unit">Stock per cell</span></div>
+				<canvas id="ui-canvas" aria-label="Survey map"></canvas>
+				<div id="ui-field-legend" class="ui-field-legend" hidden><i id="ui-scale" class="ui-scale" aria-hidden="true"></i><span id="ui-scale-label">Empty → stocked</span><span class="ui-map-key" id="ui-site-key"></span></div>
+			</section>
+			<section class="ui-field" id="ui-demand-map" hidden>
+				<div class="ui-field-meta"><h2>Demand · coal</h2><span id="ui-scene-demand-unit">Pull / 0–1</span></div>
+				<canvas id="ui-demand-canvas" aria-label="Coal demand map"></canvas>
+				<div class="ui-field-legend"><i id="ui-scene-demand-scale" class="ui-scale demand" aria-hidden="true"></i><span id="ui-scene-demand-key">Low → high pull</span><span class="ui-map-key"><span class="ui-town">○</span> Settlement · <span class="ui-source">▲</span> Mine</span></div>
+			</section>
+		</div>
+		<section id="ui-around-panel" class="ui-block"><h2>around</h2><div id="ui-nearby"></div></section>
+	</main>
 	<aside id="ui-panel">
-		<div id="ui-clock">day 1 · 0s · 1×</div>
+		<div id="ui-clock">day 1 · 0s · 4×</div>
 		<div id="ui-time" class="ui-row"></div>
 		<section class="ui-block">
 			<h2>economy</h2>
 			<div id="ui-engine" class="ui-row"></div>
 			<p id="ui-engine-note" aria-live="polite"></p>
-			<label><input id="ui-surplus" type="checkbox" checked> Stock lowers demand</label>
+			<div class="ui-economy-toggles">
+				<label><input id="ui-surplus" type="checkbox" checked> Stock lowers demand</label>
+				<label><input id="ui-flow" type="checkbox" checked> Show flow</label>
+				<label id="ui-pressure-control" title="Stock lowers the pull on its own tile, even without a settlement nearby" hidden><input id="ui-pressure" type="checkbox"> Stock cools tiles</label>
+			</div>
+			<div id="ui-scene-stats" hidden>
+				<div class="ui-scene-stat"><span>Stored</span><strong id="ui-scene-stock">0.0</strong></div>
+				<div class="ui-scene-stat"><span>Mined</span><strong id="ui-scene-mined">0.0</strong></div>
+				<div class="ui-scene-stat"><span>Used</span><strong id="ui-scene-used">0.0</strong></div>
+			</div>
 			<div id="ui-inspect"></div>
 		</section>
-		<section class="ui-block"><h2>party</h2><div id="ui-stats"></div></section>
-		<section class="ui-block"><h2>skills</h2><div id="ui-skills"></div></section>
-		<section class="ui-block"><h2>members</h2><div id="ui-members"></div></section>
-		<section class="ui-block"><h2>here</h2><div id="ui-site"></div><div id="ui-actions"></div></section>
-		<section class="ui-block"><h2>victory</h2><div id="ui-victory"></div></section>
+		<div id="ui-survey-panel">
+			<section class="ui-block"><h2>party</h2><div id="ui-stats"></div></section>
+			<section class="ui-block"><h2>skills</h2><div id="ui-skills"></div></section>
+			<section class="ui-block"><h2>members</h2><div id="ui-members"></div></section>
+			<section class="ui-block"><h2>here</h2><div id="ui-site"></div><div id="ui-actions"></div></section>
+			<section class="ui-block"><h2>victory</h2><div id="ui-victory"></div></section>
+		</div>
 		<div id="ui-status"></div>
 		<ol id="ui-log"></ol>
 	</aside>
@@ -195,17 +290,22 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 <script src="economy.js"></script>
 <script src="sites.js"></script>
 <script src="map-economy.js"></script>
+<script src="map-industry.js"></script>
 <script src="map-diffusion.js"></script>
 <script src="map-market-flow.js"></script>
+<script src="map-market-demand.js"></script>
+<script src="map-scenes.js"></script>
 <script src="investigate.js"></script>
 <script src="party.js"></script>
 <script src="territory.js"></script>
 <script src="rivals.js"></script>
 <script src="victory.js"></script>
 <script src="render.js"></script>
+<script src="render-economy.js"></script>
 <script src="input.js"></script>
 <script src="hud.js"></script>
 <script src="hud-economy.js"></script>
+<script src="hud-scenes.js"></script>
 <script src="actions.js"></script>
 <script src="main.js"></script>
 </body>

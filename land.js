@@ -4,6 +4,7 @@
 // indexed by world terrain id: meadow, forest, water, swamp, hills, desert (per second)
 const LAND_RECOVERY = [0.00020, 0.00028, 0, 0.00014, 0.00008, 0.00006];
 const LAND_DISTURB_PER_UNIT = 0.006;
+const LAND_MINE_DISTURB_PER_UNIT = 0.00025;
 const LAND_RESTORE_AMOUNT = 0.25;
 const LAND_RESTORE_FUNDS = 12;
 const LAND_RESTORE_SUPPLIES = 2;

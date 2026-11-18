@@ -4,7 +4,7 @@
 const SITE_CAP = 96;
 const SITE = { GATHER: 0, ITEM: 1, SKILL: 2, TASK: 3, DEPOSIT: 4 };
 const SITE_STATE = { HIDDEN: 0, MARKED: 1, VISIBLE: 2, DONE: 3, GONE: 4 };
-const SITE_DEPOSIT_STOCK = [50, 55, 45, 25, 40, 0];
+const SITE_DEPOSIT_STOCK = [50, 55, 1400, 25, 1400, 0];
 const SITE_REVEAL_PROGRESS = 0.2;
 const SITE_SOURCE_STRENGTH = 0.8;
 const SITE_SOURCE_RADIUS = 3.5;
@@ -19,7 +19,7 @@ const sites = {
 	kind: new Uint8Array(SITE_CAP),
 	state: new Uint8Array(SITE_CAP),
 	res: new Uint8Array(SITE_CAP),
-	stock: new Float32Array(SITE_CAP),
+	stock: new Float64Array(SITE_CAP),
 	claim: new Uint8Array(SITE_CAP),
 	life: new Float32Array(SITE_CAP),
 	discover: new Float32Array(SITE_CAP),
@@ -29,7 +29,7 @@ const sites = {
 	remainingStock: 0
 };
 
-function sitesPopulate() {
+function sitesReset() {
 	sites.state.fill(SITE_STATE.GONE);
 	sites.claim.fill(0);
 	sites.life.fill(0);
@@ -37,16 +37,16 @@ function sitesPopulate() {
 	sites.discover.fill(0);
 	sites.trust.fill(0);
 	sites.version++;
+	sites.initialStock = 0;
+	sites.remainingStock = 0;
+}
+
+function sitesPopulate() {
+	sitesReset();
 	randomSeed(world.seed ^ 0x51ed270b);
 	sitesPlaceStarter();
 	sitesPlaceDeposits();
 	sitesPlaceOneShots();
-	let total = 0;
-	for (let i = 0; i < SITE_CAP; i++) {
-		if (sites.kind[i] === SITE.DEPOSIT && sites.state[i] !== SITE_STATE.GONE) total += sites.stock[i];
-	}
-	sites.initialStock = total;
-	sites.remainingStock = total;
 }
 
 function sitesFreeSlot() {
@@ -69,6 +69,25 @@ function sitesPlace(kind, idx, res, stock, state, life, discover) {
 	sites.trust[slot] = 0;
 	sites.version++;
 	return slot;
+}
+
+function sitesPlaceDeposit(idx, res, state, discover = 0) {
+	const stock = SITE_DEPOSIT_STOCK[res];
+	const slot = sitesPlace(SITE.DEPOSIT, idx, res, stock, state, 0, discover);
+	if (slot >= 0) {
+		sites.initialStock += stock;
+		sites.remainingStock += stock;
+	}
+	return slot;
+}
+
+function sitesRemoveDeposit(slot) {
+	sites.initialStock -= sites.stock[slot];
+	sites.remainingStock -= sites.stock[slot];
+	sites.stock[slot] = 0;
+	sites.claim[slot] = 0;
+	sites.state[slot] = SITE_STATE.GONE;
+	sites.version++;
 }
 
 function sitesFindCellNear(cx, cy, radius, terrainWanted) {
@@ -102,11 +121,11 @@ function sitesPlaceStarter() {
 	const food = sitesFindCellNear(sx, sy, 6, TERRAIN.MEADOW);
 	if (food >= 0) sitesPlace(SITE.GATHER, food, RES.FOOD, randomRange(10, 18), SITE_STATE.VISIBLE, 0, 0);
 	const timber = sitesFindCellNear(sx, sy, 8, TERRAIN.FOREST);
-	if (timber >= 0) sitesPlace(SITE.DEPOSIT, timber, RES.TIMBER, SITE_DEPOSIT_STOCK[RES.TIMBER], SITE_STATE.VISIBLE, 0, 0);
+	if (timber >= 0) sitesPlaceDeposit(timber, RES.TIMBER, SITE_STATE.VISIBLE);
 	const task = sitesFindCellNear(sx, sy, 5, -1);
 	if (task >= 0) sitesPlace(SITE.TASK, task, randomInt(SKILL_COUNT), randomRange(28, 45), SITE_STATE.VISIBLE, 0, 0);
 	const coal = sitesFindCellNear(sx, sy, 4, -1);
-	if (coal >= 0) sitesPlace(SITE.DEPOSIT, coal, RES.FUEL, SITE_DEPOSIT_STOCK[RES.FUEL], SITE_STATE.MARKED, 0, 0.08);
+	if (coal >= 0) sitesPlaceDeposit(coal, RES.FUEL, SITE_STATE.MARKED, 0.08);
 }
 
 function sitesPlaceDeposits() {
@@ -120,7 +139,7 @@ function sitesPlaceDeposits() {
 		let idx = sitesFindCellNear(ax, ay, 6, wanted[k % wanted.length]);
 		if (idx < 0) idx = sitesFindCellNear(ax, ay, 8, -1);
 		if (idx < 0) continue;
-		sitesPlace(SITE.DEPOSIT, idx, res, SITE_DEPOSIT_STOCK[res], sitesVisibility(), 0, randomRange(0.05, 0.10));
+		sitesPlaceDeposit(idx, res, sitesVisibility(), randomRange(0.05, 0.10));
 	}
 }
 
@@ -188,13 +207,13 @@ function sitesExtract(i, amount, owner) {
 	const units = yieldAmount < stock ? yieldAmount : stock;
 	sites.stock[i] = stock - units;
 	sites.remainingStock -= units;
-	landDisturb(idx, units * LAND_DISTURB_PER_UNIT);
+	const res = sites.res[i];
+	const impact = res === RES.FUEL || res === RES.ORE ? LAND_MINE_DISTURB_PER_UNIT : LAND_DISTURB_PER_UNIT;
+	landDisturb(idx, units * impact);
 	economyAccountMining(units);
-	if (owner === FACTION_PLAYER) economyAddResource(sites.res[i], units * EXTRACT_SHARE);
+	if (owner === FACTION_PLAYER) economyAddResource(res, units * EXTRACT_SHARE);
 	if (owner >= 0) sitesClaim(i, owner);
-	if (sites.stock[i] <= 0.05) {
-		sites.remainingStock -= sites.stock[i];
-		sites.stock[i] = 0;
+	if (sites.stock[i] <= 0) {
 		sites.state[i] = SITE_STATE.DONE;
 		sites.version++;
 		if (party.working && party.x === sites.x[i] && party.y === sites.y[i]) party.working = false;

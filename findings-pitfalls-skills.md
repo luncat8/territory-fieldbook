@@ -80,3 +80,12 @@ arrived workers do not register as settlement markets. Round pairwise edge trans
 through `Float32Array` slots (avoiding `Math.fround` lookups) with a `1e-12` subnormal floor
 for exact zero conservation drift; benchmark classic scripts via `vm.runInThisContext` because
 `vm.createContext` intercepts cross-script globals and inflates tight numerical loops 3–5×.
+
+## import pull and intake capacity are different controls
+
+A short queue reading only its own stock barely notices a spill on the tile next door.
+Let nearby accessible stock cool the pull, but don't also scale queue service by that cooled
+pull: supply would increase congestion, reduce service, and push demand down again. With a
+fixed service window and a stock-sensitive signal, the backlog can clear and the route can
+recover. Trace accepted transfers, not proposed ones: a full queue can refuse an otherwise
+steep uphill route.

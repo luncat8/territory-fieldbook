@@ -55,9 +55,9 @@ File map:
 ## Time
 
 Simulation time runs in real-time seconds on 1× speed, with `1 s = 1 day` in storyline. One
-fixed tick is `0.2 s` (`SIM_STEP_SEC`). Speeds are 0, 5, 10 and 20 ticks per real second
-(`0×`, `1×`, `2×`, `4×`, i.e. 0, 1, 2 and 4 storyline days per real second). A frame
-accumulates real time and runs whole ticks with a 64-tick catch-up guard. The party's action is
+fixed tick is `0.05 s` (`SIM_STEP_SEC`). Speeds are 0, 20, 40 and 80 ticks per real second
+(`0×`, `1×`, `2×`, `4×`, the default). Each frame runs whole ticks out of up to 0.4 s of
+accumulated simulation time. The party's action is
 instantaneous (click to jump); everything else advances per tick. Every rate is per simulation
 second (`/s`, equal to per storyline day) and every duration is in seconds.
 
@@ -127,8 +127,8 @@ way to identify it. Timed sites lose lifetime in seconds and disappear when it r
 
 Visibility at placement: 35 % immediately visible, 35 % marked, 30 % hidden.
 
-Placement per map: 12 deposits (covering food, timber, ore, fuel and crystal, with extra ore
-and fuel for the map-economy loop), 10 gather sites, 5 items, 4 skill sites, 5 tasks, plus
+Placement per map: 12 deposits (food, timber, fuel and crystal), 10 gather sites,
+5 items, 4 skill sites, 5 tasks, plus
 timed one-shot sites that spawn with 0.035/s probability, live 360–960 s and use the same
 hidden/marked discovery rules. Four starter sites are placed within nine cells of the party so
 the first minute has a decision.
@@ -149,7 +149,9 @@ holding at least equal influence in its cell; otherwise it is blocked (the rival
 
 Extraction: `min(stock, rate[resource] * workFactor * productivity * seconds)`; 60 % of the mass
 goes to the claimer's inventory (player only), the rest is left in the cell as disturbance, and
-both are recorded in the ledger. A deposit is done at zero stock.
+both are recorded in the ledger. Map mines extract into their local stock instead. A deposit
+is done at zero stock. Fuel and ore reserves hold 1,400 units; ore placement opens with
+factory demand.
 
 ## Party
 
@@ -243,9 +245,10 @@ The stored energy counters are shown in the victory panel as evidence.
 
 ## Land condition
 
-`d` is a `Float32Array` per cell, 0 untouched … 1 fully disturbed. Mining adds
-`units × 0.006` per extracted unit, so a fully worked deposit sits just above the 0.25
-threshold. Productivity is `1 − d`; it scales deposit yield and biosphere growth. Natural
+`d` is a `Float32Array` per cell, 0 untouched … 1 fully disturbed. Mineable fuel and ore
+add `units × 0.00025` disturbance so their deeper deposits stay productive longer.
+Other deposits add `units × 0.006`. Productivity is `1 − d`; it scales deposit yield and
+biosphere growth. Natural
 recovery runs at the terrain rate scaled by `(1 − d)`: the more disturbed a cell is, the
 slower it recovers, and fully disturbed land (`d = 1`) does not recover on its own.
 Active restoration costs 12 funds and 2 supplies and removes 0.25 `d` from the party's
@@ -277,9 +280,9 @@ Around-list (under the map): recording % in the party's cell, current float reac
 settlement distance and population, then nearby marked/visible/spent sites within 8 cells, each
 with Euclidean distance, name, state and that cell's investigation %.
 
-Under the map: the view switch, a joined nine-mode group of real radios (`role="radiogroup"`,
-labelled), an item switch (`coal / iron / goods / co2`) shown in demand and supply views, then
-the around-list. Exactly one writer — each group's `change` handler — applies the mode by
+Above the map: the view switch, a joined nine-mode group of real radios (`role="radiogroup"`,
+labelled), and an item switch (`coal / iron / goods / co2`) shown in demand and supply views.
+The around-list stays below the map. Exactly one writer — each group's `change` handler — applies the mode by
 updating state, refreshing the panel and redrawing; the `1`…`9` keys and the pointer preview
 route through the same handler. On `(hover: hover) and (pointer: fine)` moving over a mode
 selects it as a preview by checking its radio; touch and stylus stay click-only, and a hover
@@ -288,10 +291,9 @@ that resolves to no mode is ignored. The group is styled from the shared tokens 
 rather than literals.
 
 Side panel, top to bottom: clock (storyline day and seconds) and speeds (pause/1×/2×/4×);
-condition, morale, funds, supplies, items, members; skills with unlock marks; member rows;
-current-cell details, market prices and the action list for the current context; economy engine
-switch and hovered/selected cell inspector; victory declaration and its feedback; status line;
-event feed.
+economy engine, overlays and cell inspector; condition, morale, funds, supplies, items,
+members; skills with unlock marks; member rows; current-cell details, market prices and
+context actions; victory declaration and feedback; status line and event feed.
 
 Actions are context-driven from the party's cell: camp, survey, work/stop deposit, gather, take
 item, train, attempt task, sell all, sell item, buy supplies, hire (at settlements), provision
@@ -299,10 +301,9 @@ supplies from food, process goods, restore land, dismiss, declare victory. Butto
 run are disabled.
 
 View modes: terrain, investigation, influence, disturbance, biosphere, population, demand,
-supply, workforce. The map always shows markers — settlements, storages, mines (tinted when
-locked), factories, deposits, one-shot sites, the party, rivals, claims in faction colour, a
-"?" for marked sites, an amber dot when a site can be discovered right now — and a dashed ring
-for the investigation reach.
+supply, workforce. The survey opens on Supply → goods. Economy fields emphasize industry,
+settlement markers and real transfers. Terrain and survey views also show one-shot sites,
+rivals, claims, marked/discoverable sites and the investigation reach.
 
 Input: left click jumps the party to a cell; pointer move updates the cell inspector; space
 pauses; `1`…`9` switch views; `i` surveys; `c` camps; `w` works the deposit under the party.

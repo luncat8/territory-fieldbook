@@ -1,11 +1,8 @@
 # territory fieldbook
 
-## run
+Open `index.html` in a browser (`file://` works), or serve it with `python3 -m http.server 8080`.
+Open **Test scene A** or **Test scene B** from the map header.
 
-open `index.html` in a browser — it works from `file://`, no build.
-or serve the folder: `python3 -m http.server 8080`
-
-## check
-
-`node experiments/smoke.js` — headless sim run
-`node experiments/dom_smoke.js` — boot, frames, clicks and buttons against a stub DOM
+- `node experiments/smoke.js` — headless survey
+- `node experiments/dom_smoke.js` — boot and controls
+- `node experiments/mape_scenes.js` — economy scenes and rerouting

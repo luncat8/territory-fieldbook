@@ -33,6 +33,8 @@ const DASH_NONE = [];
 const render = {
 	canvas: null,
 	ctx: null,
+	demandCtx: null,
+	showFlow: true,
 	off: null,
 	offCtx: null,
 	image: null,
@@ -43,42 +45,62 @@ const render = {
 	markY: -1
 };
 
-function renderInit(canvas) {
+function renderInit(canvas, demandCanvas) {
 	render.canvas = canvas;
-	render.ctx = canvas.getContext('2d');
 	render.size = world.size * CELL_PX;
-	canvas.width = render.size;
-	canvas.height = render.size;
+	render.ctx = renderMapContext(canvas);
+	if (demandCanvas) render.demandCtx = renderMapContext(demandCanvas);
 	render.off = document.createElement('canvas');
 	render.off.width = world.size;
 	render.off.height = world.size;
 	render.offCtx = render.off.getContext('2d');
 	render.image = render.offCtx.createImageData(world.size, world.size);
 	render.pixels = render.image.data;
-	render.view = 0;
+	render.view = VIEW.SUPPLY;
+	render.showFlow = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+	if (demandCanvas) mape.viewItem = MAPE_RES.COAL;
+}
+
+function renderMapContext(canvas) {
+	canvas.width = canvas.height = render.size;
+	const ctx = canvas.getContext('2d');
+	ctx.imageSmoothingEnabled = false;
+	return ctx;
+}
+
+function renderIsFieldView(view) {
+	return view === VIEW.DEMAND || view === VIEW.SUPPLY;
 }
 
 function renderDraw() {
 	if (!render.ctx) return;
-	renderPaintCells();
+	renderDrawMap(render.ctx, render.demandCtx ? VIEW.SUPPLY : render.view);
+	if (render.demandCtx) renderDrawMap(render.demandCtx, VIEW.DEMAND);
+}
+
+function renderDrawMap(ctx, view) {
+	const field = renderIsFieldView(view);
+	if (field) renderEconomyCells(view);
+	else renderPaintCells(view);
 	render.offCtx.putImageData(render.image, 0, 0);
-	const ctx = render.ctx;
-	ctx.imageSmoothingEnabled = false;
 	ctx.drawImage(render.off, 0, 0, render.size, render.size);
-	renderReach(ctx);
-	renderSettlements(ctx);
-	renderIndustry(ctx);
-	renderSites(ctx);
-	renderRivals(ctx);
-	renderParty(ctx);
+	if (view === VIEW.SUPPLY) renderGoodsFlow(ctx);
+	if (!field) renderReach(ctx);
+	renderSettlements(ctx, field);
+	renderIndustry(ctx, field);
+	if (!field) {
+		renderSites(ctx);
+		renderRivals(ctx);
+	}
+	if (render.demandCtx) renderHover(ctx);
+	else renderParty(ctx);
 	renderMark(ctx);
 }
 
-function renderPaintCells() {
+function renderPaintCells(view) {
 	const pixels = render.pixels;
 	const size = world.size;
 	const n = world.n;
-	const view = render.view;
 	const terrain = world.terrain;
 	const height = world.height;
 	const progress = investigation.progress;
@@ -87,10 +109,6 @@ function renderPaintCells() {
 	const biomass = economy.biomass;
 	const pop = mape.pop;
 	const work = mape.workforce;
-	const itemOffset = mape.viewItem * n;
-	const demandMax = mapeIsMarketItem(mape.viewItem) ? MAPE_VIEW_MARKET_DEMAND_MAX : MAPE_VIEW_DEMAND_MAX;
-	const demand = mape.demand;
-	const goods = mape.goods;
 	const originX = party.x;
 	const originY = party.y;
 	const here = terrain[originY * size + originX];
@@ -165,7 +183,7 @@ function renderPaintCells() {
 					g += (104 - g) * d * 0.7;
 					b += (70 - b) * d * 0.7;
 				}
-			} else if (t === TERRAIN.WATER && (mape.viewItem !== MAPE_RES.CO2 || (view !== VIEW.DEMAND && view !== VIEW.SUPPLY))) {
+			} else if (t === TERRAIN.WATER) {
 				r *= 0.72;
 				g *= 0.72;
 				b *= 0.78;
@@ -182,32 +200,6 @@ function renderPaintCells() {
 					g = 44 + 186 * k;
 					b = 28 + 132 * k;
 				}
-			} else if (view === VIEW.DEMAND) {
-				const v = demand[itemOffset + i];
-				r = 38;
-				g = 42;
-				b = 48;
-				if (v < 0) {
-					const raw = -v / demandMax;
-					const k = Math.sqrt(raw > 1 ? 1 : raw);
-					r += (44 - r) * k;
-					g += (196 - g) * k;
-					b += (114 - b) * k;
-				} else if (v > 0) {
-					const raw = v / demandMax;
-					const k = Math.sqrt(raw > 1 ? 1 : raw);
-					r += (220 - r) * k;
-					g += (76 - g) * k;
-					b += (68 - b) * k;
-				}
-				if (t === TERRAIN.WATER) b += (118 - b) * 0.35;
-			} else if (view === VIEW.SUPPLY) {
-				const raw = goods[itemOffset + i] / MAPE_VIEW_GOODS_MAX;
-				const k = raw <= 0 ? 0 : Math.sqrt(raw > 1 ? 1 : raw);
-				r = 24 + 196 * k;
-				g = 30 + 198 * k;
-				b = 38 + 156 * k;
-				if (t === TERRAIN.WATER) b += (118 - b) * 0.35;
 			} else {
 				const raw = work[i] / MAPE_VIEW_WORK_MAX;
 				const k = raw <= 0 ? 0 : Math.sqrt(raw > 1 ? 1 : raw);
@@ -236,13 +228,14 @@ function renderReach(ctx) {
 }
 
 // One batched path covers all ~82 settlements so marker cost does not scale into per-site draw calls.
-function renderSettlements(ctx) {
+function renderSettlements(ctx, field) {
 	const count = mape.settleCount;
 	if (count === 0) return;
 	const cells = mape.settleCells;
 	const pop = mape.pop;
 	const size = world.size;
 	const cell = CELL_PX;
+	const ring = render.demandCtx ? 0.47 : 0.26;
 	ctx.fillStyle = SETTLE_CSS;
 	ctx.beginPath();
 	for (let k = 0; k < count; k++) {
@@ -250,41 +243,56 @@ function renderSettlements(ctx) {
 		const cx = ((idx % size) + 0.5) * cell;
 		const cy = (((idx / size) | 0) + 0.5) * cell;
 		const ratio = pop[idx] / MAPE_POP_CAP;
-		const radius = cell * (0.12 + 0.18 * (ratio > 1 ? 1 : ratio));
+		const radius = cell * (field ? ring : 0.12 + 0.18 * Math.min(1, ratio));
 		ctx.moveTo(cx + radius, cy);
 		ctx.arc(cx, cy, radius, 0, TAU);
 	}
-	ctx.fill();
+	if (!field) {
+		ctx.fill();
+		return;
+	}
+	if (render.demandCtx) {
+		ctx.strokeStyle = '#1c2733';
+		ctx.lineWidth = 3.8;
+		ctx.stroke();
+	}
+	ctx.strokeStyle = 'rgba(247, 240, 219, 0.90)';
+	ctx.lineWidth = 1.4;
+	ctx.stroke();
 }
 
-function renderIndustry(ctx) {
+function renderIndustry(ctx, field) {
 	const cell = CELL_PX;
 	ctx.fillStyle = STORAGE_CSS;
 	const box = cell * 0.22;
+	const size = cell * (render.demandCtx ? 1.5 : 1);
 	for (let k = 0; k < mape.storageCount; k++) {
 		const slot = mape.storageSite[k];
+		if (field && slot < 255) continue;
 		if (slot < 255 && sites.state[slot] !== SITE_STATE.VISIBLE) continue;
 		ctx.fillRect((mape.storageX[k] + 0.5) * cell - box * 0.5, (mape.storageY[k] + 0.5) * cell - box * 0.5, box, box);
 	}
 	for (let m = 0; m < mape.mineCount; m++) {
+		if (field && mape.mineRes[m] !== mape.viewItem) continue;
 		const slot = mape.mineSite[m];
 		if (sites.state[slot] !== SITE_STATE.VISIBLE) continue;
 		const cx = (mape.mineX[m] + 0.5) * cell;
 		const cy = (mape.mineY[m] + 0.5) * cell;
 		const open = mape.mineUnlocked[m] === 1;
-		ctx.fillStyle = open ? RES_CSS[sites.res[slot]] : MINE_LOCK_FILL;
+		ctx.fillStyle = open ? field ? '#75edaa' : RES_CSS[sites.res[slot]] : MINE_LOCK_FILL;
 		ctx.beginPath();
-		ctx.moveTo(cx, cy - cell * 0.32);
-		ctx.lineTo(cx + cell * 0.30, cy + cell * 0.26);
-		ctx.lineTo(cx - cell * 0.30, cy + cell * 0.26);
+		ctx.moveTo(cx, cy - size * 0.32);
+		ctx.lineTo(cx + size * 0.30, cy + size * 0.26);
+		ctx.lineTo(cx - size * 0.30, cy + size * 0.26);
 		ctx.closePath();
 		ctx.fill();
-		if (!open) {
-			ctx.strokeStyle = MINE_LOCK_STROKE;
+		if (!open || render.demandCtx) {
+			ctx.strokeStyle = open ? '#213b33' : MINE_LOCK_STROKE;
 			ctx.lineWidth = 1;
 			ctx.stroke();
 		}
 	}
+	if (!field || mape.viewItem === MAPE_RES.GOODS) renderWorkshops(ctx);
 	const fsize = cell * 0.56;
 	for (let f = 0; f < mape.factoryCount; f++) {
 		const st = mape.factoryState[f];
@@ -300,6 +308,24 @@ function renderIndustry(ctx) {
 			ctx.fillRect(cx, cy, fsize, fsize);
 		}
 	}
+}
+
+function renderWorkshops(ctx) {
+	ctx.strokeStyle = '#80eabc';
+	ctx.lineWidth = 1.4;
+	ctx.beginPath();
+	for (let k = 0; k < mape.workshopCount; k++) {
+		const i = mape.workshopCells[k];
+		const cx = (i % world.size + 0.5) * CELL_PX;
+		const cy = (((i / world.size) | 0) + 0.5) * CELL_PX;
+		const d = CELL_PX * 0.36;
+		ctx.moveTo(cx, cy - d);
+		ctx.lineTo(cx + d, cy);
+		ctx.lineTo(cx, cy + d);
+		ctx.lineTo(cx - d, cy);
+		ctx.closePath();
+	}
+	ctx.stroke();
 }
 
 function renderSites(ctx) {
@@ -426,4 +452,11 @@ function renderMark(ctx) {
 	const cx = (render.markX + 0.5) * CELL_PX;
 	const cy = (render.markY + 0.5) * CELL_PX;
 	ctx.strokeRect(cx - CELL_PX * 0.45, cy - CELL_PX * 0.45, CELL_PX * 0.9, CELL_PX * 0.9);
+}
+
+function renderHover(ctx) {
+	if (input.hoverX < 0 || (input.hoverX === render.markX && input.hoverY === render.markY)) return;
+	ctx.strokeStyle = 'rgba(255, 255, 255, 0.52)';
+	ctx.lineWidth = 1;
+	ctx.strokeRect(input.hoverX * CELL_PX + 0.5, input.hoverY * CELL_PX + 0.5, CELL_PX - 1, CELL_PX - 1);
 }

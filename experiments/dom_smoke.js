@@ -85,6 +85,7 @@ function makeElement(id, isCanvas) {
 			return this.attributes ? this.attributes[name] : undefined;
 		},
 		dispatch(type, event) {
+			event.currentTarget = this;
 			const handlers = this.listeners[type] || [];
 			for (const handler of handlers) handler(event);
 		},
@@ -133,6 +134,7 @@ function requestAnimationFrame(callback) {
 }
 
 const windowStub = {
+	location: { search: '' },
 	addEventListener(type, handler) {
 		if (!windowStub.listeners) windowStub.listeners = {};
 		if (!windowStub.listeners[type]) windowStub.listeners[type] = [];
@@ -144,19 +146,20 @@ const windowStub = {
 	}
 };
 
-const context = vm.createContext({
-	console: console,
-	document: documentStub,
-	window: windowStub,
-	requestAnimationFrame: requestAnimationFrame
-});
-
-let bootError = '';
-try {
+function loadDom(query) {
+	windowStub.location.search = query;
+	const context = vm.createContext({ console, document: documentStub, window: windowStub, requestAnimationFrame, URLSearchParams });
 	for (const file of scripts) {
 		const code = fs.readFileSync(path.join(root, file), 'utf8');
 		vm.runInContext(code, context, { filename: file });
 	}
+	return context;
+}
+
+let context;
+let bootError = '';
+try {
+	context = loadDom('');
 } catch (error) {
 	bootError = error.message;
 }
@@ -185,6 +188,7 @@ const result = { bootError: bootError };
 if (!bootError) {
 	try {
 		result.initialClock = run('$("ui-clock").textContent');
+		result.starterCoalTrace = run('Array.from({ length: SITE_CAP }, (_, i) => i).some(i => sites.kind[i] === SITE.DEPOSIT && sites.res[i] === RES.FUEL && sites.state[i] === SITE_STATE.MARKED && (sites.x[i] - world.startX) ** 2 + (sites.y[i] - world.startY) ** 2 <= 64)');
 		for (let f = 1; f <= 120; f++) frame(f * 16.7);
 		result.frames = 120;
 		result.clockSec = run('clock.seconds');
@@ -199,14 +203,16 @@ if (!bootError) {
 		result.engineGroup = run('$("ui-engine").children[0]');
 		result.viewRadios = result.viewGroup.children.length;
 		result.itemRadios = result.itemGroup.children.length;
+		result.startsOnSupply = run('render.view === VIEW.SUPPLY && mape.viewItem === MAPE_RES.GOODS') && !result.itemGroup.hidden;
+		result.viewGroup.children[0].children[0].click();
 		result.itemHiddenOnTerrain = result.itemGroup.hidden === true;
 		result.engineRadios = result.engineGroup.children.length;
-		result.engineDiffusionChecked = result.engineGroup.children[0].children[0].checked;
+		result.engineCatchmentChecked = result.engineGroup.children[1].children[0].checked;
 		result.engineSitesDisabled = result.engineGroup.children[3].children[0].disabled;
 		result.actionButtons = run('$("ui-actions").children.length');
 		result.siteText = run('$("ui-site").textContent');
 		result.inspectText = run('$("ui-inspect").textContent');
-		result.starterCoalTrace = run('Array.from({ length: SITE_CAP }, (_, i) => i).some(i => sites.kind[i] === SITE.DEPOSIT && sites.res[i] === RES.FUEL && sites.state[i] === SITE_STATE.MARKED && (sites.x[i] - world.startX) ** 2 + (sites.y[i] - world.startY) ** 2 <= 64)');
+
 		result.aroundHasCoordinates = /\n[^\n]*\d+,\d+/.test(elements.get('ui-nearby').textContent);
 		result.starterCoalListed = run('Array.from({ length: SITE_CAP }, (_, i) => i).some(i => sites.kind[i] === SITE.DEPOSIT && sites.res[i] === RES.FUEL && sites.state[i] !== SITE_STATE.GONE && $("ui-nearby").textContent.indexOf(sites.x[i] + "," + sites.y[i]) >= 0)');
 		result.ironDepositsDeferred = run('Array.from({ length: SITE_CAP }, (_, i) => i).every(i => sites.kind[i] !== SITE.DEPOSIT || sites.res[i] !== RES.ORE || sites.state[i] === SITE_STATE.GONE)');
@@ -292,12 +298,12 @@ if (!bootError) {
 		result.surveyReady = run('hudActionList()[1].enabled');
 
 		const engines = result.engineGroup.children.map(item => item.children[0]);
-		result.engineGroup.dispatch('pointerover', { target: engines[1] });
-		result.engineClickOnly = engines[0].checked && !engines[1].checked;
+		result.engineGroup.dispatch('pointerover', { target: engines[0] });
+		result.engineClickOnly = engines[1].checked && !engines[0].checked;
 		result.itemGroup.children[0].children[0].click();
 		const beforeSwitch = run('[clock.seconds, party.x, party.y, mapeGoodsTotal(), mape.viewItem].join(":")');
 		const engineSigs = new Set([pixelSignature(pixels)]);
-		for (const radio of engines.slice(1, 3)) {
+		for (const radio of [engines[0], engines[2]]) {
 			radio.click();
 			engineSigs.add(pixelSignature(pixels));
 		}
@@ -315,8 +321,8 @@ if (!bootError) {
 		result.feedbackOff = run('!mape.surplusFeedback && mapeMarketPull(MAPE_RES.COAL, mape.settleCells[0]) === 1');
 		feedback.checked = true;
 		feedback.dispatch('change', { target: feedback });
-		engines[0].click();
-		result.switchBack = engines[0].checked && !engines[2].checked;
+		engines[1].click();
+		result.switchBack = engines[1].checked && !engines[2].checked;
 
 		run('party.alive = false; party.condition = 0; hudRefresh(true);');
 		const lostButtons = run('$("ui-actions").children.slice()');
@@ -324,9 +330,42 @@ if (!bootError) {
 		if (!restart || !restart.onclick) throw new Error('no restart button when lost');
 		restart.onclick();
 		result.restartState = run('party.alive + ":" + Math.round(clock.seconds)');
+		Object.assign(result, checkSceneDom());
 	} catch (error) {
 		result.runtimeError = error.message + ' @ ' + (error.stack || '').split('\n')[1];
 	}
+}
+
+function checkSceneDom() {
+	elements.clear();
+	elements.set('ui-canvas', makeElement('ui-canvas', true));
+	elements.set('ui-demand-canvas', makeElement('ui-demand-canvas', true));
+	rafQueue.length = 0;
+	windowStub.listeners.keydown = [];
+	context = loadDom('?scene=b');
+	const sceneBoots = run('mapScene.id === "b" && mape.engine === MAPE_ENGINE.QUEUE && !!render.demandCtx') &&
+		elements.get('ui-survey-panel').hidden && !elements.get('ui-demand-map').hidden;
+	run('actionsSetSpeed(0)');
+	elements.get('ui-replay').children[1].click();
+	const sceneFill = run('clock.speed === 0 && clock.seconds === 0 && mapeGoodsTotal() === 0 && mape.demandView[MAPE_RES.COAL].every(v => v === 0.5)');
+	const step = elements.get('ui-time').children[4];
+	step.click();
+	const sceneStep = run('clock.seconds === 0.05 && mape.minedTotal > 0');
+	const tools = elements.get('ui-tools').children[0].children;
+	tools[1].children[0].click();
+	const demand = elements.get('ui-demand-canvas');
+	demand.dispatch('click', { clientX: 30, clientY: 30 });
+	const sceneEdit = run('mape.mineCount === 4 && mapeMineAt(2, 2) >= 0 && render.markX === 2 && render.markY === 2');
+	tools[3].children[0].click();
+	elements.get('ui-canvas').dispatch('click', { clientX: 30, clientY: 30 });
+	const sceneErase = run('mape.mineCount === 3 && mapeMineAt(2, 2) < 0 && clock.seconds === 0.05');
+	const flow = elements.get('ui-flow');
+	flow.checked = false;
+	flow.dispatch('change', { target: flow });
+	const sceneFlow = run('!render.showFlow');
+	windowStub.listeners.keydown[0]({ key: ' ', preventDefault() {} });
+	const sceneResume = run('clock.speed === CLOCK_DEFAULT_SPEED && clock.seconds === 0.05');
+	return { sceneBoots, sceneFill, sceneStep, sceneEdit, sceneErase, sceneFlow, sceneResume };
 }
 
 let failures = 0;
@@ -354,12 +393,12 @@ console.log('restart_state=' + result.restartState);
 
 check('boot_ok', !result.bootError);
 check('no_runtime_error', !result.runtimeError);
-check('frames_advance_clock_1s_1d', result.clockSec >= 1.6 && result.clockSec <= 2.2 && /^day 1 · 0s/.test(result.initialClock || '') && /^day 2 · 1s/.test(result.clockText || ''));
+check('frames_advance_at_4x', result.clockSec >= 7.8 && result.clockSec <= 8.1 && result.initialClock === 'day 1 · 0s · 4×' && /^day 8 · 7s/.test(result.clockText || ''));
 check('canvas_painted', result.litCells > 3000);
 check('time_controls', result.timeButtons === 4);
 check('view_controls', result.viewRadios === 9 && result.distinctViews === 9);
-check('item_controls', result.itemRadios === 4 && result.itemHiddenOnTerrain && result.itemShownOnDemand && result.distinctItems === 4);
-check('engine_controls', result.engineRadios === 4 && result.engineDiffusionChecked && result.engineSitesDisabled && result.engineClickOnly);
+check('item_controls', result.startsOnSupply && result.itemRadios === 4 && result.itemHiddenOnTerrain && result.itemShownOnDemand && result.distinctItems === 4);
+check('engine_controls', result.engineRadios === 4 && result.engineCatchmentChecked && result.engineSitesDisabled && result.engineClickOnly);
 check('engine_switch_and_redraw', result.engineViews === 3 && result.queuesSelected && result.queueExplained && result.switchBack);
 check('engine_switch_keeps_progress', result.switchKeptProgress);
 check('engine_feedback_toggle', result.feedbackOff && result.feedbackKeyboard);
@@ -382,6 +421,9 @@ check('click_moved_party', result.moved === true);
 check('pause_key', result.speedAfterSpace === 0);
 check('all_buttons_safe', (result.buttonsClicked || 0) >= 4);
 check('new_survey_restarts', result.restartState === 'true:0');
+check('test_scene_boot', result.sceneBoots);
+check('test_scene_replay_and_step', result.sceneFill && result.sceneStep && result.sceneResume);
+check('test_scene_paired_tools', result.sceneEdit && result.sceneErase && result.sceneFlow);
 
 if (failures > 0) {
 	console.log('dom_smoke_failures=' + failures);

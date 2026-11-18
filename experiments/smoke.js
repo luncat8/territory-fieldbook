@@ -1,4 +1,4 @@
-// owns: headless smoke run of the whole prototype through one VM context
+// owns: headless smoke run of the whole survey in browser script order
 // run: node experiments/smoke.js
 
 const fs = require('fs');
@@ -8,15 +8,14 @@ const vm = require('vm');
 const root = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const scripts = Array.from(html.matchAll(/<script src="([^"]+)"><\/script>/g), match => match[1]);
-const context = vm.createContext({ console: console });
 
 for (const file of scripts) {
 	const code = fs.readFileSync(path.join(root, file), 'utf8');
-	vm.runInContext(code, context, { filename: file });
+	vm.runInThisContext(code, { filename: file });
 }
 
 function run(code) {
-	return vm.runInContext(code, context);
+	return vm.runInThisContext(code);
 }
 
 const result = run(`

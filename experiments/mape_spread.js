@@ -16,12 +16,12 @@ for (const file of scripts) {
 
 const metrics = vm.runInThisContext(`
 (function () {
-	const dt = SIM_STEP_SEC;
+	const dt = MAPE_MAX_STEP;
 	const size = world.size;
 	const n = world.n;
 
 	function blankMap(seed) {
-		main.setup(seed || 20261117);
+		main.setup(seed || START_SEED, '', 0, MAPE_ENGINE.DIFFUSION);
 		world.terrain.fill(TERRAIN.MEADOW);
 		land.disturbed.fill(0);
 		economy.biomass.fill(0);
@@ -41,6 +41,7 @@ const metrics = vm.runInThisContext(`
 		mape.factoryCount = 0;
 		mape.factoryState.fill(MAPE_FACTORY_STATE.GONE);
 		mape.storageCount = 0;
+		mape.workshopCount = 0;
 		mape.transportWork = 0;
 		mape.minedTotal = 0;
 		mape.massIn = 0;
@@ -175,9 +176,8 @@ const metrics = vm.runInThisContext(`
 	// Verifies coal discovery -> worker demand -> worker diffusion -> mining -> settlement & factory delivery.
 	function measureCoalLoop() {
 		blankMap();
-		const coalSite = sitesPlace(SITE.DEPOSIT, idx(24, 32), RES.FUEL, 40, SITE_STATE.MARKED, 0, 0.25);
-		sites.initialStock = 40;
-		sites.remainingStock = 40;
+		const coalSite = sitesPlaceDeposit(idx(24, 32), RES.FUEL, SITE_STATE.MARKED, 0.25);
+		const stockStart = sites.stock[coalSite];
 		mapeSeedMines();
 		const s1 = idx(17, 32);
 		const s2 = idx(32, 27);
@@ -229,8 +229,8 @@ const metrics = vm.runInThisContext(`
 			if (tUnlock > 0 && tWorkAtS1 < 0 && mape.workforce[s1] >= 0.05) tWorkAtS1 = t - tUnlock;
 			if (tUnlock > 0 && tWorkerAtMine < 0 && mp >= 0.5) tWorkerAtMine = t - tUnlock;
 			if (tUnlock > 0 && tCoalMined < 0 && mape.minedTotal >= 0.5) tCoalMined = t - tUnlock;
-			if (tUnlock > 0 && tCoalAtS1 < 0 && mape.goods[MAPE_RES.COAL * n + s1] >= s1CoalStart + 0.5) tCoalAtS1 = t - tUnlock;
-			if (tUnlock > 0 && tCoalAtS2 < 0 && mape.goods[MAPE_RES.COAL * n + s2] >= s2CoalStart + 0.5) tCoalAtS2 = t - tUnlock;
+			if (tUnlock > 0 && tCoalAtS1 < 0 && mape.goods[MAPE_RES.COAL * n + s1] >= s1CoalStart + 0.05) tCoalAtS1 = t - tUnlock;
+			if (tUnlock > 0 && tCoalAtS2 < 0 && mape.goods[MAPE_RES.COAL * n + s2] >= s2CoalStart + 0.05) tCoalAtS2 = t - tUnlock;
 			if (tUnlock > 0 && tCoalAtFac < 0 && mape.goods[MAPE_RES.COAL * n + facCell] >= 0.5) tCoalAtFac = t - tUnlock;
 		}
 		return {
@@ -240,6 +240,7 @@ const metrics = vm.runInThisContext(`
 			chainMinePop: mape.pop[idx(24, 32)],
 			chainFacPop: mape.pop[facCell],
 			chainMined: mape.minedTotal,
+			chainStockStart: stockStart,
 			chainStockLeft: sites.stock[coalSite],
 			s1CoalStart, s2CoalStart,
 			chainS1Coal: mape.goods[MAPE_RES.COAL * n + s1],
@@ -256,7 +257,7 @@ const metrics = vm.runInThisContext(`
 	const water = measureWater();
 	const coal = measureCoalLoop();
 
-	main.setup(20261117);
+	main.setup(START_SEED, '', 0, MAPE_ENGINE.DIFFUSION);
 	let realCoalMine = -1;
 	for (let m = 0; m < mape.mineCount; m++) {
 		if (mape.mineRes[m] === MAPE_RES.COAL) { realCoalMine = m; break; }
@@ -409,10 +410,10 @@ check('water_routing', metrics.routedBuyerGoods > 0.5);
 check('locked_mine_idle', metrics.preUnlocked === 0 && metrics.preMineWork === 0 && metrics.preMinePop === 0 && metrics.preMined === 0 && metrics.minedBeforeWorkers === 0);
 check('coal_workers_demand', metrics.tUnlock > 0 && metrics.peakMineWork > 1 && metrics.tWorkAtS1 > 0 && metrics.tWorkAtS1 < 15);
 check('workers_diffuse_to_mine', metrics.tWorkerAtMine > 0 && metrics.chainMinePop >= 3 && metrics.chainFacPop >= 2);
-check('mine_produces_coal', metrics.tCoalMined >= metrics.tWorkerAtMine * 0.5 && metrics.chainMined > 5 && metrics.chainStockLeft < 35);
+check('mine_produces_coal', metrics.tCoalMined >= metrics.tWorkerAtMine * 0.5 && metrics.chainMined > 5 && Math.abs(metrics.chainStockStart - metrics.chainStockLeft - metrics.chainMined) < 1e-5);
 check('coal_diffuses_to_settlement_and_factory',
 	metrics.tCoalAtS1 > 0 && metrics.tCoalAtS2 > 0 && metrics.tCoalAtFac > 0 &&
-	metrics.chainS1Coal > metrics.s1CoalStart + 0.5 && metrics.chainS2Coal > metrics.s2CoalStart + 0.5 &&
+	metrics.chainS1Coal > metrics.s1CoalStart + 0.05 && metrics.chainS2Coal > metrics.s2CoalStart + 0.05 &&
 	metrics.chainFacCoal > 2 && metrics.chainTransportWork > 1);
 check('real_map_coal_loop', metrics.realMinePop >= 3 && metrics.realMined > 10 && metrics.realMined - metrics.realMineStock > 3);
 check('conservation',

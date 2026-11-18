@@ -54,20 +54,25 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	land.js — disturbed fraction, productivity, recovery, restoration.
 	economy.js — resources, recipes, biosphere, conservation ledger.
 	sites.js — site pool, discovery, claims, extraction, payouts.
-	map-economy.js — settlements, markets, demand/goods/workforce state, mines, factories.
-	map-diffusion.js — shared field tick, signed diffusion, gradient goods/worker flow, mine output.
-	map-market-flow.js — A catchments and B local queues for settlement coal and goods.
+	map-economy.js — shared fields, settlement and market state, engine selection and ledgers.
+	map-industry.js — mine and factory pools, deposit locks, workshop and mine output.
+	map-diffusion.js — shared field tick, signed diffusion, gradient goods/worker flow.
+	map-market-flow.js — land stencil, catchment reach and joint intake admission.
+	map-market-demand.js — bounded A/B pull, stock feedback and household use.
+	map-scenes.js — seeded coal scenes and actor edits.
 	investigate.js — investigation progress, float radius, Euclidean falloff, survey push, nearby list.
 	party.js — members, shared values, skills, movement, camping, hiring.
 	territory.js — per-faction influence fields, control, share, contest.
 	rivals.js — rival agents: targets, travel, claims, extraction, scouting.
 	victory.js — victory conditions, declaration, feedback.
-	render.js — canvas painting, view modes, markers.
+	render.js — shared canvas painting, view modes, markers.
+	render-economy.js — field palettes and animated accepted-flow traces.
 	input.js — clicks, hover mark, keyboard bindings.
 	hud.js — side panel, view switch, around-list, context actions, feed.
-	hud-economy.js — economy picker, stock feedback and cell inspector.
+	hud-economy.js — economy picker, stock feedback, field legend and cell inspector.
+	hud-scenes.js — scene controls, readouts and paired-map tools.
 	actions.js — player verbs spanning features (move, work, sell, hire, restore, declare).
-	experiments/ — smoke.js (sim), dom_smoke.js (boot + UI), mape_compare.js (engine comparison), never loaded by the page.
+	experiments/ — smoke.js (sim), dom_smoke.js (boot + UI), mape_compare.js (engine comparison), mape_scenes.js (scene regressions), never loaded by the page.
 - new code goes to its owner, never appended "because the file is already there". no owner exists -> new file + header + map entry.
 - file > ~500 lines = defect. split by feature within the same plan.
 - moves are pure moves: contiguous ranges, snap to enclosing declarations, no behavior change.
@@ -143,8 +148,8 @@ Before all topics has minimal implementation Do not try to implement 100% of som
 - experiment files cover the loop: smoke (sim), dom_smoke (boot + UI), survey_spread. run
   smoke + dom_smoke after touching main.js, index.html or load order.
 - keep every file under ~500 lines; a new feature gets a new file, header and map entry.
-- next phase: map-economy prototype (plan-map-economy.md) — diffusion engine through P2–P3,
-  then sites engine (P4) and comparison/integration (P5), then O2 throttle cycle.
+- economy playtest: check Catchment A on the survey and both reference scenes before tuning
+  household metabolism (P2), factories and atmosphere (P3), or the Sites engine (P4).
 
 ## housekeeping
 

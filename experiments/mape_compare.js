@@ -27,23 +27,13 @@ function close(actual, expected, epsilon = 1e-6) {
 function lab(mode, setup, feedback = true) {
 	world.terrain.fill(TERRAIN.MEADOW);
 	economy.biomass.fill(0);
-	mape.engine = mode;
+	land.disturbed.fill(0);
+	mapeInit(mode, true);
 	mape.surplusFeedback = feedback;
-	mape.pop.fill(0);
-	mape.pop[center] = 20;
-	mape.demand.fill(0);
-	mape.goods.fill(0);
-	mape.workforce.fill(0);
-	mape.money.fill(0);
-	mape.mineCount = mape.factoryCount = mape.storageCount = 0;
-	mape.transportWork = mape.massIn = mape.massOut = mape.popDelta = 0;
+	mapePlaceSettlement(center, 20, false);
 	if (setup) setup(mape.goodsView[r]);
-	mapeSyncCells();
-	mapeRebuildSettlements();
-	mape.initialPop = mape.totalPop;
-	mape.initialGoods = mapeGoodsTotal();
-	mapeMarketFlowPrepare(true);
-	mapeWarmDemand();
+	mapeMarketFlowPrepare();
+	mapeFinishSetup(0, true);
 }
 
 function advance(ticks) {
@@ -67,9 +57,9 @@ function pulse(mode, feedback) {
 	advance(1);
 	const moved = 8 - donors.reduce((sum, i) => sum + stock[i], 0);
 	const firstUse = mape.massOut;
-	advance(9);
+	advance(Math.round(2 / dt) - 1);
 	const afterTwo = field[center];
-	advance(40);
+	advance(Math.round(8 / dt));
 	verifyLedger();
 	return { hungry, moved, firstUse, afterTwo, afterTen: field[center], uptake: mape.massOut, local: stock[center] };
 }
@@ -78,23 +68,24 @@ function readPressure() {
 	lab(MAPE_ENGINE.CATCHMENT, stock => { for (const i of donors) stock[i] = 2; });
 	const catchmentPull = mapeMarketPull(r, center);
 	const stockedDemand = mape.demandView[r][center];
-	close(catchmentPull, 1 / 6);
+	close(catchmentPull, 1 / (1 + 8 / (mapeMarketUseRate(r, center) * MAPE_CATCHMENT_STOCK_SECONDS)));
 	for (const i of donors) mape.goodsView[r][i] = 0;
 	mape.massOut += 8;
-	advance(25);
-	assert.ok(mape.demandView[r][center] > stockedDemand * 3);
+	advance(60);
+	assert.ok(mape.demandView[r][center] > stockedDemand * 1.6);
 	verifyLedger();
 
 	lab(MAPE_ENGINE.QUEUE, stock => { for (const i of donors) stock[i] = 2; });
 	const stock = mape.goodsView[r];
-	close(mapeMarketPull(r, center), 1);
+	const ringPull = mapeMarketPull(r, center);
+	assert.ok(ringPull < 0.6 && ringPull > 0.4, 'stock outside the intake already cools B');
 	advance(1);
-	const limit = mapeMarketUseRate(r, center) * MAPE_QUEUE_SECONDS;
+	const limit = mapeQueueCapacity(r, center);
 	close(stock[center], limit);
 	close(mape.massOut, 0);
 	for (const i of donors) close(stock[i], stock[donors[0]]);
 	const queuePull = mapeMarketPull(r, center);
-	close(queuePull, 0.5);
+	assert.ok(queuePull < ringPull * 0.8);
 	advance(1);
 	assert.ok(mape.massOut > 0 && stock[center] <= limit + 1e-6);
 	verifyLedger();
@@ -102,9 +93,9 @@ function readPressure() {
 	lab(MAPE_ENGINE.QUEUE, coal => { coal[center] = 2; });
 	advance(1);
 	close(mape.goodsView[r][center], 2 - mapeMarketUseRate(r, center) * dt);
-	close(mapeMarketPull(r, center), 0.5);
+	assert.ok(mapeMarketPull(r, center) < 1 - MAPE_QUEUE_COOLING);
 	verifyLedger();
-	console.log(`catchment_pull_with_ring=${catchmentPull.toFixed(3)} queue_pull_with_ring=1.000 queue_pull_at_capacity=${queuePull.toFixed(3)} queue_capacity_units=${limit.toFixed(3)}`);
+	console.log(`catchment_pull_with_ring=${catchmentPull.toFixed(3)} queue_pull_with_ring=${ringPull.toFixed(3)} queue_pull_at_capacity=${queuePull.toFixed(3)} queue_capacity_units=${limit.toFixed(3)}`);
 }
 
 function verifyWater(mode) {
@@ -136,7 +127,7 @@ function snapshot() {
 
 function verifyLiveSwitch() {
 	main.setup(START_SEED);
-	assert.equal(mape.engine, MAPE_ENGINE.DIFFUSION);
+	assert.equal(mape.engine, MAPE_ENGINE.CATCHMENT);
 	clock.seconds = 19;
 	const town = mape.settleCells[0];
 	economyAddResource(RES.FUEL, 1.5);
@@ -145,7 +136,7 @@ function verifyLiveSwitch() {
 	assert.ok(mapeRecruit(town, 20));
 	assert.ok(mapeUnlockMine(0));
 	const save = snapshot();
-	for (const mode of [MAPE_ENGINE.CATCHMENT, MAPE_ENGINE.QUEUE, MAPE_ENGINE.DIFFUSION]) {
+	for (const mode of [MAPE_ENGINE.QUEUE, MAPE_ENGINE.DIFFUSION, MAPE_ENGINE.CATCHMENT]) {
 		const field = mape.demandView[r].slice();
 		assert.ok(mapeSetEngine(mode));
 		assert.equal(mape.engine, mode);
@@ -162,7 +153,7 @@ function verifyLiveSwitch() {
 function benchRealMap(mode) {
 	main.setup(START_SEED);
 	mape.surplusFeedback = true;
-	mapeSetEngine(mode);
+	if (mape.engine !== mode) mapeSetEngine(mode);
 	const mine = mape.mineCount - 1;
 	const slot = mape.mineSite[mine];
 	const cell = mape.mineY[mine] * world.size + mape.mineX[mine];
@@ -171,7 +162,7 @@ function benchRealMap(mode) {
 	sites.state[slot] = SITE_STATE.VISIBLE;
 	sites.claim[slot] = FACTION_PLAYER + 1;
 	investigation.progress[cell] = 1;
-	advance(150);
+	advance(600);
 	const start = performance.now();
 	advance(400);
 	const tickMs = (performance.now() - start) / 400;

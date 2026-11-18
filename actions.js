@@ -1,21 +1,17 @@
 // owns: player verbs that span several features
 // edit for: action gates, costs and rewards
 
-const actions = {
-	lastSpeed: 1
-};
-
 function actionsMoveTo(x, y) {
 	if (!party.alive) return false;
 	return partyMoveTo(x, y);
 }
 
 function actionsTogglePause() {
-	actionsSetSpeed(clock.speed === 0 ? actions.lastSpeed : 0);
+	actionsSetSpeed(clock.speed === 0 ? clock.resumeSpeed : 0);
 }
 
 function actionsSetSpeed(speed) {
-	if (clock.speed !== 0) actions.lastSpeed = clock.speed;
+	if (speed > 0) clock.resumeSpeed = speed;
 	clock.speed = speed;
 	hudRefresh(true);
 }
@@ -23,6 +19,24 @@ function actionsSetSpeed(speed) {
 function actionsSetEngine(mode) {
 	if (!mapeSetEngine(mode)) return;
 	eventsStatus('Economy engine: ' + MAPE_ENGINE_NAME[mape.engine] + ' · stock and progress kept.');
+	hudRefresh(true);
+	renderDraw();
+}
+
+function actionsReplayScene(fill) {
+	const speed = clock.speed;
+	const resume = clock.resumeSpeed;
+	mainSetup(world.seed, mapScene.id, fill, mape.engine);
+	clock.speed = speed;
+	clock.resumeSpeed = resume;
+	inputClearSelection();
+	hudRefresh(true);
+	renderDraw();
+}
+
+function actionsStepScene() {
+	if (clock.speed !== 0) return;
+	mainStep(SIM_STEP_SEC);
 	hudRefresh(true);
 	renderDraw();
 }
@@ -217,7 +231,6 @@ function actionsDeclareVictory() {
 
 function actionsNewSurvey() {
 	mainSetup((world.seed + 1) >>> 0);
-	render.markX = -1;
-	render.markY = -1;
+	inputClearSelection();
 	hudRefresh(true);
 }
