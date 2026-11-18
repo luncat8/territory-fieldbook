@@ -23,6 +23,12 @@
 	.stat { display: flex; gap: 6px; }
 	.stat b { color: #58a6ff; font-variant-numeric: tabular-nums; }
 	.legend { font-size: 11px; color: #8b949e; margin-top: 6px; }
+	.buttons { display: flex; gap: 6px; align-items: center; }
+	button {
+		background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+		border-radius: 4px; padding: 3px 10px; font: inherit; cursor: pointer;
+	}
+	button:hover { background: #30363d; }
 </style>
 </head>
 <body>
@@ -37,6 +43,13 @@
 		<div class="label">2 — demand (diffusion)</div>
 		<canvas id="dem" width="480" height="480"></canvas>
 		<div class="legend">red: low → yellow: high</div>
+	</div>
+	<div class="panel">
+		<div class="label">new map — demand fill</div>
+		<div class="buttons">
+			<button id="fill0" data-fill="0">0</button>
+			<button id="fill05" data-fill="0.5">0.5</button>
+		</div>
 	</div>
 </div>
 <div class="hud" id="hud"></div>
@@ -87,6 +100,7 @@ const sources   = [];
 const consumers = [];
 
 let rng = 1337;
+let mapSeed = 1337;
 function rand() { rng = (rng * 1664525 + 1013904223) >>> 0; return rng / 4294967296; }
 
 // ---------------------------------------------------------------------------
@@ -94,9 +108,9 @@ function rand() { rng = (rng * 1664525 + 1013904223) >>> 0; return rng / 4294967
 // ---------------------------------------------------------------------------
 function idx(x, y) { return y * N + x; }
 
-function init() {
-	rng = 1337;
-	res.fill(0); resNext.fill(0); demand.fill(0); tmpDem.fill(0);
+function init(fill = 0) {
+	rng = (mapSeed = (mapSeed * 1664525 + 1013904223) >>> 0);
+	res.fill(0); resNext.fill(0); demand.fill(fill); tmpDem.fill(0);
 	gradX.fill(0); gradY.fill(0);
 	sources.length = 0; consumers.length = 0;
 
@@ -411,6 +425,12 @@ function frame(now) {
 // ---------------------------------------------------------------------------
 scaleCanvas(resCanvas, N);
 scaleCanvas(demCanvas, N);
+
+// new map with a uniform demand seed: 0 = no ambient demand, 0.5 = half hunger everywhere
+document.querySelectorAll('[data-fill]').forEach(btn => {
+	btn.addEventListener('click', () => init(parseFloat(btn.dataset.fill)));
+});
+
 init();
 requestAnimationFrame(frame);
 </script>
