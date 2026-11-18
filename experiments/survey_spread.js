@@ -42,7 +42,7 @@ function press(terrain, condition, morale) {
 	const cell = run(`(${FIND})(${terrain})`);
 	if (cell[0] < 0) return null;
 	run(`party.x = ${cell[0]}; party.y = ${cell[1]}; party.condition = ${condition}; party.morale = ${morale}; party.working = false;`);
-	run('investigation.progress.fill(0); investigation.surveyTicks = 0;');
+	run('investigation.progress.fill(0); investigation.surveyLeft = 0;');
 	const pressed = run('investigationSurvey()');
 	const again = run('investigationSurvey()');
 	const spread = run(`

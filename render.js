@@ -1,13 +1,31 @@
 // owns: canvas painting, view modes and map overlays
 // edit for: palette, view modes, marker shapes
 
-const VIEW = { TERRAIN: 0, INVESTIGATION: 1, INFLUENCE: 2, DISTURBANCE: 3, BIOSPHERE: 4 };
-const VIEW_NAME = ['terrain', 'investigation', 'influence', 'disturbance', 'biosphere'];
+const VIEW = {
+	TERRAIN: 0,
+	INVESTIGATION: 1,
+	INFLUENCE: 2,
+	DISTURBANCE: 3,
+	BIOSPHERE: 4,
+	POPULATION: 5,
+	DEMAND: 6,
+	SUPPLY: 7,
+	WORKFORCE: 8
+};
+const VIEW_NAME = [
+	'terrain', 'investigation', 'influence', 'disturbance', 'biosphere',
+	'population', 'demand', 'supply', 'workforce'
+];
 const CELL_PX = 12;
 const TAU = Math.PI * 2;
 const RES_CSS = ['#4fae6a', '#9a7440', '#9c9ca6', '#74d2e4', '#a89a52', '#e6d178'];
-const SITE_CSS = ['#c9c05a', '#b48ce0', '#6ec8ff', '#e08a5a', '#d8d8d8', '#ffe9a8'];
+const SITE_CSS = ['#c9c05a', '#b48ce0', '#6ec8ff', '#e08a5a', '#d8d8d8'];
 const FACTION_CSS = ['#60cad6', '#d45c54', '#d8a046'];
+const SETTLE_CSS = '#f2e2b0';
+const STORAGE_CSS = '#6fa8b8';
+const MINE_LOCK_FILL = '#6d7682';
+const MINE_LOCK_STROKE = '#b8644c';
+const FACTORY_CSS = ['', '#e0a458', '#f0ede6', '#7c858e'];
 const DASH_REACH = [4, 5];
 const DASH_CAMP = [3, 3];
 const DASH_NONE = [];
@@ -48,6 +66,8 @@ function renderDraw() {
 	ctx.imageSmoothingEnabled = false;
 	ctx.drawImage(render.off, 0, 0, render.size, render.size);
 	renderReach(ctx);
+	renderSettlements(ctx);
+	renderIndustry(ctx);
 	renderSites(ctx);
 	renderRivals(ctx);
 	renderParty(ctx);
@@ -59,13 +79,20 @@ function renderPaintCells() {
 	const size = world.size;
 	const n = world.n;
 	const view = render.view;
+	const terrain = world.terrain;
+	const height = world.height;
 	const progress = investigation.progress;
 	const disturbed = land.disturbed;
 	const fields = territory.fields;
 	const biomass = economy.biomass;
+	const pop = mape.pop;
+	const work = mape.workforce;
+	const itemOffset = mape.viewItem * n;
+	const demand = mape.demand;
+	const goods = mape.goods;
 	const originX = party.x;
 	const originY = party.y;
-	const here = world.terrain[originY * size + originX];
+	const here = terrain[originY * size + originX];
 	let vision = 3 + (party.unlocks.route ? 2 : 0);
 	if (here === TERRAIN.HILLS) vision += 1;
 	if (here === TERRAIN.FOREST) vision -= 1;
@@ -76,8 +103,9 @@ function renderPaintCells() {
 		const dy = y - originY;
 		for (let x = 0; x < size; x++) {
 			const i = row + x;
-			const rgb = TERRAIN_RGB[world.terrain[i]];
-			const relief = 0.9 + world.height[i] * 0.2;
+			const t = terrain[i];
+			const rgb = TERRAIN_RGB[t];
+			const relief = 0.9 + height[i] * 0.2;
 			let r = rgb[0] * relief;
 			let g = rgb[1] * relief;
 			let b = rgb[2] * relief;
@@ -98,9 +126,9 @@ function renderPaintCells() {
 				b *= fog;
 			} else if (view === VIEW.INVESTIGATION) {
 				const k = 0.18 + progress[i] * 0.82;
-				r = 26 + (86 - 26) * k;
-				g = 32 + (196 - 32) * k;
-				b = 40 + (104 - 40) * k;
+				r = 26 + 60 * k;
+				g = 32 + 164 * k;
+				b = 40 + 64 * k;
 			} else if (view === VIEW.INFLUENCE) {
 				const pa = fields[i];
 				const pb = fields[n + i];
@@ -125,17 +153,64 @@ function renderPaintCells() {
 				r = 52 + 124 * d;
 				g = 118 - 14 * d;
 				b = 62 - 36 * d;
-			} else {
+			} else if (view === VIEW.BIOSPHERE) {
 				const k = biomass[i];
-				r = 18 + (72 - 18) * k;
-				g = 30 + (188 - 30) * k;
-				b = 30 + (92 - 30) * k;
+				r = 18 + 54 * k;
+				g = 30 + 158 * k;
+				b = 30 + 62 * k;
 				const d = disturbed[i];
 				if (d > 0) {
 					r += (146 - r) * d * 0.7;
 					g += (104 - g) * d * 0.7;
 					b += (70 - b) * d * 0.7;
 				}
+			} else if (t === TERRAIN.WATER) {
+				r *= 0.72;
+				g *= 0.72;
+				b *= 0.78;
+			} else if (view === VIEW.POPULATION) {
+				const p = pop[i];
+				if (p <= 0) {
+					r *= 0.22;
+					g *= 0.22;
+					b *= 0.24;
+				} else {
+					const raw = p / MAPE_POP_CAP;
+					const k = Math.sqrt(raw > 1 ? 1 : raw);
+					r = 58 + 192 * k;
+					g = 44 + 186 * k;
+					b = 28 + 132 * k;
+				}
+			} else if (view === VIEW.DEMAND) {
+				const v = demand[itemOffset + i];
+				r = 38;
+				g = 42;
+				b = 48;
+				if (v < 0) {
+					const raw = -v / MAPE_VIEW_DEMAND_MAX;
+					const k = raw > 1 ? 1 : raw;
+					r += (44 - r) * k;
+					g += (196 - g) * k;
+					b += (114 - b) * k;
+				} else if (v > 0) {
+					const raw = v / MAPE_VIEW_DEMAND_MAX;
+					const k = raw > 1 ? 1 : raw;
+					r += (220 - r) * k;
+					g += (76 - g) * k;
+					b += (68 - b) * k;
+				}
+			} else if (view === VIEW.SUPPLY) {
+				const raw = goods[itemOffset + i] / MAPE_VIEW_GOODS_MAX;
+				const k = raw <= 0 ? 0 : Math.sqrt(raw > 1 ? 1 : raw);
+				r = 24 + 196 * k;
+				g = 30 + 198 * k;
+				b = 38 + 156 * k;
+			} else {
+				const raw = work[i] / MAPE_VIEW_WORK_MAX;
+				const k = raw <= 0 ? 0 : Math.sqrt(raw > 1 ? 1 : raw);
+				r = 26 + 212 * k;
+				g = 28 + 152 * k;
+				b = 36 + 32 * k;
 			}
 			pixels[o] = r;
 			pixels[o + 1] = g;
@@ -157,9 +232,76 @@ function renderReach(ctx) {
 	ctx.setLineDash(DASH_NONE);
 }
 
+// One batched path covers all ~82 settlements so marker cost does not scale into per-site draw calls.
+function renderSettlements(ctx) {
+	const count = mape.settleCount;
+	if (count === 0) return;
+	const cells = mape.settleCells;
+	const pop = mape.pop;
+	const size = world.size;
+	const cell = CELL_PX;
+	ctx.fillStyle = SETTLE_CSS;
+	ctx.beginPath();
+	for (let k = 0; k < count; k++) {
+		const idx = cells[k];
+		const cx = ((idx % size) + 0.5) * cell;
+		const cy = (((idx / size) | 0) + 0.5) * cell;
+		const ratio = pop[idx] / MAPE_POP_CAP;
+		const radius = cell * (0.12 + 0.18 * (ratio > 1 ? 1 : ratio));
+		ctx.moveTo(cx + radius, cy);
+		ctx.arc(cx, cy, radius, 0, TAU);
+	}
+	ctx.fill();
+}
+
+function renderIndustry(ctx) {
+	const cell = CELL_PX;
+	ctx.fillStyle = STORAGE_CSS;
+	const box = cell * 0.22;
+	for (let k = 0; k < mape.storageCount; k++) {
+		const slot = mape.storageSite[k];
+		if (slot < 255 && sites.state[slot] !== SITE_STATE.VISIBLE) continue;
+		ctx.fillRect((mape.storageX[k] + 0.5) * cell - box * 0.5, (mape.storageY[k] + 0.5) * cell - box * 0.5, box, box);
+	}
+	for (let m = 0; m < mape.mineCount; m++) {
+		const slot = mape.mineSite[m];
+		if (sites.state[slot] !== SITE_STATE.VISIBLE) continue;
+		const cx = (mape.mineX[m] + 0.5) * cell;
+		const cy = (mape.mineY[m] + 0.5) * cell;
+		const open = mape.mineUnlocked[m] === 1;
+		ctx.fillStyle = open ? RES_CSS[sites.res[slot]] : MINE_LOCK_FILL;
+		ctx.beginPath();
+		ctx.moveTo(cx, cy - cell * 0.32);
+		ctx.lineTo(cx + cell * 0.30, cy + cell * 0.26);
+		ctx.lineTo(cx - cell * 0.30, cy + cell * 0.26);
+		ctx.closePath();
+		ctx.fill();
+		if (!open) {
+			ctx.strokeStyle = MINE_LOCK_STROKE;
+			ctx.lineWidth = 1;
+			ctx.stroke();
+		}
+	}
+	const fsize = cell * 0.56;
+	for (let f = 0; f < mape.factoryCount; f++) {
+		const st = mape.factoryState[f];
+		if (st === MAPE_FACTORY_STATE.GONE) continue;
+		const cx = (mape.factoryX[f] + 0.5) * cell - fsize * 0.5;
+		const cy = (mape.factoryY[f] + 0.5) * cell - fsize * 0.5;
+		if (st === MAPE_FACTORY_STATE.BUILDING) {
+			ctx.strokeStyle = FACTORY_CSS[st];
+			ctx.lineWidth = 2;
+			ctx.strokeRect(cx, cy, fsize, fsize);
+		} else {
+			ctx.fillStyle = FACTORY_CSS[st];
+			ctx.fillRect(cx, cy, fsize, fsize);
+		}
+	}
+}
+
 function renderSites(ctx) {
 	const cell = CELL_PX;
-	const pulse = 0.5 + 0.5 * Math.sin(clock.hours * 2);
+	const pulse = 0.5 + 0.5 * Math.sin(clock.seconds * 0.2);
 	for (let i = 0; i < SITE_CAP; i++) {
 		const state = sites.state[i];
 		if (state === SITE_STATE.GONE || state === SITE_STATE.HIDDEN) continue;
@@ -181,8 +323,12 @@ function renderSites(ctx) {
 			continue;
 		}
 		const kind = sites.kind[i];
-		ctx.fillStyle = kind === SITE.DEPOSIT || kind === SITE.GATHER ? RES_CSS[sites.res[i]] : SITE_CSS[kind];
-		renderSiteShape(ctx, cx, cy, cell, kind);
+		const res = sites.res[i];
+		const isMine = kind === SITE.DEPOSIT && (res === RES.FUEL || res === RES.ORE);
+		if (!isMine) {
+			ctx.fillStyle = kind === SITE.DEPOSIT || kind === SITE.GATHER ? RES_CSS[res] : SITE_CSS[kind];
+			renderSiteShape(ctx, cx, cy, cell, kind);
+		}
 		if (sites.claim[i] === 0) continue;
 		ctx.strokeStyle = FACTION_CSS[sites.claim[i] - 1];
 		ctx.lineWidth = 2;
@@ -191,10 +337,6 @@ function renderSites(ctx) {
 }
 
 function renderSiteShape(ctx, cx, cy, cell, kind) {
-	if (kind === SITE.TOWN) {
-		ctx.fillRect(cx - cell * 0.3, cy - cell * 0.3, cell * 0.6, cell * 0.6);
-		return;
-	}
 	if (kind === SITE.DEPOSIT) {
 		ctx.beginPath();
 		ctx.arc(cx, cy, cell * 0.3, 0, TAU);

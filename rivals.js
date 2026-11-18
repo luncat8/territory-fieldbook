@@ -2,18 +2,18 @@
 // edit for: rival speed, target scoring, work share, stuck escape
 
 const RIVAL_COUNT = 2;
-const RIVAL_SPEED = 6;
+const RIVAL_SPEED = 0.6;
 const RIVAL_WORK_SHARE = 0.7;
 const RIVAL_HOME_RANGE = 18;
 const RIVAL_STRAY = 5;
-const RIVAL_WANDER_MIN = 2;
-const RIVAL_WANDER_MAX = 6;
+const RIVAL_WANDER_MIN = 20;
+const RIVAL_WANDER_MAX = 60;
 const RIVAL_STEPS_PER_TICK = 8;
 const RIVAL_TRIES = 200;
 const RIVAL_MIN_NEIGHBOURS = 6;
 const RIVAL_STUCK_LIMIT = 3;
-const RIVAL_AVOID_HOURS = 12;
-const RIVAL_SCOUT_HOURS = 1;
+const RIVAL_AVOID_SEC = 120;
+const RIVAL_SCOUT_SEC = 10;
 const RIVAL_SCOUT_CHANCE = 0.25;
 
 const rivals = {
@@ -84,7 +84,6 @@ function rivalsSpawn() {
 function rivalsTargetOk(i, k) {
 	if (i < 0) return false;
 	if (sites.state[i] !== SITE_STATE.VISIBLE) return false;
-	if (sites.kind[i] === SITE.TOWN) return false;
 	const claim = sites.claim[i];
 	return claim === 0 || claim === rivals.faction[k] + 1;
 }
@@ -96,7 +95,6 @@ function rivalsPickTarget(k) {
 		if (i === rivals.avoid[k]) continue;
 		if (sites.claim[i] !== 0) continue;
 		if (sites.state[i] !== SITE_STATE.VISIBLE) continue;
-		if (sites.kind[i] === SITE.TOWN) continue;
 		const hx = sites.x[i] - rivals.homeX[k];
 		const hy = sites.y[i] - rivals.homeY[k];
 		if (hx * hx + hy * hy > bestScore) continue;
@@ -148,14 +146,14 @@ function rivalsStepToward(k, sx, sy) {
 
 function rivalsGiveUp(k, target) {
 	rivals.avoid[k] = target;
-	rivals.avoidTime[k] = RIVAL_AVOID_HOURS;
+	rivals.avoidTime[k] = RIVAL_AVOID_SEC;
 	rivals.target[k] = -1;
 	rivals.stuck[k] = 0;
 	rivals.moveCarry[k] = 0;
 }
 
-function rivalsMove(k, target, hours) {
-	rivals.moveCarry[k] += RIVAL_SPEED * hours;
+function rivalsMove(k, target, seconds) {
+	rivals.moveCarry[k] += RIVAL_SPEED * seconds;
 	let steps = Math.floor(rivals.moveCarry[k]);
 	if (steps <= 0) return;
 	if (steps > RIVAL_STEPS_PER_TICK) steps = RIVAL_STEPS_PER_TICK;
@@ -180,14 +178,13 @@ function rivalsMove(k, target, hours) {
 	}
 }
 
-function rivalsScout(k, hours) {
-	rivals.scout[k] -= hours;
+function rivalsScout(k, seconds) {
+	rivals.scout[k] -= seconds;
 	if (rivals.scout[k] > 0) return;
-	rivals.scout[k] = RIVAL_SCOUT_HOURS;
+	rivals.scout[k] = RIVAL_SCOUT_SEC;
 	const range = RIVAL_HOME_RANGE * RIVAL_HOME_RANGE;
 	for (let i = 0; i < SITE_CAP; i++) {
 		if (sites.state[i] !== SITE_STATE.MARKED) continue;
-		if (sites.kind[i] === SITE.TOWN) continue;
 		const dx = sites.x[i] - rivals.homeX[k];
 		const dy = sites.y[i] - rivals.homeY[k];
 		if (dx * dx + dy * dy > range) continue;
@@ -198,11 +195,11 @@ function rivalsScout(k, hours) {
 	}
 }
 
-function rivalsWork(k, target, hours) {
+function rivalsWork(k, target, seconds) {
 	const owner = rivals.faction[k];
 	if (sites.kind[target] === SITE.DEPOSIT) {
 		sitesClaim(target, owner);
-		sitesExtract(target, economyDepositRate(sites.res[target]) * RIVAL_WORK_SHARE * hours, owner);
+		sitesExtract(target, economyDepositRate(sites.res[target]) * RIVAL_WORK_SHARE * seconds, owner);
 		if (sites.state[target] === SITE_STATE.DONE) rivals.target[k] = -1;
 		return;
 	}
@@ -210,8 +207,8 @@ function rivalsWork(k, target, hours) {
 	rivals.target[k] = -1;
 }
 
-function rivalsWanderStep(k, hours) {
-	rivals.wander[k] -= hours;
+function rivalsWanderStep(k, seconds) {
+	rivals.wander[k] -= seconds;
 	if (rivals.wander[k] > 0) return;
 	rivals.wander[k] = randomRange(RIVAL_WANDER_MIN, RIVAL_WANDER_MAX);
 	const awayX = rivals.homeX[k] - rivals.x[k];
@@ -229,15 +226,14 @@ function rivalsWanderStep(k, hours) {
 	rivals.y[k] += dy;
 }
 
-function rivalsStep(minutes) {
+function rivalsStep(seconds) {
 	if (!party.alive) return;
 	if (victory.result === 0) return;
-	const hours = minutes / 60;
 	for (let k = 0; k < RIVAL_COUNT; k++) {
 		territoryMaintain(rivals.faction[k], rivals.x[k], rivals.y[k]);
-		rivalsScout(k, hours);
+		rivalsScout(k, seconds);
 		if (rivals.avoidTime[k] > 0) {
-			rivals.avoidTime[k] -= hours;
+			rivals.avoidTime[k] -= seconds;
 			if (rivals.avoidTime[k] <= 0) rivals.avoid[k] = -1;
 		}
 		let target = rivals.target[k];
@@ -250,14 +246,14 @@ function rivalsStep(minutes) {
 			rivals.target[k] = target;
 		}
 		if (target < 0) {
-			rivalsWanderStep(k, hours);
+			rivalsWanderStep(k, seconds);
 			continue;
 		}
 		if (rivals.x[k] === sites.x[target] && rivals.y[k] === sites.y[target]) {
-			rivalsWork(k, target, hours);
+			rivalsWork(k, target, seconds);
 			continue;
 		}
-		rivalsMove(k, target, hours);
+		rivalsMove(k, target, seconds);
 	}
 }
 

@@ -10,14 +10,14 @@ const UNLOCK_TRUST = 7;
 const UNLOCK_NAME = { route: 'route charting', assay: 'field assay', trust: 'local trust' };
 
 const PARTY_NAMES = ['Iri', 'Pell', 'Sable', 'Rook', 'Wren', 'Tarn', 'Juno', 'Bex', 'Holm', 'Mira', 'Kestrel', 'Vale'];
-const PARTY_SUPPLY_USE = 0.09;
-const PARTY_WAGE = 0.30;
-const PARTY_BASE_DRAIN = 0.18;
-const PARTY_TRAVEL_DRAIN = 0.12;
-const PARTY_SUPPLY_DRAIN = 0.50;
-const PARTY_RECOVERY = 0.18;
+const PARTY_SUPPLY_USE = 0.009;
+const PARTY_WAGE = 0.030;
+const PARTY_BASE_DRAIN = 0.018;
+const PARTY_TRAVEL_DRAIN = 0.012;
+const PARTY_SUPPLY_DRAIN = 0.050;
+const PARTY_RECOVERY = 0.018;
 const PARTY_MORALE_TARGET = 50;
-const PARTY_MORALE_PULL = 0.02;
+const PARTY_MORALE_PULL = 0.002;
 const PARTY_HIRE_BASE = 50;
 const PARTY_HIRE_STEP = 25;
 const PARTY_SPAWN_MEMBERS = 3;
@@ -149,27 +149,26 @@ function partyTrain(domain, amount) {
 	partyRecalculateSkills();
 }
 
-function partyStep(minutes) {
+function partyStep(seconds) {
 	if (!party.alive) return;
-	const hours = minutes / 60;
 	const members = party.members.length;
-	const supplyUse = PARTY_SUPPLY_USE * members * hours;
+	const supplyUse = PARTY_SUPPLY_USE * members * seconds;
 	party.supplies -= supplyUse;
 	if (party.supplies < 0) party.supplies = 0;
-	const wage = PARTY_WAGE * members * hours;
+	const wage = PARTY_WAGE * members * seconds;
 	if (party.funds >= wage) party.funds -= wage;
 	else {
 		party.funds = 0;
-		partyAddMorale(-0.3 * hours);
+		partyAddMorale(-0.03 * seconds);
 	}
-	party.morale += (PARTY_MORALE_TARGET - party.morale) * PARTY_MORALE_PULL * hours;
-	if (party.camped && party.supplies > 0) partyAddCondition(partyRecoveryRate() * hours);
-	else partyAddCondition(-(PARTY_BASE_DRAIN + PARTY_TRAVEL_DRAIN * PARTY_TERRAIN_EFFORT[world.terrain[party.y * MAP_SIZE + party.x]]) * hours);
-	if (party.supplies <= 0) partyAddCondition(-PARTY_SUPPLY_DRAIN * hours);
+	party.morale += (PARTY_MORALE_TARGET - party.morale) * PARTY_MORALE_PULL * seconds;
+	if (party.camped && party.supplies > 0) partyAddCondition(partyRecoveryRate() * seconds);
+	else partyAddCondition(-(PARTY_BASE_DRAIN + PARTY_TRAVEL_DRAIN * PARTY_TERRAIN_EFFORT[world.terrain[party.y * MAP_SIZE + party.x]]) * seconds);
+	if (party.supplies <= 0) partyAddCondition(-PARTY_SUPPLY_DRAIN * seconds);
 	party.morale = party.morale < 0 ? 0 : party.morale > 100 ? 100 : party.morale;
 	if (party.supplies < 5 && !party.warnSupplies) {
 		party.warnSupplies = true;
-		eventsAdd('Supplies are running out: provision food or buy at a town.');
+		eventsAdd('Supplies are running out: provision food or buy at a settlement.');
 	}
 	if (party.supplies > 10) party.warnSupplies = false;
 	if (party.condition < 15 && !party.warnCondition) {

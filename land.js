@@ -1,8 +1,8 @@
 // owns: disturbed fraction per cell, productivity, natural recovery and restoration
 // edit for: recovery rates, disturbance costs, restoration effect
 
-// indexed by world terrain id: meadow, forest, water, swamp, hills, desert
-const LAND_RECOVERY = [0.0020, 0.0028, 0, 0.0014, 0.0008, 0.0006];
+// indexed by world terrain id: meadow, forest, water, swamp, hills, desert (per second)
+const LAND_RECOVERY = [0.00020, 0.00028, 0, 0.00014, 0.00008, 0.00006];
 const LAND_DISTURB_PER_UNIT = 0.006;
 const LAND_RESTORE_AMOUNT = 0.25;
 const LAND_RESTORE_FUNDS = 12;
@@ -34,18 +34,15 @@ function landRestore(i) {
 	return true;
 }
 
-function landStep(minutes) {
-	const hours = minutes / 60;
+function landStep(seconds) {
 	const disturbed = land.disturbed;
 	const terrain = world.terrain;
 	for (let i = 0; i < world.n; i++) {
 		const d = disturbed[i];
 		if (d <= 0) continue;
-		// recovery slows as disturbance grows: d = 1 never recovers on its own,
-		// light disturbance recovers near the terrain rate but never instantly,
-		// so natural recovery cannot outrun waste from deposits and factories
+		// Recovery scales with (1 - d): d = 1 never recovers on its own, and active waste outruns it.
 		const rate = LAND_RECOVERY[terrain[i]] * (1 - d);
-		const next = d - rate * hours;
+		const next = d - rate * seconds;
 		disturbed[i] = next > 0 ? next : 0;
 	}
 }

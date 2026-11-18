@@ -2,14 +2,14 @@
 // edit for: site kinds, placement counts, discovery and payout rules
 
 const SITE_CAP = 96;
-const SITE = { GATHER: 0, ITEM: 1, SKILL: 2, TASK: 3, DEPOSIT: 4, TOWN: 5 };
+const SITE = { GATHER: 0, ITEM: 1, SKILL: 2, TASK: 3, DEPOSIT: 4 };
 const SITE_STATE = { HIDDEN: 0, MARKED: 1, VISIBLE: 2, DONE: 3, GONE: 4 };
 const SITE_DEPOSIT_STOCK = [50, 55, 45, 25, 40, 0];
 const SITE_REVEAL_PROGRESS = 0.2;
 const SITE_SOURCE_STRENGTH = 0.8;
 const SITE_SOURCE_RADIUS = 3.5;
-const SITE_SOURCE_DECAY = 0.004;
-const SITE_TIMED_CHANCE = 0.35;
+const SITE_SOURCE_DECAY = 0.0004;
+const SITE_TIMED_CHANCE = 0.035;
 const SITE_TIMED_KINDS = [SITE.GATHER, SITE.ITEM, SITE.TASK];
 const SITE_MAX_TRUST = 0.4;
 
@@ -23,7 +23,6 @@ const sites = {
 	claim: new Uint8Array(SITE_CAP),
 	life: new Float32Array(SITE_CAP),
 	discover: new Float32Array(SITE_CAP),
-	town: new Uint8Array(SITE_CAP),
 	trust: new Uint8Array(SITE_CAP),
 	version: 0,
 	initialStock: 0,
@@ -36,12 +35,10 @@ function sitesPopulate() {
 	sites.life.fill(0);
 	sites.stock.fill(0);
 	sites.discover.fill(0);
-	sites.town.fill(255);
 	sites.trust.fill(0);
 	sites.version++;
 	randomSeed(world.seed ^ 0x51ed270b);
 	sitesPlaceStarter();
-	sitesPlaceTowns();
 	sitesPlaceDeposits();
 	sitesPlaceOneShots();
 	let total = 0;
@@ -69,7 +66,6 @@ function sitesPlace(kind, idx, res, stock, state, life, discover) {
 	sites.life[slot] = life;
 	sites.discover[slot] = discover;
 	sites.claim[slot] = 0;
-	sites.town[slot] = 255;
 	sites.trust[slot] = 0;
 	sites.version++;
 	return slot;
@@ -110,23 +106,12 @@ function sitesPlaceStarter() {
 	const task = sitesFindCellNear(sx, sy, 5, -1);
 	if (task >= 0) sitesPlace(SITE.TASK, task, randomInt(SKILL_COUNT), randomRange(28, 45), SITE_STATE.VISIBLE, 0, 0);
 	const ore = sitesFindCellNear(sx, sy, 9, TERRAIN.HILLS);
-	if (ore >= 0) sitesPlace(SITE.DEPOSIT, ore, RES.ORE, SITE_DEPOSIT_STOCK[RES.ORE], SITE_STATE.MARKED, 0, 0.8);
-}
-
-function sitesPlaceTowns() {
-	const spots = [[12, 12], [50, 16], [30, 52]];
-	for (let k = 0; k < spots.length; k++) {
-		let idx = sitesFindCellNear(spots[k][0], spots[k][1], 7, -1);
-		if (idx < 0) idx = worldRandomWalkable();
-		const slot = sitesPlace(SITE.TOWN, idx, RES.GOODS, 0, SITE_STATE.VISIBLE, 0, 0);
-		if (slot < 0) return;
-		sites.town[slot] = economyAddTown();
-	}
+	if (ore >= 0) sitesPlace(SITE.DEPOSIT, ore, RES.ORE, SITE_DEPOSIT_STOCK[RES.ORE], SITE_STATE.MARKED, 0, 0.08);
 }
 
 function sitesPlaceDeposits() {
-	const order = [RES.FOOD, RES.TIMBER, RES.ORE, RES.FUEL, RES.CRYSTAL];
-	const wanted = [TERRAIN.MEADOW, TERRAIN.FOREST, TERRAIN.HILLS, TERRAIN.SWAMP, TERRAIN.HILLS];
+	const order = [RES.FOOD, RES.TIMBER, RES.ORE, RES.FUEL, RES.CRYSTAL, RES.ORE, RES.FUEL];
+	const wanted = [TERRAIN.MEADOW, TERRAIN.FOREST, TERRAIN.HILLS, TERRAIN.SWAMP, TERRAIN.HILLS, TERRAIN.HILLS, TERRAIN.SWAMP];
 	for (let k = 0; k < 12; k++) {
 		const res = order[k % order.length];
 		const anchor = worldRandomWalkable();
@@ -135,26 +120,26 @@ function sitesPlaceDeposits() {
 		let idx = sitesFindCellNear(ax, ay, 6, wanted[k % wanted.length]);
 		if (idx < 0) idx = sitesFindCellNear(ax, ay, 8, -1);
 		if (idx < 0) continue;
-		sitesPlace(SITE.DEPOSIT, idx, res, SITE_DEPOSIT_STOCK[res], sitesVisibility(), 0, randomRange(0.5, 1.0));
+		sitesPlace(SITE.DEPOSIT, idx, res, SITE_DEPOSIT_STOCK[res], sitesVisibility(), 0, randomRange(0.05, 0.10));
 	}
 }
 
 function sitesPlaceOneShots() {
 	for (let k = 0; k < 10; k++) {
 		const idx = worldRandomWalkable();
-		sitesPlace(SITE.GATHER, idx, randomInt(RES_COUNT), randomRange(8, 20), sitesVisibility(), 0, randomRange(0.4, 0.9));
+		sitesPlace(SITE.GATHER, idx, randomInt(RES_COUNT), randomRange(8, 20), sitesVisibility(), 0, randomRange(0.04, 0.09));
 	}
 	for (let k = 0; k < 5; k++) {
 		const idx = worldRandomWalkable();
-		sitesPlace(SITE.ITEM, idx, RES.GOODS, 1, sitesVisibility(), 0, randomRange(0.4, 0.9));
+		sitesPlace(SITE.ITEM, idx, RES.GOODS, 1, sitesVisibility(), 0, randomRange(0.04, 0.09));
 	}
 	for (let k = 0; k < 4; k++) {
 		const idx = worldRandomWalkable();
-		sitesPlace(SITE.SKILL, idx, randomInt(SKILL_COUNT), 1, sitesVisibility(), 0, randomRange(0.5, 1.0));
+		sitesPlace(SITE.SKILL, idx, randomInt(SKILL_COUNT), 1, sitesVisibility(), 0, randomRange(0.05, 0.10));
 	}
 	for (let k = 0; k < 5; k++) {
 		const idx = worldRandomWalkable();
-		const slot = sitesPlace(SITE.TASK, idx, randomInt(SKILL_COUNT), randomRange(25, 70), sitesVisibility(), 0, randomRange(0.5, 1.0));
+		const slot = sitesPlace(SITE.TASK, idx, randomInt(SKILL_COUNT), randomRange(25, 70), sitesVisibility(), 0, randomRange(0.05, 0.10));
 		if (slot >= 0 && randomNext() < SITE_MAX_TRUST) sites.trust[slot] = 1;
 	}
 }
@@ -179,7 +164,6 @@ function sitesWorkable(i) {
 
 function sitesName(i) {
 	const kind = sites.kind[i];
-	if (kind === SITE.TOWN) return 'town';
 	if (kind === SITE.DEPOSIT) return RES_NAME[sites.res[i]] + ' deposit';
 	if (kind === SITE.GATHER) return RES_NAME[sites.res[i]] + ' cache';
 	if (kind === SITE.ITEM) return 'relic';
@@ -218,35 +202,34 @@ function sitesExtract(i, amount, owner) {
 	return units;
 }
 
-function sitesTimedSpawn(hours) {
-	if (randomNext() >= SITE_TIMED_CHANCE * hours) return;
+function sitesTimedSpawn(seconds) {
+	if (randomNext() >= SITE_TIMED_CHANCE * seconds) return;
 	const kind = SITE_TIMED_KINDS[randomInt(SITE_TIMED_KINDS.length)];
 	const idx = worldRandomWalkable();
 	const x = idx % MAP_SIZE;
 	const y = (idx / MAP_SIZE) | 0;
-	if (sitesAt(x, y) >= 0) return;
+	if (sitesAt(x, y) >= 0 || mapeIsSettlement(idx)) return;
 	const state = randomNext() < 0.45 ? SITE_STATE.VISIBLE : SITE_STATE.MARKED;
 	if (kind === SITE.GATHER) {
-		sitesPlace(kind, idx, randomInt(RES_COUNT), randomRange(8, 18), state, randomRange(36, 96), randomRange(0.5, 1.0));
+		sitesPlace(kind, idx, randomInt(RES_COUNT), randomRange(8, 18), state, randomRange(360, 960), randomRange(0.05, 0.10));
 		return;
 	}
 	if (kind === SITE.ITEM) {
-		sitesPlace(kind, idx, RES.GOODS, 1, state, randomRange(36, 96), randomRange(0.5, 1.0));
+		sitesPlace(kind, idx, RES.GOODS, 1, state, randomRange(360, 960), randomRange(0.05, 0.10));
 		return;
 	}
-	const slot = sitesPlace(kind, idx, randomInt(SKILL_COUNT), randomRange(20, 55), state, randomRange(36, 96), randomRange(0.5, 1.0));
+	const slot = sitesPlace(kind, idx, randomInt(SKILL_COUNT), randomRange(20, 55), state, randomRange(360, 960), randomRange(0.05, 0.10));
 	if (slot >= 0 && randomNext() < SITE_MAX_TRUST) sites.trust[slot] = 1;
 }
 
-function sitesStep(minutes) {
+function sitesStep(seconds) {
 	if (!party.alive) return;
-	const hours = minutes / 60;
 	const progress = investigation.progress;
 	for (let i = 0; i < SITE_CAP; i++) {
 		const state = sites.state[i];
 		if (state === SITE_STATE.GONE) continue;
 		if (sites.life[i] > 0) {
-			const life = sites.life[i] - hours;
+			const life = sites.life[i] - seconds;
 			if (life <= 0) {
 				if (state === SITE_STATE.VISIBLE) eventsAdd('The chance at a ' + sitesName(i) + ' has passed.');
 				sites.state[i] = SITE_STATE.GONE;
@@ -263,27 +246,26 @@ function sitesStep(minutes) {
 			continue;
 		}
 		if (state === SITE_STATE.MARKED) {
-			const amount = sites.discover[i] * progress[sites.y[i] * MAP_SIZE + sites.x[i]] * hours;
+			const amount = sites.discover[i] * progress[sites.y[i] * MAP_SIZE + sites.x[i]] * seconds;
 			if (randomNext() < amount) {
 				sites.state[i] = SITE_STATE.VISIBLE;
 				sites.version++;
 				eventsAdd('Identified a ' + sitesName(i) + ' at ' + sites.x[i] + ',' + sites.y[i] + '.');
 			}
 		}
-		if (sites.state[i] !== SITE_STATE.VISIBLE) continue;
-		if (sites.kind[i] === SITE.TOWN || sites.claim[i] !== 0) continue;
+		if (sites.state[i] !== SITE_STATE.VISIBLE || sites.claim[i] !== 0) continue;
 		if (progress[sites.y[i] * MAP_SIZE + sites.x[i]] < 1) continue;
 		sitesClaim(i, FACTION_PLAYER);
 	}
 	const here = sitesAt(party.x, party.y);
-	if (party.working && here >= 0) sitesWorkTick(here, hours);
-	sitesTimedSpawn(hours);
+	if (party.working && here >= 0) sitesWorkTick(here, seconds);
+	sitesTimedSpawn(seconds);
 }
 
-function sitesWorkTick(i, hours) {
+function sitesWorkTick(i, seconds) {
 	if (sites.kind[i] !== SITE.DEPOSIT || sites.state[i] !== SITE_STATE.VISIBLE) return;
 	if (!sitesWorkable(i)) return;
-	sitesExtract(i, economyDepositRate(sites.res[i]) * party.workFactor() * hours, FACTION_PLAYER);
+	sitesExtract(i, economyDepositRate(sites.res[i]) * party.workFactor() * seconds, FACTION_PLAYER);
 }
 
 function sitesActionable(i, kind) {
@@ -316,7 +298,7 @@ function sitesTakeItem(i) {
 	sites.stock[i] = 0;
 	sites.state[i] = SITE_STATE.DONE;
 	sitesClaim(i, FACTION_PLAYER);
-	eventsAdd('Recovered a relic worth ' + ITEM_VALUE + ' funds at a town.');
+	eventsAdd('Recovered a relic worth ' + ITEM_VALUE + ' funds at a settlement.');
 	return true;
 }
 

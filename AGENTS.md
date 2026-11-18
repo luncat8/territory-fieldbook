@@ -53,8 +53,9 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	world.js — 64x64 terrain grid, seeded generation, map queries.
 	events.js — event feed and status line.
 	land.js — disturbed fraction, productivity, recovery, restoration.
-	economy.js — resources, town stocks, prices, recipes, biosphere, ledger.
+	economy.js — resources, recipes, biosphere, conservation ledger.
 	sites.js — site pool, discovery, claims, extraction, payouts.
+	map-economy.js — settlements, markets, demand/goods/workforce fields, mines, factories.
 	investigate.js — investigation progress, float radius, Euclidean falloff, survey push, nearby list.
 	party.js — members, shared values, skills, movement, camping, hiring.
 	territory.js — per-faction influence fields, control, share, contest.
@@ -123,7 +124,6 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 
 Before all topics has minimal implementation Do not try to implement 100% of some draft topic at once: the 1st goal is implement each as simplest minimal to view how all works in real whole minimal game. for example you can implement only 1 resource cycle or one of person's skill.
 
-
 - start work with review of the previous task: it was done by another agent and you can find a better way or real issues.
 - same review polices compliance — comment budget, worklog format, placement. fix in place, one line in your own worklog. no test reruns: previous stage already validated it, rerun only what your fix itself touches.
 - review the next step plan. improve it only with a concrete reason, then implement.
@@ -136,13 +136,13 @@ Before all topics has minimal implementation Do not try to implement 100% of som
 
 ## current workstream
 
-- plan-prototype.md is the standing design; change its numbers with the owning file in the
-  same edit.
-- four experiment files cover the loop: smoke (sim), dom_smoke (boot + UI). run both after
-  touching main.js, index.html or load order.
+- plan-prototype.md and plan-map-economy.md are the standing designs; change their numbers
+  with the owning file in the same edit.
+- experiment files cover the loop: smoke (sim), dom_smoke (boot + UI), survey_spread. run
+  smoke + dom_smoke after touching main.js, index.html or load order.
 - keep every file under ~500 lines; a new feature gets a new file, header and map entry.
-- next phase: playtest balance (supplies, rival pressure, victory margins), then extend one
-  draft topic at a time from plan open questions.
+- next phase: map-economy prototype (plan-map-economy.md) — diffusion engine through P1–P3,
+  then sites engine (P4) and comparison/integration (P5), then O2 throttle cycle.
 
 ## housekeeping
 

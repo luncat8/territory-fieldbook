@@ -249,13 +249,19 @@ forest cause growth
 	need
 		co2 = growth
 
-player Observe + unlock sites or territories with deposits to be available for mine resources
+player observe + unlock sites or territories with deposits to be available for mine resources
 
-i suggest firstly do all plan with one of engine : diffusion or sites. to choose what should be first think what result will be more easy to get and will be useful as starting for another, or what will be more helpful to solve possible pitfalls that is geleral for both engines.
+i expect after player's party discover coal - deposit cause workers demand. workers diffuse on map to mine. mine produce coal, coal diffuse to settlement and factories
 
 after prototype done next is, add Oxygen to co2 cycle. so o2 is another need and low o2 also limit production speed.
 
 i suggest firstly do all plan with one of engine : diffusion or sites. to choose what should be first think what result will be more easy to get and will be useful as starting for another, or what will be more helpful to solve possible pitfalls that is general for both engines.
+
+#### LLM thoughts: Engine order — diffusion first (P0–P3), then sites (P4), comparison & integration (P5):
+
+Easier path to a working full loop: one 4-connected cell pass handles coal, iron, goods, atmospheric CO2 to every forest cell, population migration, and routing around water—no supplier search, price bidding, shipment queue, or pathfinding needed first.
+Direct foundation for sites: the pop/demand/goods/workforce/money arrays, factory/mine/storage pools, settlement markets, deposit unlock rules, construction timer, waste, ledger, views, HUD inspector, scenario scripts, and atmospheric CO2 diffusion all carry straight into P4; sites swaps only goods routing and factory placement scoring.
+Solves shared pitfalls early: catches town-to-settlement market balance, water-isolated regions, cold-start supply, duplicate builds during the 20 s build lag, settlement waste vs land.js recovery, conservation residuals, and tick budget without confounding every pass with two half-built engines.
 
 #### time units
 

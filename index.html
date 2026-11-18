@@ -18,6 +18,7 @@
 	--ui-step: 3px;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body {
 	margin: 0;
 	background: #0d1117;
@@ -86,6 +87,7 @@ button.ui-chip.on { background: #2c5f6e; border-color: #4f8d9d; color: #f2fbfd; 
 }
 .ui-seg {
 	display: inline-flex;
+	flex-wrap: wrap;
 	border: 1px solid var(--ui-line);
 	border-radius: var(--ui-radius-sm);
 	background: var(--ui-surface);
@@ -96,7 +98,7 @@ button.ui-chip.on { background: #2c5f6e; border-color: #4f8d9d; color: #f2fbfd; 
 .ui-seg-item + .ui-seg-item { border-left: 1px solid var(--ui-line); }
 .ui-seg-item > span {
 	display: block;
-	padding: var(--ui-step) 9px;
+	padding: var(--ui-step) 8px;
 	color: var(--ui-text);
 	line-height: 1.45;
 	white-space: nowrap;
@@ -121,10 +123,11 @@ button.ui-chip.on { background: #2c5f6e; border-color: #4f8d9d; color: #f2fbfd; 
 	max-height: 180px;
 	overflow-y: auto;
 }
-#ui-stats, #ui-skills, #ui-members, #ui-site, #ui-victory {
+#ui-stats, #ui-skills, #ui-members, #ui-site, #ui-inspect, #ui-victory {
 	white-space: pre-line;
 	color: #c8d2dd;
 }
+#ui-inspect { font-size: 12px; margin-top: 6px; }
 #ui-site { color: #e6edf4; }
 #ui-actions { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
 button.ui-act {
@@ -162,16 +165,17 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 <div id="ui-app">
 	<div id="ui-mapwrap">
 		<canvas id="ui-canvas"></canvas>
-		<div id="ui-views"></div>
+		<div id="ui-views" class="ui-row"></div>
 		<section class="ui-block"><h2>around</h2><div id="ui-nearby"></div></section>
 	</div>
 	<aside id="ui-panel">
-		<div id="ui-clock">day 1 · 06:00</div>
+		<div id="ui-clock">day 1 · 0s · 1×</div>
 		<div id="ui-time" class="ui-row"></div>
 		<section class="ui-block"><h2>party</h2><div id="ui-stats"></div></section>
 		<section class="ui-block"><h2>skills</h2><div id="ui-skills"></div></section>
 		<section class="ui-block"><h2>members</h2><div id="ui-members"></div></section>
 		<section class="ui-block"><h2>here</h2><div id="ui-site"></div><div id="ui-actions"></div></section>
+		<section class="ui-block"><h2>economy</h2><div id="ui-engine" class="ui-row"></div><div id="ui-inspect"></div></section>
 		<section class="ui-block"><h2>victory</h2><div id="ui-victory"></div></section>
 		<div id="ui-status"></div>
 		<ol id="ui-log"></ol>
@@ -183,6 +187,7 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 <script src="land.js"></script>
 <script src="economy.js"></script>
 <script src="sites.js"></script>
+<script src="map-economy.js"></script>
 <script src="investigate.js"></script>
 <script src="party.js"></script>
 <script src="territory.js"></script>

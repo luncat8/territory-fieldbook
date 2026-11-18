@@ -55,3 +55,15 @@ falloff you tuned is invisible. Judge a radial effect by the mean per distance b
 centre cell: a 3.5-cell reach with centre gain 1.33 recorded every meadow cell within 2.3 cells
 in one press. Keep the centre gain near 1.0 so the core completes and the ring keeps a gradient.
 Hours and effort multiply, so tune their product and drop the spare factor.
+
+## dense markers and field conservation
+
+Drawing ~82 settlements as separate `beginPath`/`fill` calls or scanning 4096 cells to find them
+hurts the render path; keep a compact `settleCells` index array and emit one batched `beginPath`
+with `moveTo(cx + r, cy); arc(...)` before a single `fill`, and store direct site indices on
+storages instead of calling `sitesAt` per marker. In diffusion designs, diffusing signed demand
+alone leaves physical `goods` stranded at mines — `goods` must also advect up the demand gradient,
+and decay must be sized from `sqrt(D / decay)` (~15 cells on a 64×64 map) rather than per-tick
+guesses. When stocks live in `Float32Array`, check `sum(goods)` conservation at `1e-4` and
+`Float64` process counters at `1e-6`, recording `after - before` on cell writes so rounding does
+not masquerade as mass creation.

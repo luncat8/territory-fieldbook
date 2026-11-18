@@ -54,35 +54,63 @@ const result = run(`
 	for (let i = 0; i < world.n; i++) terrain[world.terrain[i]]++;
 	const startX = party.x;
 	const startY = party.y;
-	const visibleBefore = countState(2);
-	const markedBefore = countState(1);
-	const hiddenBefore = countState(0);
-	const deposit = findSite(4, 2);
 
-	main.step(240);
+	const settleCount = mape.settleCount;
+	let settleWater = 0;
+	let settlePopOut = 0;
+	for (let k = 0; k < settleCount; k++) {
+		const idx = mape.settleCells[k];
+		if (world.terrain[idx] === TERRAIN.WATER) settleWater++;
+		const p = mape.pop[idx];
+		if (p < MAPE_POP_SEED_MIN || p > MAPE_POP_SEED_MAX) settlePopOut++;
+	}
+	const itemSpreads = [];
+	for (let r = 0; r < MAPE_R; r++) {
+		const d = mapeField(MAPE_FIELD.DEMAND, r);
+		const g = mapeField(MAPE_FIELD.GOODS, r);
+		let pos = 0;
+		let neg = 0;
+		let stock = 0;
+		for (let i = 0; i < world.n; i++) {
+			if (d[i] > 0.01) pos++;
+			else if (d[i] < -0.01) neg++;
+			if (g[i] > 0.01) stock++;
+		}
+		itemSpreads.push({ pos: pos, neg: neg, stock: stock });
+	}
+	const mineCount = mape.mineCount;
+	let unlockedStart = 0;
+	for (let m = 0; m < mineCount; m++) if (mape.mineUnlocked[m]) unlockedStart++;
+
+	const visibleBefore = countState(SITE_STATE.VISIBLE);
+	const markedBefore = countState(SITE_STATE.MARKED);
+	const hiddenBefore = countState(SITE_STATE.HIDDEN);
+	const deposit = findSite(SITE.DEPOSIT, SITE_STATE.VISIBLE);
+
+	main.step(40);
 	const progressHere = investigation.progress[party.y * world.size + party.x];
 	const near = ((party.y + 2) * world.size) + (party.x + 2);
 	const progressNear = investigation.progress[near];
 	const farX = (party.x + 30) % world.size;
 	const farY = (party.y + 30) % world.size;
 	const progressFar = investigation.progress[farY * world.size + farX];
-	const visibleAfterScout = countState(2);
+	const visibleAfterScout = countState(SITE_STATE.VISIBLE);
 
 	const depositStockStart = sites.stock[deposit];
 	move(sites.x[deposit], sites.y[deposit]);
 	party.working = true;
 	const disturbedBefore = land.disturbed[sites.y[deposit] * world.size + sites.x[deposit]];
-	main.step(180);
+	main.step(30);
 	const depositStockEnd = sites.stock[deposit];
 	const disturbedAfter = land.disturbed[sites.y[deposit] * world.size + sites.x[deposit]];
-	const inventory = economy.inventory[1];
+	const inventory = economy.inventory[RES.TIMBER];
 	const massResidual = economy.massIn - economy.massOut;
 	const miningResidual = economy.miningMass - economy.miningOre - economy.miningLeft;
 
 	let markedSite = -1;
 	let markedDistance = Infinity;
 	for (let i = 0; i < SITE_CAP; i++) {
-		if (sites.state[i] !== 1) continue;
+		if (sites.state[i] !== SITE_STATE.MARKED) continue;
 		const dx = sites.x[i] - party.x;
 		const dy = sites.y[i] - party.y;
 		const d = dx * dx + dy * dy;
@@ -91,34 +119,62 @@ const result = run(`
 		markedSite = i;
 	}
 	move(sites.x[markedSite], sites.y[markedSite]);
-	const markedKind = sites.kind[markedSite];
-	const markedRes = sites.res[markedSite];
-	main.step(360);
-	const markedDiscovered = sites.state[markedSite] === 2 || sites.state[markedSite] === 3;
+	main.step(60);
+	const markedDiscovered = sites.state[markedSite] === SITE_STATE.VISIBLE || sites.state[markedSite] === SITE_STATE.DONE;
 
-	const town = findSite(5, 2);
-	move(sites.x[town], sites.y[town]);
+	// Unlock a coal/iron deposit by recording its cell to 100% and claiming it.
+	const mineSlot = mape.mineSite[0];
+	sites.state[mineSlot] = SITE_STATE.VISIBLE;
+	sites.claim[mineSlot] = 0;
+	move(mape.mineX[0], mape.mineY[0]);
+	main.step(60);
+	const mineUnlockedAfter = mape.mineUnlocked[0] === 1;
+
+	// Trade ore, buy supplies and hire at the nearest settlement.
+	economyAddResource(RES.ORE, 4);
+	const settle = mapeNearestSettlement(party.x, party.y);
+	move(settle % world.size, (settle / world.size) | 0);
 	const fundsBefore = party.funds;
-	const townStockBefore = economy.townStock[sites.town[town] * RES_COUNT + 1];
+	const moneyBefore = mape.money[settle];
+	const ironBefore = mape.goods[MAPE_RES.IRON * world.n + settle];
 	actionsSellAll();
 	const fundsAfter = party.funds;
-	const townStockAfter = economy.townStock[sites.town[town] * RES_COUNT + 1];
+	const moneyAfter = mape.money[settle];
+	const ironAfter = mape.goods[MAPE_RES.IRON * world.n + settle];
+	const goodsBefore = mape.goods[MAPE_RES.GOODS * world.n + settle];
+	actionsBuySupplies();
+	const goodsAfter = mape.goods[MAPE_RES.GOODS * world.n + settle];
+	const popBeforeHire = mape.pop[settle];
+	const membersBefore = party.members.length;
+	actionsHire();
+	const popAfterHire = mape.pop[settle];
+	const membersAfter = party.members.length;
+	const mapeResidual = mapeLedgerResidual();
 
 	party.camped = true;
-	main.step(1440);
+	main.step(240);
 	party.camped = false;
 
-	const rivalClaims = countClaims(1) + countClaims(2);
+	const rivalClaims = countClaims(FACTION_A) + countClaims(FACTION_B);
 	const disturbedCells = countDisturbed();
-	const fails = victoryEvaluate();
+	victoryEvaluate();
 	const failCount = victory.failCount;
 	const declared = victoryDeclare();
-	const shootOxygen = economy.oxygenProduced >= 0;
 	const shareSum = territory.share[0] + territory.share[1] + territory.share[2];
 
 	return {
 		terrain: terrain,
 		start: [startX, startY],
+		clockSec: clock.seconds,
+		settleCount: settleCount,
+		settlePct: settleCount / world.n * 100,
+		settleWater: settleWater,
+		settlePopOut: settlePopOut,
+		totalPop: mape.totalPop,
+		mineCount: mineCount,
+		unlockedStart: unlockedStart,
+		mineUnlockedAfter: mineUnlockedAfter,
+		itemSpreads: itemSpreads,
 		visibleBefore: visibleBefore,
 		markedBefore: markedBefore,
 		hiddenBefore: hiddenBefore,
@@ -132,17 +188,23 @@ const result = run(`
 		disturbedAfter: disturbedAfter,
 		inventoryTimber: inventory,
 		markedDiscovered: markedDiscovered,
-		markedKind: markedKind,
-		markedRes: markedRes,
 		massResidual: massResidual,
 		miningResidual: miningResidual,
+		mapeResidual: mapeResidual,
 		fundsBefore: fundsBefore,
 		fundsAfter: fundsAfter,
-		townStockBefore: townStockBefore,
-		townStockAfter: townStockAfter,
+		moneyBefore: moneyBefore,
+		moneyAfter: moneyAfter,
+		ironBefore: ironBefore,
+		ironAfter: ironAfter,
+		goodsBefore: goodsBefore,
+		goodsAfter: goodsAfter,
+		popBeforeHire: popBeforeHire,
+		popAfterHire: popAfterHire,
+		membersBefore: membersBefore,
+		membersAfter: membersAfter,
 		rivalClaims: rivalClaims,
 		disturbedCells: disturbedCells,
-		victoryFails: fails,
 		victoryDeclared: declared,
 		victoryFailCount: failCount,
 		oxygenProduced: economy.oxygenProduced,
@@ -151,8 +213,7 @@ const result = run(`
 		shareSum: shareSum,
 		partyAlive: party.alive,
 		condition: party.condition,
-		supplies: party.supplies,
-		cleared: shootOxygen
+		supplies: party.supplies
 	};
 })()
 `);
@@ -168,7 +229,9 @@ for (let t = 0; t < 6; t++) {
 	const pct = result.terrain[t] / totalCells * 100;
 	console.log('terrain_' + t + '=' + pct.toFixed(1) + 'pct');
 }
-console.log('start=' + result.start.join(','));
+console.log('start=' + result.start.join(',') + ' clock_sec=' + result.clockSec.toFixed(1));
+console.log('settlements=' + result.settleCount + ' settle_pct=' + result.settlePct.toFixed(2) + ' total_pop=' + result.totalPop.toFixed(1));
+console.log('mines=' + result.mineCount + ' unlocked_start=' + result.unlockedStart + ' unlocked_after=' + (result.mineUnlockedAfter ? 1 : 0));
 console.log('sites_visible_before=' + result.visibleBefore + ' sites_marked_before=' + result.markedBefore + ' sites_hidden_before=' + result.hiddenBefore);
 console.log('sites_visible_after_scout=' + result.visibleAfterScout);
 console.log('progress_here=' + result.progressHere.toFixed(3) + ' progress_near=' + result.progressNear.toFixed(3) + ' progress_far=' + result.progressFar.toFixed(3));
@@ -176,9 +239,9 @@ console.log('deposit_stock=' + result.depositStockStart.toFixed(1) + '->' + resu
 console.log('disturbed_cell=' + result.disturbedBefore.toFixed(3) + '->' + result.disturbedAfter.toFixed(3));
 console.log('inventory_timber=' + result.inventoryTimber.toFixed(2));
 console.log('marked_site_discovered=' + (result.markedDiscovered ? 1 : 0));
-console.log('mass_residual=' + result.massResidual.toFixed(6) + ' mining_residual=' + result.miningResidual.toFixed(6));
-console.log('town_sale_funds=' + result.fundsBefore.toFixed(1) + '->' + result.fundsAfter.toFixed(1));
-console.log('town_stock_timber=' + result.townStockBefore.toFixed(1) + '->' + result.townStockAfter.toFixed(1));
+console.log('mass_residual=' + result.massResidual.toFixed(6) + ' mining_residual=' + result.miningResidual.toFixed(6) + ' mape_residual=' + result.mapeResidual.toFixed(6));
+console.log('settle_sale_funds=' + result.fundsBefore.toFixed(1) + '->' + result.fundsAfter.toFixed(1) + ' iron=' + result.ironBefore.toFixed(1) + '->' + result.ironAfter.toFixed(1));
+console.log('settle_supply_goods=' + result.goodsBefore.toFixed(1) + '->' + result.goodsAfter.toFixed(1) + ' hire_pop=' + result.popBeforeHire.toFixed(1) + '->' + result.popAfterHire.toFixed(1));
 console.log('rival_claims=' + result.rivalClaims + ' disturbed_cells=' + result.disturbedCells);
 console.log('victory_fails=' + result.victoryFailCount + ' declared=' + (result.victoryDeclared ? 1 : 0));
 console.log('oxygen_produced=' + result.oxygenProduced.toFixed(2) + ' used=' + result.oxygenUsed.toFixed(2));
@@ -186,14 +249,18 @@ console.log('share_player=' + result.sharePlayer.toFixed(4) + ' share_sum=' + re
 console.log('party_alive=' + (result.partyAlive ? 1 : 0) + ' condition=' + result.condition.toFixed(1) + ' supplies=' + result.supplies.toFixed(1));
 
 check('terrain_all_present', result.terrain.every(value => value > 0));
+check('settlements_seeded', result.settlePct >= 1.8 && result.settlePct <= 2.2 && result.settleWater === 0 && result.settlePopOut === 0);
+check('mape_fields_seeded', result.itemSpreads.every(s => s.stock > 0 && (s.pos > 0 || s.neg > 0)));
+check('deposit_unlocks', result.mineCount >= 4 && result.unlockedStart === 0 && result.mineUnlockedAfter);
 check('investigation_local', result.progressHere > 0.2 && result.progressHere <= 1);
 check('investigation_far_zero', result.progressFar === 0);
 check('discovery_progresses', result.visibleAfterScout >= result.visibleBefore);
 check('deposit_extracted', result.depositStockEnd < result.depositStockStart && result.inventoryTimber > 0.1);
 check('disturbance_recorded', result.disturbedAfter > result.disturbedBefore);
 check('marked_site_discovered', result.markedDiscovered);
-check('mass_balanced', Math.abs(result.massResidual) < 1e-6 && Math.abs(result.miningResidual) < 1e-6);
-check('sale_moved_money', result.fundsAfter > result.fundsBefore && result.townStockAfter > result.townStockBefore);
+check('mass_balanced', Math.abs(result.massResidual) < 1e-6 && Math.abs(result.miningResidual) < 1e-6 && Math.abs(result.mapeResidual) < 1e-4);
+check('settlement_market', result.fundsAfter > result.fundsBefore && result.moneyAfter < result.moneyBefore && result.ironAfter > result.ironBefore && result.goodsAfter < result.goodsBefore);
+check('settlement_hire', result.membersAfter === result.membersBefore + 1 && Math.abs(result.popBeforeHire - result.popAfterHire - 1) < 1e-5);
 check('rivals_active', result.rivalClaims > 0 && result.disturbedCells > 0);
 check('victory_rejected_early', result.victoryDeclared === false);
 check('share_bounded', result.shareSum <= 1.0001 && result.sharePlayer >= 0);

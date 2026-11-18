@@ -1,9 +1,10 @@
-// owns: the side panel and the under-map nearby list
+// owns: the side panel, view/item/engine switches, cell inspector and under-map nearby list
 // edit for: panel content, action buttons, formatting
 
 const HUD_REFRESH_SECONDS = 0.2;
 const HUD_LOG_LINES = 8;
 const HUD_SPEED_LABEL = ['pause', '1×', '2×', '4×'];
+const HUD_LOCK_TEXT = ['locked — record 100% and hold cell', 'unlocked', 'unlocked (contested)'];
 
 const hud = {
 	clockEl: null,
@@ -14,12 +15,17 @@ const hud = {
 	nearbyEl: null,
 	actionsEl: null,
 	viewsEl: null,
+	itemGroup: null,
+	engineEl: null,
+	inspectEl: null,
 	timeEl: null,
 	victoryEl: null,
 	statusEl: null,
 	logEl: null,
 	timeButtons: [],
 	viewRadios: [],
+	itemRadios: [],
+	engineRadios: [],
 	acc: 0,
 	key: '',
 	logVersion: -1,
@@ -35,12 +41,15 @@ function hudInit() {
 	hud.nearbyEl = $('ui-nearby');
 	hud.actionsEl = $('ui-actions');
 	hud.viewsEl = $('ui-views');
+	hud.engineEl = $('ui-engine');
+	hud.inspectEl = $('ui-inspect');
 	hud.timeEl = $('ui-time');
 	hud.victoryEl = $('ui-victory');
 	hud.statusEl = $('ui-status');
 	hud.logEl = $('ui-log');
 	hudBuildTime();
 	hudBuildViews();
+	hudBuildEngine();
 	hud.key = '';
 	hud.logVersion = -1;
 	hud.statusVersion = -1;
@@ -69,52 +78,46 @@ function hudBuildTime() {
 	}
 }
 
-function hudViewItem(label, view) {
-	const item = document.createElement('label');
-	item.className = 'ui-seg-item';
-	const radio = document.createElement('input');
-	radio.type = 'radio';
-	radio.name = 'ui-view';
-	radio.value = String(view);
-	radio.checked = render.view === view;
-	const text = document.createElement('span');
-	text.textContent = label;
-	item.appendChild(radio);
-	item.appendChild(text);
-	return item;
-}
-
-function hudBuildViews() {
-	const host = hud.viewsEl;
-	host.textContent = '';
-	hud.viewRadios.length = 0;
+// Each segmented group has one writer (its change handler); hover and keys route through radio state.
+function hudMakeSeg(name, ariaLabel, labels, selected, radios, onPick, preview) {
+	radios.length = 0;
 	const group = document.createElement('div');
 	group.className = 'ui-seg';
 	group.setAttribute('role', 'radiogroup');
-	group.setAttribute('aria-label', 'map view mode');
-	for (let k = 0; k < VIEW_NAME.length; k++) {
-		const item = hudViewItem(VIEW_NAME[k], k);
+	group.setAttribute('aria-label', ariaLabel);
+	for (let k = 0; k < labels.length; k++) {
+		const item = document.createElement('label');
+		item.className = 'ui-seg-item';
+		const radio = document.createElement('input');
+		radio.type = 'radio';
+		radio.name = name;
+		radio.value = String(k);
+		radio.checked = selected === k;
+		const text = document.createElement('span');
+		text.textContent = labels[k];
+		item.appendChild(radio);
+		item.appendChild(text);
 		group.appendChild(item);
-		hud.viewRadios.push(item.children[0]);
+		radios.push(radio);
 	}
-	group.addEventListener('change', hudViewChanged);
-	group.addEventListener('pointerover', hudViewPreview);
-	host.appendChild(group);
+	group.addEventListener('change', function (event) {
+		const radio = event.target;
+		if (!radio || radio.type !== 'radio') return;
+		onPick(Number(radio.value));
+	});
+	if (preview) {
+		group.addEventListener('pointerover', function (event) {
+			hudSegPreview(group, event);
+		});
+	}
+	return group;
 }
 
-// The change event is the only writer: hover and keys both end up here through the checked radio.
-function hudViewChanged(event) {
-	const radio = event.target;
-	if (!radio || radio.type !== 'radio') return;
-	hudSetView(Number(radio.value));
-}
-
-// Precise pointers get a preview by checking the radio; the change event then does the work.
 // Touch and stylus keep click-only selection because they report no hovering fine pointer.
-function hudViewPreview(event) {
+function hudSegPreview(group, event) {
 	if (!hudViewFinePointer()) return;
 	const item = event.target && event.target.closest ? event.target.closest('.ui-seg-item') : null;
-	if (!item || !hud.viewsEl.contains(item)) return;
+	if (!item || !group.contains(item)) return;
 	const radio = item.children[0];
 	if (!radio || radio.checked || radio.disabled) return;
 	radio.click();
@@ -125,12 +128,49 @@ function hudViewFinePointer() {
 	return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 }
 
+function hudBuildViews() {
+	const host = hud.viewsEl;
+	host.textContent = '';
+	host.appendChild(hudMakeSeg('ui-view', 'map view mode', VIEW_NAME, render.view, hud.viewRadios, hudSetView, true));
+	hud.itemGroup = hudMakeSeg('ui-item', 'economy item', MAPE_RES_NAME, mape.viewItem, hud.itemRadios, hudSetItem, true);
+	hudSyncItemVisibility();
+	host.appendChild(hud.itemGroup);
+}
+
+function hudBuildEngine() {
+	const host = hud.engineEl;
+	if (!host) return;
+	host.textContent = '';
+	const group = hudMakeSeg('ui-engine-mode', 'economy engine', MAPE_ENGINE_NAME, mape.engine, hud.engineRadios, hudSetEngine, false);
+	hud.engineRadios[MAPE_ENGINE.SITES].disabled = !mape.sitesReady;
+	host.appendChild(group);
+}
+
+function hudSyncItemVisibility() {
+	if (!hud.itemGroup) return;
+	hud.itemGroup.hidden = render.view !== VIEW.DEMAND && render.view !== VIEW.SUPPLY;
+}
+
 function hudSetView(view) {
 	if (render.view === view) return;
 	render.view = view;
-	for (let k = 0; k < hud.viewRadios.length; k++) hud.viewRadios[k].checked = render.view === k;
+	for (let k = 0; k < hud.viewRadios.length; k++) hud.viewRadios[k].checked = view === k;
+	hudSyncItemVisibility();
 	hudRefresh(true);
 	renderDraw();
+}
+
+function hudSetItem(item) {
+	if (mape.viewItem === item) return;
+	mape.viewItem = item;
+	for (let k = 0; k < hud.itemRadios.length; k++) hud.itemRadios[k].checked = item === k;
+	hudRefresh(false);
+	renderDraw();
+}
+
+function hudSetEngine(mode) {
+	actionsSetEngine(mode);
+	for (let k = 0; k < hud.engineRadios.length; k++) hud.engineRadios[k].checked = mape.engine === k;
 }
 
 function hudTick(dt) {
@@ -140,8 +180,8 @@ function hudTick(dt) {
 	hudRefresh(false);
 }
 
-function hudPad(value) {
-	return value < 10 ? '0' + value : '' + value;
+function hudSigned(value) {
+	return (value >= 0 ? '+' : '') + value.toFixed(1);
 }
 
 function hudRefresh(force) {
@@ -151,6 +191,7 @@ function hudRefresh(force) {
 	hudUpdateSkills();
 	hudUpdateMembers();
 	hudUpdateSite();
+	hudUpdateInspect();
 	hudUpdateNearby();
 	hudUpdateVictory();
 	hudUpdateLog(force);
@@ -159,12 +200,10 @@ function hudRefresh(force) {
 }
 
 function hudUpdateClock() {
-	const total = Math.floor(clock.hours * 60);
-	const day = Math.floor(total / 1440) + 1;
-	const hour = Math.floor((total % 1440) / 60);
-	const minute = total % 60;
+	const sec = Math.floor(clock.seconds);
+	const day = sec + 1;
 	const speedText = clock.speed === 0 ? 'paused' : HUD_SPEED_LABEL[clock.speed];
-	let text = 'day ' + day + ' · ' + hudPad(hour) + ':' + hudPad(minute) + ' · ' + speedText;
+	let text = 'day ' + day + ' · ' + sec + 's · ' + speedText;
 	if (!party.alive) text += ' · lost';
 	hud.clockEl.textContent = text;
 	for (let k = 0; k < hud.timeButtons.length; k++) hud.timeButtons[k].className = clock.speed === k ? 'ui-chip on' : 'ui-chip';
@@ -179,7 +218,7 @@ function hudUpdateStats() {
 		' · Supplies ' + Math.round(party.supplies) +
 		' · Relics ' + party.items +
 		' · ' + members + ' members\n' +
-		'Wages ' + (PARTY_WAGE * members * 24).toFixed(0) + '/day · Supplies ' + (PARTY_SUPPLY_USE * members * 24).toFixed(0) + '/day';
+		'Wages ' + (PARTY_WAGE * members).toFixed(2) + '/d · Supplies ' + (PARTY_SUPPLY_USE * members).toFixed(2) + '/d';
 }
 
 function hudUpdateSkills() {
@@ -212,25 +251,28 @@ function hudUpdateMembers() {
 function hudSiteText(i) {
 	if (!party.alive) return 'The party is lost.';
 	const idx = party.y * world.size + party.x;
+	if (mapeIsSettlement(idx)) return hudSettlementText(idx);
 	if (i < 0) return 'Open ' + TERRAIN_NAME[world.terrain[idx]] + ' at ' + party.x + ',' + party.y + '. Nothing recorded here.';
 	const kind = sites.kind[i];
 	const state = sites.state[i];
 	if (state === SITE_STATE.MARKED) {
 		const chance = sites.discover[i] * investigation.progress[idx];
-		if (chance < 0.02) return 'Unidentified trace at ' + party.x + ',' + party.y + '. Investigate this cell.';
-		return 'Unidentified trace. Identify chance ' + Math.round(chance * 100) + '% per hour.';
+		if (chance < 0.002) return 'Unidentified trace at ' + party.x + ',' + party.y + '. Investigate this cell.';
+		return 'Unidentified trace. Identify chance ' + Math.round(chance * 100) + '%/s.';
 	}
 	if (state === SITE_STATE.DONE) return 'Spent: ' + sitesName(i) + '.';
 	if (state === SITE_STATE.GONE) return 'Open ' + TERRAIN_NAME[world.terrain[idx]] + '.';
-	if (kind === SITE.TOWN) return hudTownText(i);
 	if (kind === SITE.DEPOSIT) {
 		let text = 'Deposit: ' + RES_NAME[sites.res[i]] + '. ';
 		if (party.unlocks.assay) text += 'Stock ' + sites.stock[i].toFixed(1) + ' of ' + SITE_DEPOSIT_STOCK[sites.res[i]] + '.';
 		else text += 'Stock unassessed — field assay would read it.';
-		return text + hudClaimText(i);
+		text += hudClaimText(i);
+		const lock = mapeDepositState(party.x, party.y);
+		if (lock >= 0) text += ' Mine ' + HUD_LOCK_TEXT[lock] + '.';
+		return text;
 	}
 	if (kind === SITE.GATHER) return 'Cache: ' + sites.stock[i].toFixed(1) + ' ' + RES_NAME[sites.res[i]] + '.' + hudClaimText(i);
-	if (kind === SITE.ITEM) return 'A relic, worth ' + ITEM_VALUE + ' funds at a town.' + hudClaimText(i);
+	if (kind === SITE.ITEM) return 'A relic, worth ' + ITEM_VALUE + ' funds at a settlement.' + hudClaimText(i);
 	if (kind === SITE.SKILL) return 'Field school: trains ' + SKILL_NAME[sites.res[i]] + '.' + hudClaimText(i);
 	let text = 'Local task, reward ' + sites.stock[i].toFixed(0) + ' funds. Checks ' + SKILL_NAME[sites.res[i]] + '.';
 	if (sites.trust[i] && !party.unlocks.trust) text += ' Needs local trust.';
@@ -244,12 +286,14 @@ function hudClaimText(i) {
 	return ' Held by ' + FACTION_NAME[owner] + '.';
 }
 
-function hudTownText(i) {
-	const town = sites.town[i];
-	let text = 'Town. Market funds ' + Math.round(economy.townMoney[town]) + ' · supplies ' + SUPPLY_PRICE + ' each.';
+function hudSettlementText(idx) {
+	const pop = mape.pop[idx];
+	const stock = mape.goods[MAPE_RES.GOODS * world.n + idx];
+	let text = 'Settlement (pop ' + Math.round(pop) + '). Market funds ' + Math.round(mape.money[idx]) +
+		' · goods ' + stock.toFixed(1) + ' · supplies ' + SUPPLY_PRICE + ' each.';
 	for (let r = 0; r < RES_COUNT; r++) {
 		if (economy.inventory[r] < 0.01) continue;
-		text += '\n' + RES_NAME[r] + ' ' + economy.inventory[r].toFixed(1) + ' @ ' + economyPrice(r, town).toFixed(1);
+		text += '\n' + RES_NAME[r] + ' ' + economy.inventory[r].toFixed(1) + ' @ ' + mapePrice(r, idx).toFixed(1);
 	}
 	if (party.items > 0) text += '\nrelic @ ' + ITEM_VALUE;
 	if (territory.share[FACTION_PLAYER] > 0) text += '\nOurs ' + Math.round(territory.share[FACTION_PLAYER] * 1000) / 10 + '% of the map.';
@@ -258,6 +302,27 @@ function hudTownText(i) {
 
 function hudUpdateSite() {
 	hud.siteEl.textContent = hudSiteText(sitesAt(party.x, party.y));
+}
+
+function hudUpdateInspect() {
+	if (!hud.inspectEl) return;
+	const x = input.hoverX >= 0 ? input.hoverX : party.x;
+	const y = input.hoverX >= 0 ? input.hoverY : party.y;
+	const n = world.n;
+	const idx = y * world.size + x;
+	const pct = (mape.settleCount / n * 100).toFixed(1);
+	let text = 'Settlements ' + mape.settleCount + ' (' + pct + '%) · pop ' + Math.round(mape.totalPop) +
+		' · ' + MAPE_ENGINE_NAME[mape.engine] +
+		'\nCell ' + x + ',' + y + ' · ' + TERRAIN_NAME[world.terrain[idx]] +
+		' · pop ' + mape.pop[idx].toFixed(1) + ' · work ' + mape.workforce[idx].toFixed(1);
+	for (let r = 0; r < MAPE_R; r++) {
+		const slot = r * n + idx;
+		text += (r % 2 === 0 ? '\n' : ' · ') + MAPE_RES_NAME[r] +
+			' d ' + hudSigned(mape.demand[slot]) + ' s ' + mape.goods[slot].toFixed(1);
+	}
+	const lock = mapeDepositState(x, y);
+	if (lock >= 0) text += '\nDeposit ' + HUD_LOCK_TEXT[lock];
+	hud.inspectEl.textContent = text;
 }
 
 function hudNearbyState(state) {
@@ -270,9 +335,17 @@ function hudNearbyState(state) {
 function hudUpdateNearby() {
 	if (!hud.nearbyEl) return;
 	investigationCollectNearby();
-	const idx = party.y * world.size + party.x;
+	const size = world.size;
+	const idx = party.y * size + party.x;
 	const reach = investigationReach();
 	let text = 'Recording here ' + Math.round(investigation.progress[idx] * 100) + '% · reach ' + reach.toFixed(1) + ' cells.';
+	const near = mapeNearestSettlement(party.x, party.y);
+	if (near >= 0) {
+		const sx = near % size;
+		const sy = (near / size) | 0;
+		const dist = Math.sqrt((sx - party.x) * (sx - party.x) + (sy - party.y) * (sy - party.y));
+		text += '\nNearest settlement ' + dist.toFixed(1) + ' cells at ' + sx + ',' + sy + ' (pop ' + Math.round(mape.pop[near]) + ').';
+	}
 	const count = investigation.nearbyCount;
 	if (count === 0) {
 		text += '\nNo recorded sites within ' + INV_NEARBY_RANGE + ' cells.';
@@ -284,7 +357,7 @@ function hudUpdateNearby() {
 		const dx = sites.x[i] - party.x;
 		const dy = sites.y[i] - party.y;
 		const dist = Math.sqrt(dx * dx + dy * dy);
-		const cell = sites.y[i] * world.size + sites.x[i];
+		const cell = sites.y[i] * size + sites.x[i];
 		const rec = Math.round(investigation.progress[cell] * 100);
 		const label = sites.state[i] === SITE_STATE.MARKED ? 'unidentified' : sitesName(i);
 		text += '\n' + dist.toFixed(1) + '  ' + label + '  ' + hudNearbyState(sites.state[i]) + '  rec ' + rec + '%';
@@ -333,16 +406,19 @@ function hudUpdateStatus() {
 }
 
 function hudActionKey() {
+	const idx = party.y * world.size + party.x;
 	const i = sitesAt(party.x, party.y);
 	let key = party.x + ':' + party.y + ':' + (party.camped ? 1 : 0) + (party.working ? 1 : 0);
 	key += ':' + investigationSurveyCooldown();
 	key += ':' + Math.round(party.funds) + ':' + party.members.length + ':' + (party.unlocks.trust ? 1 : 0) + (party.alive ? 1 : 0);
 	key += ':' + Math.round(party.supplies) + ':' + party.items + ':' + victory.result;
-	key += ':' + Math.round(land.disturbed[party.y * world.size + party.x] * 10);
+	key += ':' + Math.round(land.disturbed[idx] * 10) + ':' + (economyHasCargo() ? 1 : 0);
 	key += ':' + Math.round(economy.inventory[RES.ORE]) + '.' + Math.round(economy.inventory[RES.FUEL]) + '.' + Math.round(economy.inventory[RES.FOOD]);
+	if (mapeIsSettlement(idx)) {
+		key += ':S' + Math.round(mape.pop[idx]) + '.' + Math.round(mape.money[idx] / 10) + '.' + Math.round(mape.goods[MAPE_RES.GOODS * world.n + idx]);
+	}
 	if (i < 0) return key;
 	key += ':' + i + ':' + sites.state[i] + ':' + sites.kind[i] + ':' + Math.round(sites.stock[i] * 10) + ':' + sites.claim[i];
-	if (sites.kind[i] === SITE.TOWN) key += ':' + Math.round(economy.townMoney[sites.town[i]] / 10);
 	return key;
 }
 
@@ -353,13 +429,14 @@ function hudActionList() {
 		list.push({ label: 'New survey', enabled: true, run: actionsNewSurvey, primary: true });
 		return list;
 	}
+	const idx = party.y * world.size + party.x;
 	const i = actionsHere();
 	const state = i >= 0 ? sites.state[i] : SITE_STATE.GONE;
 	const kind = i >= 0 ? sites.kind[i] : -1;
 	const ready = state === SITE_STATE.VISIBLE && sitesWorkable(i);
 	list.push({ label: party.camped ? 'Break camp' : 'Make camp', enabled: true, run: actionsCamp, primary: true });
 	const surveyLeft = investigationSurveyCooldown();
-	list.push({ label: surveyLeft > 0 ? 'Survey in progress (' + surveyLeft + ' h)' : 'Survey the ground', enabled: surveyLeft === 0, run: actionsSurvey });
+	list.push({ label: surveyLeft > 0 ? 'Survey in progress (' + surveyLeft + 's)' : 'Survey the ground', enabled: surveyLeft === 0, run: actionsSurvey });
 	if (ready && kind === SITE.DEPOSIT) list.push({ label: party.working ? 'Stop working the deposit' : 'Work the deposit', enabled: true, run: actionsToggleWork, primary: true });
 	if (ready && kind === SITE.GATHER) list.push({ label: 'Gather ' + RES_NAME[sites.res[i]], enabled: true, run: actionsGather, primary: true });
 	if (ready && kind === SITE.ITEM) list.push({ label: 'Take the relic', enabled: true, run: actionsTakeItem, primary: true });
@@ -368,16 +445,15 @@ function hudActionList() {
 		const gated = sites.trust[i] === 1 && !party.unlocks.trust;
 		list.push({ label: gated ? 'Task needs local trust' : 'Attempt the task', enabled: !gated, run: actionsAttemptTask, primary: true });
 	}
-	if (kind === SITE.TOWN) {
-		list.push({ label: 'Sell all resources', enabled: true, run: actionsSellAll, primary: true });
+	if (mapeIsSettlement(idx)) {
+		list.push({ label: 'Sell all resources', enabled: economyHasCargo(), run: actionsSellAll, primary: true });
 		list.push({ label: 'Sell a relic', enabled: party.items > 0, run: actionsSellItem });
-		list.push({ label: 'Buy 5 supplies (' + SUPPLY_PRICE * 5 + ' funds)', enabled: party.funds >= SUPPLY_PRICE * 5, run: actionsBuySupplies });
+		list.push({ label: 'Buy 5 supplies (' + SUPPLY_PRICE * 5 + ' funds)', enabled: party.funds >= SUPPLY_PRICE * 5 && mapeCanBuySupplies(idx, 5), run: actionsBuySupplies });
+		list.push({ label: 'Hire member (' + partyHireCost() + ' funds)', enabled: party.funds >= partyHireCost() && mapeCanHire(idx), run: actionsHire });
 	}
 	list.push({ label: 'Provision 5 supplies from 5 food', enabled: economy.inventory[RES.FOOD] >= 5, run: actionsProvision });
 	list.push({ label: 'Process field goods (1 ore + 1 fuel)', enabled: economyCanProcess(), run: actionsProcess });
-	const idx = party.y * world.size + party.x;
 	list.push({ label: 'Restore land here', enabled: land.disturbed[idx] > 0 && party.funds >= LAND_RESTORE_FUNDS, run: actionsRestore });
-	list.push({ label: 'Hire member (' + partyHireCost() + ' funds)', enabled: party.funds >= partyHireCost(), run: actionsHire });
 	list.push({ label: 'Dismiss member', enabled: party.members.length > 1, run: actionsDismiss });
 	list.push({ label: victory.result === 0 ? 'Victory declared' : 'Declare victory', enabled: victory.result !== 0, run: actionsDeclareVictory, primary: true });
 	return list;

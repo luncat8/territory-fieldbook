@@ -1,16 +1,16 @@
-// owns: boot, wiring, the shared clock and the fixed-step tick order
+// owns: boot, wiring, the shared clock (1 s = 1 day on 1x) and the fixed-step tick order
 // edit for: load order effects, tick order, speed table
 
 const $ = id => document.getElementById(id);
 
-const SIM_STEP_MINUTES = 1;
-const SPEED_TICKS = [0, 6, 12, 24];
+const SIM_STEP_SEC = 0.2;
+const SPEED_TICKS = [0, 5, 10, 20];
 const FRAME_MAX_SECONDS = 0.5;
 const FRAME_MAX_TICKS = 64;
 const START_SEED = 20261117;
 
 const clock = {
-	hours: 6,
+	seconds: 0,
 	speed: 1,
 	acc: 0,
 	last: 0
@@ -33,24 +33,26 @@ function mainSetup(seed) {
 	investigationSeed(party.x, party.y);
 	territoryInit();
 	rivalsSpawn();
+	mapeInit();
 	victoryReset();
-	clock.hours = 6;
+	clock.seconds = 0;
 	clock.speed = 1;
 	clock.acc = 0;
 	eventsAdd('The survey begins: ' + party.members.length + ' members, ' + Math.round(party.funds) + ' funds.');
-	eventsAdd('Camp to recover, investigate to find sites, sell at towns.');
+	eventsAdd('Camp to recover, investigate to unlock deposits, trade at settlements.');
 }
 
-function mainStep(minutes) {
-	clock.hours += minutes / 60;
-	partyStep(minutes);
-	investigationStep(minutes);
-	sitesStep(minutes);
-	rivalsStep(minutes);
-	territoryStep(minutes);
-	landStep(minutes);
-	economyStep(minutes);
-	eventsStep(minutes);
+function mainStep(seconds) {
+	clock.seconds += seconds;
+	partyStep(seconds);
+	investigationStep(seconds);
+	sitesStep(seconds);
+	rivalsStep(seconds);
+	territoryStep(seconds);
+	landStep(seconds);
+	economyStep(seconds);
+	mapeStep(seconds);
+	eventsStep(seconds);
 }
 
 function mainBoot() {
@@ -69,7 +71,7 @@ function mainFrame(now) {
 		clock.acc += dt * SPEED_TICKS[clock.speed];
 		let guard = FRAME_MAX_TICKS;
 		while (clock.acc >= 1 && guard > 0) {
-			mainStep(SIM_STEP_MINUTES);
+			mainStep(SIM_STEP_SEC);
 			clock.acc -= 1;
 			guard--;
 		}
@@ -81,4 +83,4 @@ function mainFrame(now) {
 }
 
 if (typeof document !== 'undefined') mainBoot();
-if (typeof module !== 'undefined') module.exports = { main, clock, SPEED_TICKS };
+if (typeof module !== 'undefined') module.exports = { main, clock, SIM_STEP_SEC, SPEED_TICKS };

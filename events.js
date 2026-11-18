@@ -2,7 +2,7 @@
 // edit for: feed length, event lifetime, wording
 
 const EVENTS_KEEP = 40;
-const EVENTS_LIFE_HOURS = 72;
+const EVENTS_LIFE_SEC = 720;
 
 const events = {
 	list: [],
@@ -19,7 +19,7 @@ function eventsReset() {
 }
 
 function eventsAdd(text) {
-	events.list.push({ text: text, life: EVENTS_LIFE_HOURS });
+	events.list.push({ text: text, life: EVENTS_LIFE_SEC });
 	if (events.list.length > EVENTS_KEEP) events.list.shift();
 	events.version++;
 }
@@ -29,13 +29,12 @@ function eventsStatus(text) {
 	events.statusVersion++;
 }
 
-function eventsStep(minutes) {
-	const hours = minutes / 60;
+function eventsStep(seconds) {
 	const list = events.list;
 	let write = 0;
 	for (let i = 0; i < list.length; i++) {
 		const item = list[i];
-		item.life -= hours;
+		item.life -= seconds;
 		if (item.life <= 0) continue;
 		list[write] = item;
 		write++;

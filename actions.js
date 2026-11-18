@@ -20,15 +20,23 @@ function actionsSetSpeed(speed) {
 	hudRefresh(true);
 }
 
+function actionsSetEngine(mode) {
+	if (mode === MAPE_ENGINE.SITES && !mape.sitesReady) return;
+	if (!mapeSetEngine(mode)) return;
+	eventsStatus('Economy engine: ' + MAPE_ENGINE_NAME[mape.engine] + '.');
+	hudRefresh(true);
+	renderDraw();
+}
+
 function actionsSurvey() {
 	if (!party.alive) return;
 	if (!investigationSurvey()) {
-		eventsStatus('The party is already surveying — ' + investigationSurveyCooldown() + ' h left.');
+		eventsStatus('The party is already surveying — ' + investigationSurveyCooldown() + 's left.');
 		return;
 	}
 	partyAddCondition(-INV_SURVEY_CONDITION);
 	partyTrain(SKILL.OBS, 0.2);
-	eventsStatus('Surveyed ' + INV_SURVEY_HOURS + ' h of ground around ' + party.x + ',' + party.y + '.');
+	eventsStatus('Surveyed ' + INV_SURVEY_SEC + 's of ground around ' + party.x + ',' + party.y + '.');
 	hudRefresh(true);
 }
 
@@ -41,6 +49,10 @@ function actionsCamp() {
 
 function actionsHere() {
 	return sitesAt(party.x, party.y);
+}
+
+function actionsCell() {
+	return party.y * world.size + party.x;
 }
 
 function actionsToggleWork() {
@@ -75,39 +87,39 @@ function actionsAttemptTask() {
 	else if (result === 0) eventsStatus('The task is not settled.');
 }
 
-function actionsTown() {
-	const i = actionsHere();
-	if (i < 0 || sites.kind[i] !== SITE.TOWN) {
-		eventsStatus('No market here.');
+function actionsSettlement() {
+	const idx = actionsCell();
+	if (!mapeIsSettlement(idx)) {
+		eventsStatus('No settlement market here.');
 		return -1;
 	}
-	return sites.town[i];
+	return idx;
 }
 
 function actionsSellAll() {
-	const town = actionsTown();
-	if (town < 0) return;
+	const idx = actionsSettlement();
+	if (idx < 0) return;
 	let revenue = 0;
-	for (let r = 0; r < RES_COUNT; r++) revenue += economySell(r, town);
+	for (let r = 0; r < RES_COUNT; r++) revenue += mapeSell(r, idx);
 	if (revenue < 0.01) {
-		eventsStatus('The market will not take our goods at this price.');
+		eventsStatus('The settlement cannot buy our cargo right now.');
 		return;
 	}
 	partyAddFunds(revenue);
-	eventsAdd('Sold goods for ' + revenue.toFixed(0) + ' funds.');
+	eventsAdd('Sold cargo for ' + revenue.toFixed(0) + ' funds.');
 	hudRefresh(true);
 }
 
 function actionsSellItem() {
-	const town = actionsTown();
-	if (town < 0) return;
+	const idx = actionsSettlement();
+	if (idx < 0) return;
 	if (party.items < 1) {
 		eventsStatus('No relic to sell.');
 		return;
 	}
-	const revenue = economyAcceptItem(town);
+	const revenue = mapeAcceptItem(idx);
 	if (revenue <= 0) {
-		eventsStatus('The market cannot pay for a relic.');
+		eventsStatus('The settlement cannot pay for a relic.');
 		return;
 	}
 	partyAddItem(-1);
@@ -117,16 +129,16 @@ function actionsSellItem() {
 }
 
 function actionsBuySupplies() {
-	const town = actionsTown();
-	if (town < 0) return;
+	const idx = actionsSettlement();
+	if (idx < 0) return;
 	const units = 5;
 	const cost = units * SUPPLY_PRICE;
 	if (party.funds < cost) {
 		eventsStatus('Supplies need ' + cost + ' funds.');
 		return;
 	}
-	if (economyBuySupplies(town, units) < 0) {
-		eventsStatus('The town has no food to sell.');
+	if (mapeBuySupplies(idx, units) < 0) {
+		eventsStatus('The settlement has no spare goods for supplies.');
 		return;
 	}
 	partyAddFunds(-cost);
@@ -158,7 +170,7 @@ function actionsProcess() {
 }
 
 function actionsRestore() {
-	const idx = party.y * world.size + party.x;
+	const idx = actionsCell();
 	if (land.disturbed[idx] <= 0) {
 		eventsStatus('This ground is already intact.');
 		return;
@@ -178,7 +190,16 @@ function actionsRestore() {
 }
 
 function actionsHire() {
-	if (partyHire()) hudRefresh(true);
+	const idx = actionsSettlement();
+	if (idx < 0) return;
+	if (!mapeCanHire(idx)) {
+		eventsStatus('This settlement is too small to spare a member.');
+		return;
+	}
+	const fee = partyHireCost();
+	if (!partyHire()) return;
+	mapeRecruit(idx, fee);
+	hudRefresh(true);
 }
 
 function actionsDismiss() {

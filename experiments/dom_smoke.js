@@ -1,4 +1,4 @@
-// owns: headless boot of the page with a stub DOM, frames, clicks and buttons
+// owns: headless boot of the page with a stub DOM, frames, clicks, hover, views and buttons
 // run: node experiments/dom_smoke.js
 
 const fs = require('fs');
@@ -43,6 +43,7 @@ function makeElement(id, isCanvas) {
 		textContent: '',
 		className: '',
 		disabled: false,
+		hidden: false,
 		onclick: null,
 		type: '',
 		checked: false,
@@ -68,7 +69,7 @@ function makeElement(id, isCanvas) {
 		},
 		click() {
 			if (this.tagName === 'INPUT' && this.type === 'radio') {
-				if (!this.checked) {
+				if (!this.checked && !this.disabled) {
 					this.checked = true;
 					if (this.parent && this.parent.parent) this.parent.parent.dispatch('change', { target: this });
 				}
@@ -104,7 +105,6 @@ function makeElement(id, isCanvas) {
 			return this.ctx;
 		}
 	};
-	if (isCanvas) element.tagName = 'CANVAS';
 	return element;
 }
 
@@ -166,13 +166,24 @@ function frame(now) {
 	for (const callback of queue) callback(now);
 }
 
+function pixelSignature(pixels) {
+	let hash = 2166136261 >>> 0;
+	for (let i = 0; i < pixels.length; i += 16) {
+		hash = Math.imul(hash ^ pixels[i], 16777619) >>> 0;
+		hash = Math.imul(hash ^ pixels[i + 1], 16777619) >>> 0;
+		hash = Math.imul(hash ^ pixels[i + 2], 16777619) >>> 0;
+	}
+	return hash;
+}
+
 const result = { bootError: bootError };
 
 if (!bootError) {
 	try {
+		result.initialClock = run('$("ui-clock").textContent');
 		for (let f = 1; f <= 120; f++) frame(f * 16.7);
 		result.frames = 120;
-		result.clockHours = run('clock.hours');
+		result.clockSec = run('clock.seconds');
 		const pixels = run('render.pixels');
 		let lit = 0;
 		for (let i = 0; i < pixels.length; i += 4) if (pixels[i] !== 0 || pixels[i + 1] !== 0 || pixels[i + 2] !== 0) lit++;
@@ -180,27 +191,50 @@ if (!bootError) {
 		result.clockText = run('$("ui-clock").textContent');
 		result.timeButtons = run('$("ui-time").children.length');
 		result.viewGroup = run('$("ui-views").children[0]');
-		result.viewRadios = run('$("ui-views").children[0].children.length');
+		result.itemGroup = run('$("ui-views").children[1]');
+		result.engineGroup = run('$("ui-engine").children[0]');
+		result.viewRadios = result.viewGroup.children.length;
+		result.itemRadios = result.itemGroup.children.length;
+		result.itemHiddenOnTerrain = result.itemGroup.hidden === true;
+		result.engineRadios = result.engineGroup.children.length;
+		result.engineDiffusionChecked = result.engineGroup.children[0].children[0].checked;
+		result.engineSitesDisabled = result.engineGroup.children[1].children[0].disabled;
 		result.actionButtons = run('$("ui-actions").children.length');
 		result.siteText = run('$("ui-site").textContent');
+		result.inspectText = run('$("ui-inspect").textContent');
 		result.victoryText = run('$("ui-victory").textContent');
 		result.logItems = run('$("ui-log").children.length');
 
-		const before = run('[party.x, party.y]');
-		const target = run(`(function () {
-			for (let dy = -4; dy <= 4; dy++) {
-				for (let dx = -4; dx <= 4; dx++) {
-					if (dx === 0 && dy === 0) continue;
-					if (worldWalkableAt(party.x + dx, party.y + dy)) return [party.x + dx, party.y + dy];
-				}
-			}
-			return [-1, -1];
-		})()`);
+		// Verify all 9 views and all 4 economy items paint distinct images.
+		const viewSigs = new Set();
+		for (let v = 0; v < result.viewRadios; v++) {
+			result.viewGroup.children[v].children[0].click();
+			viewSigs.add(pixelSignature(pixels));
+		}
+		result.distinctViews = viewSigs.size;
+
+		result.viewGroup.children[6].children[0].click();
+		result.itemShownOnDemand = result.itemGroup.hidden === false;
+		const itemSigs = new Set();
+		for (let r = 0; r < result.itemRadios; r++) {
+			result.itemGroup.children[r].children[0].click();
+			itemSigs.add(pixelSignature(pixels));
+		}
+		result.distinctItems = itemSigs.size;
+
 		const canvas = elements.get('ui-canvas');
-		canvas.listeners.click[0]({ clientX: (target[0] + 0.5) * 12, clientY: (target[1] + 0.5) * 12 });
+		const settle = run('[mape.settleCells[0] % world.size, (mape.settleCells[0] / world.size) | 0]');
+		canvas.dispatch('pointermove', { clientX: (settle[0] + 0.5) * 12, clientY: (settle[1] + 0.5) * 12 });
+		run('hudRefresh(false)');
+		result.hoverInspect = run('$("ui-inspect").textContent');
+		result.hoverMatchesCell = result.hoverInspect.indexOf('Cell ' + settle[0] + ',' + settle[1]) >= 0;
+		canvas.dispatch('pointerleave', {});
+
+		const before = run('[party.x, party.y]');
+		canvas.dispatch('click', { clientX: (settle[0] + 0.5) * 12, clientY: (settle[1] + 0.5) * 12 });
 		frame(2100);
-		result.clickTarget = target.join(',');
 		result.moved = run('party.x + "," + party.y') !== before.join(',');
+		result.settleSiteText = run('$("ui-site").textContent');
 
 		const group = result.viewGroup;
 		group.children[0].children[0].click();
@@ -212,19 +246,19 @@ if (!bootError) {
 		result.coarseHoverChecked = coarseItem.children[0].checked;
 
 		windowStub.finePointer = true;
-		const hoverItem = group.children[4];
+		const hoverItem = group.children[5];
 		group.dispatch('pointerover', { target: hoverItem.children[0] });
 		result.viewAfterHover = run('render.view');
 		result.hoverCheckedRadio = hoverItem.children[0].checked;
 		const strayNode = makeElement('', false);
 		group.dispatch('pointerover', { target: strayNode });
-		result.strayHoverIgnored = run('render.view') === 4;
+		result.strayHoverIgnored = run('render.view') === 5;
 		result.radiogroupRole = group.getAttribute('role');
 		result.radiogroupLabel = group.getAttribute('aria-label') || '';
 
-		windowStub.listeners.keydown[0]({ key: '2', preventDefault() {} });
+		windowStub.listeners.keydown[0]({ key: '7', preventDefault() {} });
 		result.viewAfterKey = run('render.view');
-		result.viewRadioChecked = group.children[1].children[0].checked;
+		result.viewRadioChecked = group.children[6].children[0].checked;
 		windowStub.listeners.keydown[0]({ key: ' ', preventDefault() {} });
 		result.speedAfterSpace = run('clock.speed');
 
@@ -245,7 +279,7 @@ if (!bootError) {
 		const restart = lostButtons[lostButtons.length - 1];
 		if (!restart || !restart.onclick) throw new Error('no restart button when lost');
 		restart.onclick();
-		result.restartState = run('party.alive + ":" + Math.round(clock.hours)');
+		result.restartState = run('party.alive + ":" + Math.round(clock.seconds)');
 	} catch (error) {
 		result.runtimeError = error.message + ' @ ' + (error.stack || '').split('\n')[1];
 	}
@@ -263,12 +297,11 @@ if (result.bootError) {
 	process.exit(1);
 }
 if (result.runtimeError) console.log('runtime_error=' + result.runtimeError);
-console.log('frames=' + (result.frames || 0) + ' clock_hours=' + (result.clockHours || 0).toFixed(2));
-console.log('lit_cells=' + result.litCells);
-console.log('clock_text=' + JSON.stringify(result.clockText || ''));
+console.log('frames=' + (result.frames || 0) + ' clock_sec=' + (result.clockSec || 0).toFixed(2));
+console.log('lit_cells=' + result.litCells + ' distinct_views=' + result.distinctViews + ' distinct_items=' + result.distinctItems);
+console.log('clock_initial=' + JSON.stringify(result.initialClock || '') + ' clock_after=' + JSON.stringify(result.clockText || ''));
 console.log('buttons_time=' + result.timeButtons + ' buttons_actions=' + result.actionButtons);
-console.log('log_items=' + result.logItems + ' buttons_clicked=' + (result.buttonsClicked || 0));
-console.log('buttons_view=' + result.viewRadios);
+console.log('buttons_view=' + result.viewRadios + ' buttons_item=' + result.itemRadios + ' buttons_engine=' + result.engineRadios);
 console.log('view_click=' + result.viewAfterClick + ' hover=' + result.viewAfterHover + ' coarse_checked=' + result.coarseHoverChecked + ' stray_ignored=' + result.strayHoverIgnored);
 console.log('view_after_key=' + result.viewAfterKey + ' radio_follows_key=' + result.viewRadioChecked + ' speed_after_space=' + result.speedAfterSpace);
 console.log('survey_label=' + JSON.stringify(result.surveyLabel || '') + ' ready=' + result.surveyReady);
@@ -276,26 +309,28 @@ console.log('restart_state=' + result.restartState);
 
 check('boot_ok', !result.bootError);
 check('no_runtime_error', !result.runtimeError);
-check('frames_advance_clock', result.clockHours > 6.05);
+check('frames_advance_clock_1s_1d', result.clockSec >= 1.6 && result.clockSec <= 2.2 && /^day 1 · 0s/.test(result.initialClock || '') && /^day 2 · 1s/.test(result.clockText || ''));
 check('canvas_painted', result.litCells > 3000);
-check('clock_rendered', /day 1/.test(result.clockText || ''));
 check('time_controls', result.timeButtons === 4);
-check('view_controls', result.viewRadios === 5);
+check('view_controls', result.viewRadios === 9 && result.distinctViews === 9);
+check('item_controls', result.itemRadios === 4 && result.itemHiddenOnTerrain && result.itemShownOnDemand && result.distinctItems === 4);
+check('engine_controls', result.engineRadios === 2 && result.engineDiffusionChecked && result.engineSitesDisabled);
 check('view_group_labelled', result.radiogroupRole === 'radiogroup' && result.radiogroupLabel.length > 0);
 check('view_click_selects', result.viewAfterClick === 0);
-check('view_hover_selects', result.viewAfterHover === 4 && result.hoverCheckedRadio === true);
+check('view_hover_selects', result.viewAfterHover === 5 && result.hoverCheckedRadio === true);
 check('view_hover_ignores_stray', result.strayHoverIgnored === true);
 check('view_coarse_ignores_hover', result.coarseHoverChecked === false);
-check('view_key_syncs_radio', result.viewAfterKey === 1 && result.viewRadioChecked === true);
-check('survey_button_present', /Survey/.test(result.surveyLabel || ''));
+check('view_key_syncs_radio', result.viewAfterKey === 6 && result.viewRadioChecked === true);
+check('inspector_tracks_hover', result.hoverMatchesCell && /coal d/.test(result.hoverInspect || ''));
+check('settlement_panel', /^Settlement/.test(result.settleSiteText || ''));
+check('survey_button_seconds', /^Survey in progress \(\d+s\)$/.test(result.surveyLabel || ''));
 check('action_panel', result.actionButtons >= 5);
-check('site_panel', (result.siteText || '').length > 5);
 check('victory_panel', (result.victoryText || '').length > 5);
 check('feed_rendered', result.logItems > 0);
 check('click_moved_party', result.moved === true);
 check('pause_key', result.speedAfterSpace === 0);
 check('all_buttons_safe', (result.buttonsClicked || 0) >= 4);
-check('new_survey_restarts', result.restartState === 'true:6');
+check('new_survey_restarts', result.restartState === 'true:0');
 
 if (failures > 0) {
 	console.log('dom_smoke_failures=' + failures);

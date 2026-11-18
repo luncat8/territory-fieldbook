@@ -18,7 +18,7 @@ const TERRITORY_MIN = 0.05;
 const TERRITORY_CONTESTED = 0.25;
 const CAMP_STRENGTH = 1.0;
 const CAMP_RADIUS = 4.5;
-const CAMP_DECAY = 0.03;
+const CAMP_DECAY = 0.003;
 const INFLUENCE_EPSILON = 0.01;
 
 const territory = {
@@ -103,8 +103,7 @@ function territoryContest(i, faction) {
 	return 1;
 }
 
-function territoryStep(minutes) {
-	const hours = minutes / 60;
+function territoryStep(seconds) {
 	const sources = territory.sources;
 	const fields = territory.fields;
 	const n = world.n;
@@ -115,7 +114,7 @@ function territoryStep(minutes) {
 			source.strength = source.base;
 			source.maintained = false;
 		} else {
-			source.strength -= source.decay * hours;
+			source.strength -= source.decay * seconds;
 			if (source.strength < 0) source.strength = 0;
 		}
 		if (source.strength <= 0) continue;

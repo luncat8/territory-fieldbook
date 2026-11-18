@@ -1,26 +1,26 @@
 // owns: investigation progress per cell and Euclidean distance falloff
 // edit for: investigation rates, falloff shape, float radius
 
-const INV_RATE = [0.50, 0.30, 0, 0.26, 0.40, 0.20];
+const INV_RATE = [0.050, 0.030, 0, 0.026, 0.040, 0.020];
 const INV_RADIUS = 3.5;
 const INV_INNER = 1.2;
 const INV_NEARBY_RANGE = 8;
 const INV_NEARBY_CAP = 16;
-const INV_SURVEY_HOURS = 2.5;
+const INV_SURVEY_SEC = 25;
 const INV_SURVEY_CONDITION = 2;
-const INV_SURVEY_COOLDOWN = 6;
+const INV_SURVEY_COOLDOWN = 60;
 
 const investigation = {
 	progress: null,
 	nearby: new Int16Array(INV_NEARBY_CAP),
 	nearbyCount: 0,
-	surveyTicks: 0
+	surveyLeft: 0
 };
 
 function investigationInit() {
 	investigation.progress = new Float32Array(world.n);
 	investigation.nearbyCount = 0;
-	investigation.surveyTicks = 0;
+	investigation.surveyLeft = 0;
 }
 
 function investigationSeed(x, y) {
@@ -51,31 +51,33 @@ function investigationFalloff(dx, dy, reach) {
 	return t * t * (3 - 2 * t);
 }
 
-function investigationStep(minutes) {
+function investigationStep(seconds) {
 	if (!party.alive) return;
-	if (investigation.surveyTicks > 0) investigation.surveyTicks -= minutes;
-	investigationSweep(minutes);
+	if (investigation.surveyLeft > 0) {
+		const left = investigation.surveyLeft - seconds;
+		investigation.surveyLeft = left > 0 ? left : 0;
+	}
+	investigationSweep(seconds);
 }
 
 // A survey is the standing sweep delivered at once, then a cooldown: no separate falloff or bonus.
 function investigationSurvey() {
 	if (!investigationSurveyReady()) return false;
-	investigation.surveyTicks = INV_SURVEY_COOLDOWN * 60;
-	investigationSweep(INV_SURVEY_HOURS * 60);
+	investigation.surveyLeft = INV_SURVEY_COOLDOWN;
+	investigationSweep(INV_SURVEY_SEC);
 	return true;
 }
 
 function investigationSurveyReady() {
-	return party.alive && investigation.surveyTicks <= 0;
+	return party.alive && investigation.surveyLeft <= 0;
 }
 
 function investigationSurveyCooldown() {
-	return Math.ceil(investigation.surveyTicks / 60);
+	return Math.ceil(investigation.surveyLeft);
 }
 
-function investigationSweep(minutes) {
+function investigationSweep(seconds) {
 	const progress = investigation.progress;
-	const hours = minutes / 60;
 	const reach = investigationReach();
 	const originX = party.x;
 	const originY = party.y;
@@ -93,7 +95,7 @@ function investigationSweep(minutes) {
 			const i = row + x;
 			const m = investigationFalloff(dx, dy, reach);
 			if (m <= 0 || world.terrain[i] === TERRAIN.WATER) continue;
-			const rate = INV_RATE[world.terrain[i]] * m * effort * hours * territoryContest(i, FACTION_PLAYER);
+			const rate = INV_RATE[world.terrain[i]] * m * effort * seconds * territoryContest(i, FACTION_PLAYER);
 			const next = progress[i] + rate;
 			progress[i] = next > 1 ? 1 : next;
 		}
