@@ -26,7 +26,7 @@ function bootEconomy() {
 	const plots = [new FieldPlot($('resource-map'),true),new FieldPlot($('demand-map'),false)];
 	const stats = new EconomyTelemetry();
 	const guide = $('field-guide'), runButton = $('run-button'), runState = $('run-state');
-	const speedSelect = $('speed'), pressure = $('negative-demand'), flow = $('show-flow');
+	const speedSelect = $('speed'), pressure = $('negative-demand'), catchment = $('catchment-demand'), flow = $('show-flow');
 	const toolButtons = document.querySelectorAll('[data-tool]'), clearButton = $('clear-consumers');
 	const message = $('edit-message'), stepButton = $('step-button');
 	let running = !matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -34,6 +34,7 @@ function bootEconomy() {
 	let selected = -1, owner = null, pinned = false, dirty = true;
 	let lastFrame = performance.now(), lastPaint = 0, lastStats = 0, accumulator = 0;
 	model.pressure = pressure.checked;
+	model.catchment = catchment.checked;
 	$('grid-size').textContent = `${ECONOMY_WIDTH} × ${ECONOMY_HEIGHT}`;
 	$('source-note').textContent = SOURCE_RATE.toFixed(2);
 	$('uptake-note').textContent = UPTAKE_RATE.toFixed(2);
@@ -151,6 +152,7 @@ function bootEconomy() {
 	stepButton.addEventListener('click',() => { tick(); stats.refresh(model); readings(); paint(); });
 	speedSelect.addEventListener('change',() => { speed = Number(speedSelect.value); });
 	pressure.addEventListener('change',() => { model.pressure = pressure.checked; message.textContent = `Resource pressure ${model.pressure ? 'enabled' : 'disabled'}.`; });
+	catchment.addEventListener('change',() => { model.catchment = catchment.checked; message.textContent = `Catchment feedback ${model.catchment ? 'enabled' : 'disabled'}.`; });
 	flow.addEventListener('change',() => { dirty = true; });
 	$('new-zero').addEventListener('click',() => reset(0));
 	$('new-half').addEventListener('click',() => reset(0.5));

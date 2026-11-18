@@ -1,4 +1,4 @@
-// Run with: node economy-proto/test.cjs
+// Run from this directory: node test.cjs
 // Exercise the actual inline simulation without browser or external packages.
 const fs = require('node:fs');
 const vm = require('node:vm');
@@ -46,8 +46,8 @@ close(run(`res.reduce((a,b) => a+b, 0)`), run(`produced - consumed`), 1e-6);
 
 // A hungry settlement attracts coal, consumes a finite amount, and feedback
 // reduces the signal with abundant local stock instead of producing a black hole.
-run(`init(0, false); sources.length = 0; consumers.length = 1; settlementsEnabled = true; sinkEnabled = false; feedback = 'stock'; const c = consumers[0]; neighborhood(c, i => {res[i] = 2});`);
-const starting = run(`localStock(consumers[0])`);
+run(`init(0, false); sources.length = 0; consumers.length = 1; settlementsEnabled = true; sinkEnabled = false; feedback = 'stock'; const c = consumers[0]; const center = idx(c.x, c.y); for (let j = 0; j < feedCount; j++) res[center + feedIndices[j]] = 2;`);
+const starting = run(`catchmentStock(consumers[0])`);
 run(`for (let i=0; i<100; i++) tick()`);
 assert.ok(run(`consumers[0].signal < 0.5`));
 assert.ok(run(`consumed > 0 && consumed < CONSUME_RATE * time`));

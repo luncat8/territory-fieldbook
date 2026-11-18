@@ -10,3 +10,4 @@
 - Opposite corners, 45 s: 9.933 units delivered, final intake 0.337 units/s for a 0.34 units/s source.
 - Browser: HTTP and direct-file boot; pause, step, speed, resets, pressure, editing, linked readouts, guide and flow visibility. No overflow at seven viewport widths (320–1440 px), runtime errors or external requests.
 - Next experiment: move a consumer mid-run and compare rerouting time with and without stock pressure.
+- Report renames and cross-prototype work are logged in `archive/02-compare-report-worklog.md`.

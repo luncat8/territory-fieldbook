@@ -11,6 +11,8 @@ const SOURCE_RATE = 0.34;
 const UPTAKE_RATE = 0.95;
 const QUEUE_SECONDS = 0.25;
 const SERVICE_SHARE = 1 - Math.exp(-ECONOMY_DT / 0.1);
+const CATCHMENT_RADIUS = 4;
+const CATCHMENT_HALF = 3;
 const DEMAND_DIFFUSION = 15;
 const DEMAND_RECOVERY = 0.08;
 const NEED_RESPONSE = 1.4;
@@ -28,10 +30,52 @@ const DIRECTIONS = [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [-1, -1],
 		const inv = x && y ? Math.SQRT1_2 : 1;
 		return { x, y, inv, ux: x * inv, uy: y * inv, weight: x && y ? 1 : 4 };
 	});
+const CATCHMENT = buildCatchment();
 const DEGREE = DIRECTIONS.length;
 const NEIGHBORS = buildEconomyNeighbors();
 const REFERENCE_SOURCES = [[7, 8], [22, 21], [39, 7]];
 const REFERENCE_CONSUMERS = [[19, 5], [9, 20], [34, 18]];
+
+function buildCatchment() {
+	// One table for every cell: in-map ring offsets nearest first, with a 1/(d+1)
+	// falloff so a settlement weighs its own cell above its outskirts.
+	const entries = [];
+	for (let y = -CATCHMENT_RADIUS; y <= CATCHMENT_RADIUS; y++) for (let x = -CATCHMENT_RADIUS; x <= CATCHMENT_RADIUS; x++) {
+		const distance = Math.hypot(x, y);
+		if (distance <= CATCHMENT_RADIUS) entries.push({ x, y, distance, weight: 1 / (distance + 1) });
+	}
+	entries.sort((a, b) => a.distance - b.distance);
+	const size = entries.length;
+	const offsets = new Int16Array(ECONOMY_SIZE * size);
+	const weights = new Float32Array(ECONOMY_SIZE * size);
+	const counts = new Int16Array(ECONOMY_SIZE);
+	for (let i = 0; i < ECONOMY_SIZE; i++) {
+		const count = fillCatchmentCell(i, entries, offsets, weights, size);
+		counts[i] = count;
+		normalizeCatchmentRow(i, weights, size, count);
+	}
+	return { offsets, weights, counts, size };
+}
+
+function fillCatchmentCell(i, entries, offsets, weights, size) {
+	const cx = i % ECONOMY_WIDTH, cy = Math.floor(i / ECONOMY_WIDTH);
+	let count = 0;
+	for (const entry of entries) {
+		const x = cx + entry.x, y = cy + entry.y;
+		if (x < 0 || x >= ECONOMY_WIDTH || y < 0 || y >= ECONOMY_HEIGHT) continue;
+		offsets[i * size + count] = y * ECONOMY_WIDTH + x - i;
+		weights[i * size + count] = entry.weight;
+		count++;
+	}
+	return count;
+}
+
+// Normalise at build time so the hot path divides once per settlement, not per cell.
+function normalizeCatchmentRow(i, weights, size, count) {
+	let total = 0;
+	for (let k = 0; k < count; k++) total += weights[i * size + k];
+	for (let k = 0; k < count; k++) weights[i * size + k] /= total;
+}
 
 function buildEconomyNeighbors() {
 	const result = new Int16Array(ECONOMY_SIZE * DEGREE).fill(-1);
@@ -61,6 +105,7 @@ class DiffusionEconomy {
 		this.flowY = new Float64Array(ECONOMY_SIZE);
 		this.flowRate = new Float64Array(ECONOMY_SIZE);
 		this.pressure = false;
+		this.catchment = false;
 		this.reset(0);
 	}
 
@@ -122,7 +167,8 @@ class DiffusionEconomy {
 			const here = demand[i];
 			if (actors[i] === ECONOMY_CONSUMER) {
 				const queue = Math.min(1, stock[i] / (QUEUE_SECONDS * UPTAKE_RATE));
-				const need = 1 - (pressure ? 0.5 : 0.35) * queue;
+				const reach = this.catchment ? 1 + CATCHMENT_HALF * this.catchmentMean(i) : 1;
+				const need = (1 - (pressure ? 0.5 : 0.35) * queue) / reach;
 				nextDemand[i] = here + ECONOMY_DT * NEED_RESPONSE * (need - here);
 				continue;
 			}
@@ -138,6 +184,15 @@ class DiffusionEconomy {
 		}
 		this.demand = nextDemand;
 		this.nextDemand = demand;
+	}
+
+	// Stock queued in the ring around a settlement, not just in its own cell:
+	// coal parked one step outside still tells the settlement its supply is secure.
+	catchmentMean(i) {
+		const { offsets, weights, counts, size } = CATCHMENT;
+		let sum = 0;
+		for (let k = 0, base = i * size, count = counts[i]; k < count; k++) sum += this.stock[i + offsets[base + k]] * weights[base + k];
+		return sum;
 	}
 
 	transportStock() {
@@ -247,5 +302,5 @@ class DiffusionEconomy {
 }
 
 if (typeof module !== 'undefined') {
-	module.exports = { DiffusionEconomy, ECONOMY_DT, ECONOMY_WIDTH, ECONOMY_HEIGHT, ECONOMY_SOURCE, ECONOMY_CONSUMER, economyIndex, SOURCE_RATE, UPTAKE_RATE, QUEUE_SECONDS };
+	module.exports = { DiffusionEconomy, ECONOMY_DT, ECONOMY_WIDTH, ECONOMY_HEIGHT, ECONOMY_SOURCE, ECONOMY_CONSUMER, economyIndex, SOURCE_RATE, UPTAKE_RATE, QUEUE_SECONDS, CATCHMENT_HALF };
 }

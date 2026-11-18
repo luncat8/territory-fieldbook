@@ -248,3 +248,55 @@ test('new arrivals survive their arrival tick, and small shipments drain in prop
 		closeTo(sample.consumed + sample.stock[0], 0.002);
 	}
 });
+
+// Catchment feedback: the optional mode that reads the ring around a consumer.
+function catchModel(catchment) {
+	const model = clearedMap(0.5);
+	model.pressure = true;
+	model.catchment = catchment;
+	model.setActor(economyIndex(19, 5), ECONOMY_CONSUMER);
+	return model;
+}
+
+test('catchment feedback cools a consumer from stock in its ring, not only its own cell', () => {
+	const queueOnly = catchModel(false);
+	const catchment = catchModel(true);
+	for (const model of [queueOnly, catchment]) for (const [x, y] of [[19, 6], [18, 5], [20, 5], [19, 4]]) model.setActor(economyIndex(x, y), ECONOMY_SOURCE);
+	run(queueOnly, 20);
+	run(catchment, 20);
+	const cell = economyIndex(19, 5);
+	assert.ok(catchment.demand[cell] < queueOnly.demand[cell] - 0.1);
+	closeTo(sum(catchment.stock), catchment.produced - catchment.consumed);
+	checkLedger(catchment);
+});
+
+test('catchment weighting falls with distance and covers in-map cells only', () => {
+	const model = catchModel(true);
+	const cell = economyIndex(19, 5);
+	model.stock.fill(0);
+	model.stock[cell] = 1;
+	const own = model.catchmentMean(cell);
+	model.stock[cell] = 0;
+	model.stock[economyIndex(23, 5)] = 1;
+	const far = model.catchmentMean(cell);
+	assert.ok(own > far && far > 0);
+	model.stock.fill(0);
+	model.stock[economyIndex(19, 9)] = 1;
+	closeTo(model.catchmentMean(cell), far);
+	const corner = economyIndex(0, 0);
+	model.stock.fill(0);
+	model.stock[corner] = 1;
+	assert.ok(model.catchmentMean(corner) > 0 && model.catchmentMean(corner) <= 1);
+});
+
+test('a well-fed settlement recovers demand after its stock is removed', () => {
+	const model = catchModel(true);
+	for (const [x, y] of [[19, 6], [18, 5], [20, 5], [19, 4]]) model.setActor(economyIndex(x, y), ECONOMY_SOURCE);
+	run(model, 20);
+	const cell = economyIndex(19, 5);
+	const loaded = model.demand[cell];
+	for (let i = 0; i < model.actors.length; i++) if (model.actors[i] === ECONOMY_SOURCE) model.actors[i] = 0;
+	run(model, 30);
+	assert.ok(model.demand[cell] > loaded + 0.05);
+	checkLedger(model);
+});
