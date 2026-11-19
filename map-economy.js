@@ -23,6 +23,12 @@ const MAPE_STORAGE_CAP = 96;
 const MAPE_WORKSHOP_CAP = 8;
 const MAPE_NEED_GOODS = 0.02;
 const MAPE_NEED_COAL = 0.005;
+const MAPE_SETTLE_DISTURB = 0.0015;
+const MAPE_GROWTH = 0.008;
+const MAPE_DEATH = 0.015;
+const MAPE_MIGRATE = 0.01;
+const MAPE_MIGRATE_BIAS = 0.04;
+const MAPE_SAT_SCALE = 4;
 const MAPE_MINE_WORKERS = 6;
 const MAPE_FACTORY_BUILD_IRON = 0.2;
 const MAPE_FACTORY_BUILD_WORKERS = 4;
@@ -59,6 +65,10 @@ const mape = {
 	goodsView: null,
 	workforce: null,
 	workforceNext: null,
+	usedGoods: null,
+	usedCoal: null,
+	satGoods: null,
+	satCoal: null,
 	jobNeed: null,
 	cellExport: null,
 	money: null,
@@ -107,6 +117,10 @@ function mapeInit(mode, fixedResidents = false) {
 		mape.flowY = new Float32Array(MAPE_R * n);
 		mape.workforce = new Float32Array(n);
 		mape.workforceNext = new Float32Array(n);
+		mape.usedGoods = new Float64Array(n);
+		mape.usedCoal = new Float64Array(n);
+		mape.satGoods = new Float32Array(n);
+		mape.satCoal = new Float32Array(n);
 		mape.jobNeed = new Float32Array(n);
 		mape.cellExport = new Uint8Array(n);
 		mape.money = new Float32Array(n);
@@ -137,6 +151,10 @@ function mapeReset() {
 	mape.flowDt = 0;
 	mape.workforce.fill(0);
 	mape.workforceNext.fill(0);
+	mape.usedGoods.fill(0);
+	mape.usedCoal.fill(0);
+	mape.satGoods.fill(0);
+	mape.satCoal.fill(0);
 	mape.jobNeed.fill(0);
 	mape.cellExport.fill(0);
 	mape.money.fill(0);

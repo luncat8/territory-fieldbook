@@ -65,6 +65,7 @@ const metrics = vm.runInThisContext(`
 		mape.pop[needCell] = 20;
 		mapeRebuildSettlements();
 		mape.initialPop = mape.totalPop;
+		mape.popDelta = 0;
 		const goodsDemand = mapeField(MAPE_FIELD.DEMAND, MAPE_RES.GOODS);
 		let span20Sec = -1;
 		for (let s = 1; s <= 75; s++) {
@@ -92,6 +93,7 @@ const metrics = vm.runInThisContext(`
 		mape.pop[idx(32, 32)] = 30;
 		mapeRebuildSettlements();
 		mape.initialPop = mape.totalPop;
+		mape.popDelta = 0;
 		const goodsDemand = mapeField(MAPE_FIELD.DEMAND, MAPE_RES.GOODS);
 		const axial = [idx(42, 32), idx(22, 32), idx(32, 42), idx(32, 22)];
 		const diag = [idx(38, 40), idx(40, 38), idx(26, 24), idx(24, 26)];
@@ -126,6 +128,7 @@ const metrics = vm.runInThisContext(`
 		for (let i = 0; i < n; i++) mape.goods[MAPE_RES.CO2 * n + i] = (i % size) < 32 ? 2.0 : 0.1;
 		mapeRebuildSettlements();
 		mape.initialPop = mape.totalPop;
+		mape.popDelta = 0;
 		mape.initialGoods = mapeGoodsTotal();
 		const co2Start = mapeField(MAPE_FIELD.GOODS, MAPE_RES.CO2).reduce((a, b) => a + b, 0);
 		for (let s = 0; s < 200; s++) mapeStep(dt);
@@ -164,12 +167,14 @@ const metrics = vm.runInThisContext(`
 		mape.pop[idx(35, 32)] = 25;
 		mapeRebuildSettlements();
 		mape.initialPop = mape.totalPop;
+		mape.popDelta = 0;
 		mape.initialGoods = mapeGoodsTotal();
 		for (let s = 0; s < 300; s++) mapeStep(dt);
 		return {
 			waterMatLeak, eastGoodsDemand, eastIronStock, eastPop, waterCo2,
 			eastCo2Gain, eastCo2DemandFromWest, waterLedgerRes, co2MassRes,
-			routedBuyerGoods: mape.goods[MAPE_RES.GOODS * n + idx(35, 32)]
+			routedBuyerGoods: mape.goods[MAPE_RES.GOODS * n + idx(35, 32)],
+			routedBuyerUse: mape.massOut
 		};
 	}
 
@@ -186,6 +191,7 @@ const metrics = vm.runInThisContext(`
 		mape.pop[s2] = 16;
 		mapeRebuildSettlements();
 		mape.initialPop = mape.totalPop;
+		mape.popDelta = 0;
 		mape.initialGoods = mapeGoodsTotal();
 		for (let s = 0; s < 50; s++) mapeStep(dt);
 		const preUnlocked = mape.mineUnlocked[0];
@@ -197,6 +203,7 @@ const metrics = vm.runInThisContext(`
 		mape.pop[facCell] = MAPE_FACTORY_WORKERS;
 		mapeRebuildSettlements();
 		mape.initialPop = mape.totalPop;
+		mape.popDelta = 0;
 		party.x = 24;
 		party.y = 32;
 		party.condition = 95;
@@ -366,7 +373,8 @@ console.log('water_mat_leak=' + metrics.waterMatLeak.toFixed(6) +
 	' east_pop=' + metrics.eastPop.toFixed(6) +
 	' east_co2_gain=' + metrics.eastCo2Gain.toFixed(3) +
 	' co2_res=' + metrics.co2MassRes.toFixed(6) +
-	' routed_goods=' + metrics.routedBuyerGoods.toFixed(3));
+	' routed_goods=' + metrics.routedBuyerGoods.toFixed(3) +
+	' routed_use=' + metrics.routedBuyerUse.toFixed(3));
 console.log('coal_pre_unlock=' + metrics.preUnlocked +
 	' pre_work=' + metrics.preMineWork.toFixed(4) +
 	' pre_pop=' + metrics.preMinePop.toFixed(4) +
@@ -406,7 +414,7 @@ check('arrival_20cell', metrics.midBeforeStore > 0 && metrics.midZeroSec > 0 && 
 check('isotropy', Math.abs(metrics.arriveRatio - 1) <= 0.15 && Math.abs(metrics.valRatio - 1) <= 0.15);
 check('water_blocks_materials', metrics.waterMatLeak === 0 && metrics.eastGoodsDemand === 0 && metrics.eastIronStock === 0 && metrics.eastPop === 0);
 check('co2_crosses_water', metrics.waterCo2 > 10 && metrics.eastCo2Gain > 5 && Math.abs(metrics.eastCo2DemandFromWest) > 0.05);
-check('water_routing', metrics.routedBuyerGoods > 0.5);
+	check('water_routing', metrics.routedBuyerGoods + metrics.routedBuyerUse > 0.5);
 check('locked_mine_idle', metrics.preUnlocked === 0 && metrics.preMineWork === 0 && metrics.preMinePop === 0 && metrics.preMined === 0 && metrics.minedBeforeWorkers === 0);
 check('coal_workers_demand', metrics.tUnlock > 0 && metrics.peakMineWork > 1 && metrics.tWorkAtS1 > 0 && metrics.tWorkAtS1 < 15);
 check('workers_diffuse_to_mine', metrics.tWorkerAtMine > 0 && metrics.chainMinePop >= 3 && metrics.chainFacPop >= 2);

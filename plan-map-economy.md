@@ -121,8 +121,10 @@ fields (`territory.js`), disturbed fraction (`land.js`), biomass and oxygen
 `map-industry.js` handles mine and factory registration, locked deposits and
 workshop output. `map-diffusion.js` owns signed diffusion, the shared tick and
 worker transport. `map-market-demand.js` owns A/B import pull and household
-uptake; `map-market-flow.js` builds the reflecting land stencil, catchment
-membership and B's queue transport buffers. All buffers are reused per tick.
+uptake; `map-population.js` records intake, satisfaction, population dynamics and
+household waste. `map-market-flow.js` builds the reflecting land stencil,
+catchment membership and B's queue transport buffers. All buffers are reused per
+tick.
 
 ```
 MAPE_R = 4                       // coal, iron, goods, co2
@@ -136,7 +138,8 @@ MAPE_NEED_GOODS = 0.02           // signed reference goods need/person/s
 MAPE_NEED_COAL = 0.005           // signed reference coal need/person/s
 MAPE_MARKET_GOODS_USE = 0.024    // A/B household goods use/person/s
 MAPE_MARKET_COAL_USE = 0.03      // A/B household coal use/person/s
-MAPE_SETTLE_DISTURB = 0.00015    // disturbance per unit goods consumed
+MAPE_SETTLE_DISTURB = 0.0015     // disturbance per unit goods consumed
+MAPE_SAT_SCALE = 4                // satisfaction response timescale in seconds
 MAPE_DEMAND_GAIN = 8.0           // demand signal scale for unmet need rates
 MAPE_STOCK_SIGNAL = 0.25       // negative demand per stock unit per s
 MAPE_DIFFUSE = 0.72              // 4-neighbour mix per pass (2 passes / 0.2 s tick)
@@ -263,7 +266,11 @@ migrants.
 
 Workforce scaling: factory and transport throughput scales by
 `localPop / (localPop + workforce[i])`, while unmet workforce pulls migrants in,
-closing `factory → jobs → migration → production`.
+closing `factory → jobs → migration → production`. Diffusion is the reference
+population lifecycle: it applies growth, decline and attraction-biased migration.
+Catchment A and Queue B record household intake and apply its waste/emissions, but
+hold demographic growth and satisfaction-led migration for stable routing comparisons;
+shared job staffing remains active.
 
 ## Factory and mine lifecycle
 
@@ -494,13 +501,16 @@ residuals `< 1e-4`, tick time `< 2 ms` at 64×64 `R = 4` (scaling logged for
 
 ### Phase 2 — Population dynamics and settlement metabolism (diffusion)
 
-Deliverable: goods + coal satisfaction, growth/decline, productivity-scaled cap,
-biased migration, settlement goods→waste and coal→CO2, `experiments/mape_population.js`
-over `120 s`.
+Deliverable: measured goods + coal satisfaction, Diffusion-engine growth/decline,
+productivity-scaled cap, satisfaction/workforce-biased migration, settlement
+goods→waste and coal→CO2, and `experiments/mape_population.js` over `120 s`.
+Catchment A and Queue B record intake and emissions while holding demographic
+growth and satisfaction-led migration; shared job staffing remains active.
 
-Gate: supplied settlements grow, unsupplied decline, no cell exceeds
-`MAPE_POP_CAP * productivity`, no NaN, small village waste equilibrates below
-`0.25` while dense cities exceed it, total population stays bounded.
+Gate: supplied Diffusion settlements grow, unsupplied decline, no cell exceeds
+`MAPE_POP_CAP * productivity`, no NaN, small-village disturbance stays below
+`0.25` while dense-city disturbance exceeds it, goods/population ledgers balance,
+and total population stays bounded.
 
 ### Phase 3 — Factories, mines and forest CO2 loop (diffusion)
 
@@ -540,7 +550,8 @@ Gate: runtime switches preserve the stock ledger, all engines pass `smoke` and
 - Survey opens at 4× on Supply → goods; workshop stock moves toward settlements.
   1× and 2× advance 1 and 2 days per real second; pause freezes the traces and clock.
 - Settlement dots read at ~2% density across walkable land, never on water; around
-  list shows nearest settlement distance and population.
+  list shows nearest settlement distance and population. In Diffusion, stocked
+  settlements grow and isolated ones shrink; A/B hold demographic growth and migration.
 - Switching views `1`…`9` (click, fine-pointer hover, keys) updates the canvas;
   `0` or Supply + demand shows paired fields in the survey as well as the scenes.
   Changing an item updates both maps and legends; returning to a non-field view

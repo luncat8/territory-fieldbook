@@ -97,3 +97,10 @@ the selected mode. Testing `demandCtx` for the active layout couples the survey 
 boot and silently forces paired rendering once the context exists. Keep looks separate from
 engine changes: palette/overlay switches must not warm demand or mutate stocks. Reduced motion
 should disable animated trace phase, not hide static evidence of accepted transfers.
+
+## float32 population migration accounting
+
+Migration flux is computed in double precision but applied to Float32 population cells.
+Record the actual source-plus-destination change after each pair write in `popDelta`; the
+proposed flux alone accumulates measurable residual over long runs. Compare populations in
+small controlled scenes before widening the entire population field to Float64.

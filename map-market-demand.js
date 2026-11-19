@@ -160,10 +160,12 @@ function mapeQueueCapacity(r, i) {
 }
 
 function mapeUseMarketStock(p, amount) {
-	if (amount <= 0) return;
+	if (amount <= 0) return 0;
 	const before = mape.goods[p];
 	mape.goods[p] = Math.max(0, before - amount);
-	mape.massOut += before - mape.goods[p];
+	const used = before - mape.goods[p];
+	mape.massOut += used;
+	return used;
 }
 
 function mapeUseCatchmentStock(r, i, dt) {
@@ -175,10 +177,12 @@ function mapeUseCatchmentStock(r, i, dt) {
 	for (let k = base; k < end; k++) stock += mapeMarketUsable(r, catchments[k]);
 	if (stock <= 0) return;
 	const share = Math.min(1, mapeMarketUseRate(r, i) * mape.demand[off + i] * dt / stock);
+	let used = 0;
 	for (let k = base; k < end; k++) {
 		const cell = catchments[k];
-		mapeUseMarketStock(off + cell, mapeMarketUsable(r, cell) * share);
+		used += mapeUseMarketStock(off + cell, mapeMarketUsable(r, cell) * share);
 	}
+	mapeRecordUse(r, i, used);
 }
 
 function mapeUseCatchments(dt) {
@@ -192,7 +196,7 @@ function mapeUseCatchments(dt) {
 function mapeServeQueue(r, i, dt, share) {
 	const p = r * world.n + i;
 	const ready = Math.min(mapeMarketUseRate(r, i) * dt, mapeMarketUsable(r, i) * share);
-	mapeUseMarketStock(p, ready);
+	mapeRecordUse(r, i, mapeUseMarketStock(p, ready));
 }
 
 function mapeServeQueues(dt) {

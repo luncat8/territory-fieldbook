@@ -41,6 +41,7 @@ File map:
 | `sites.js` | site pool, discovery, claims, extraction, site payouts |
 | `map-economy.js` | settlements, markets, demand/goods/workforce state, mines, factories (`plan-map-economy.md`) |
 | `map-diffusion.js` | Jacobi demand/workforce diffusion, gradient goods/worker flow, mine output (`plan-map-economy.md`) |
+| `map-population.js` | household intake, satisfaction, growth, migration and waste (`plan-map-economy.md`) |
 | `investigate.js` | investigation progress and distance falloff |
 | `party.js` | members, shared values, skills, movement, camping, hiring |
 | `territory.js` | influence fields per faction, control, share, contest |

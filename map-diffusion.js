@@ -355,6 +355,7 @@ function mapeTransportWorkers(dt) {
 }
 
 function mapeDiffusionSubstep(dt) {
+	mapePopulationBeginStep();
 	const size = world.size;
 	const n = world.n;
 	const terrain = world.terrain;
@@ -387,8 +388,10 @@ function mapeDiffusionSubstep(dt) {
 	mapeDiffuseCo2Stock(goods, goodsNext, MAPE_RES.CO2 * n, size, dt);
 	goods.set(goodsNext);
 	if (catchment) mapeUseCatchments(dt);
+	if (mape.engine === MAPE_ENGINE.DIFFUSION) mapeUseDiffusionStock(dt);
 	mapeStepWorkforce(dt, workScratch);
 	if (!mape.fixedResidents) mapeTransportWorkers(dt);
+	mapePopulationStep(dt);
 	mapeStepMines(dt);
 	mapeStepWorkshops(dt);
 	mapeRecoverMoney(dt);
