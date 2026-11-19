@@ -76,20 +76,44 @@ function renderFieldPalette(stops) {
 	return lut;
 }
 
-function renderDemandMax() {
-	return mape.engine !== MAPE_ENGINE.DIFFUSION && mapeIsMarketItem(mape.viewItem) ? 1 : RENDER_DEMAND_MAX;
+function renderDemandMax(item) {
+	return mape.engine !== MAPE_ENGINE.DIFFUSION && item <= MAPE_RES.CO2 && mapeIsMarketItem(item) ? 1 : RENDER_DEMAND_MAX;
+}
+
+// New field items: people and pools. Norm gives a 0..1 read for the stock/need presets.
+const RENDER_POOL_LOG = Math.log1p(MAPE_VIEW_POOL_MAX);
+
+function renderViewItem(view) {
+	return view === VIEW.DEMAND ? mape.viewItemDemand : mape.viewItem;
+}
+
+function renderItemField(item, demand) {
+	if (item === MAPE_VIEW_ITEM.POPULATION) return mape.pop;
+	if (item === MAPE_VIEW_ITEM.FRESH) return mape.wfFresh;
+	if (item === MAPE_VIEW_ITEM.WORKFORCE) return mape.workforce;
+	if (item === MAPE_VIEW_ITEM.DEPLETED) return mape.wfDepleted;
+	return demand ? mape.demandView[item] : mape.goodsView[item];
+}
+
+function renderItemNorm(item, value) {
+	const v = value <= 0 ? 0 : value;
+	if (item === MAPE_VIEW_ITEM.POPULATION) return Math.sqrt(Math.min(1, v / MAPE_POP_CAP));
+	if (item === MAPE_VIEW_ITEM.WORKFORCE) return Math.sqrt(Math.min(1, v / MAPE_VIEW_WORK_MAX));
+	if (item === MAPE_VIEW_ITEM.FRESH || item === MAPE_VIEW_ITEM.DEPLETED) return Math.min(1, Math.log1p(v) / RENDER_POOL_LOG);
+	return -1;
 }
 
 function renderEconomyCells(view) {
 	const pixels = render.pixels;
-	const item = mape.viewItem;
+	const item = renderViewItem(view);
 	const demand = view === VIEW.DEMAND;
-	const field = demand ? mape.demandView[item] : mape.goodsView[item];
-	const demandMax = renderDemandMax();
+	const field = renderItemField(item, demand);
+	const demandMax = renderDemandMax(item);
 	const style = render.fieldStyle;
 	const palette = demand ? renderEconomy.needPalette : renderEconomy.stockPalette;
 	for (let i = 0, p = 0; i < world.n; i++, p += 4) {
 		const value = field[i];
+		const norm = renderItemNorm(item, value);
 		if (item !== MAPE_RES.CO2 && world.terrain[i] === TERRAIN.WATER) {
 			pixels[p] = 21;
 			pixels[p + 1] = 34;
@@ -99,6 +123,27 @@ function renderEconomyCells(view) {
 			pixels[p] = 27 + 43 * k;
 			pixels[p + 1] = 15 + 204 * k;
 			pixels[p + 2] = 23 + 137 * k;
+		} else if (norm >= 0) {
+			const k = norm;
+			if (style === RENDER_STYLE.B) {
+				const at = Math.round(k * 1024) * 3;
+				pixels[p] = palette[at];
+				pixels[p + 1] = palette[at + 1];
+				pixels[p + 2] = palette[at + 2];
+			} else if (style === RENDER_STYLE.A) {
+				pixels[p] = demand ? 35 + 220 * Math.sqrt(k) : 11 + 230 * k;
+				pixels[p + 1] = demand ? 12 + 218 * k : 20 + 225 * k;
+				pixels[p + 2] = demand ? 16 + 35 * k : 32 + 218 * k;
+			} else if (!demand) {
+				const shine = k * k * k;
+				pixels[p] = 9 + 35 * k + 196 * shine;
+				pixels[p + 1] = 17 + 148 * k + 85 * shine;
+				pixels[p + 2] = 29 + 186 * k + 40 * shine;
+			} else {
+				pixels[p] = 27 + 228 * k;
+				pixels[p + 1] = 15 + 214 * k * k;
+				pixels[p + 2] = 23 + 68 * k * k;
+			}
 		} else if (style === RENDER_STYLE.B) {
 			const k = demand ? Math.min(1, value / demandMax) : Math.min(1, Math.log1p(RENDER_B_EXPOSURE * value / RENDER_STOCK_MAX) / RENDER_B_LOG);
 			const at = Math.round(k * 1024) * 3;
@@ -127,17 +172,20 @@ function renderEconomyCells(view) {
 }
 
 function renderEconomyOverlays(ctx, view) {
-	if (view === VIEW.DEMAND && render.showContours) renderDemandContours(ctx);
+	const item = renderViewItem(view);
+	if (view === VIEW.DEMAND && render.showContours && item <= MAPE_RES.CO2) renderDemandContours(ctx);
 	if (render.showGrid) ctx.drawImage(renderEconomy.grid, 0, 0);
-	if (view === VIEW.SUPPLY) renderGoodsFlow(ctx);
+	if (view === VIEW.AMOUNT && mape.viewItem < MAPE_RES.CO2) renderGoodsFlow(ctx);
 }
 
 function renderDemandContours(ctx) {
-	const field = mape.demandView[mape.viewItem];
-	const landOnly = mape.viewItem !== MAPE_RES.CO2;
+	const item = mape.viewItemDemand;
+	if (item > MAPE_RES.CO2) return;
+	const field = mape.demandView[item];
+	const landOnly = item !== MAPE_RES.CO2;
 	const terrain = world.terrain;
 	const size = world.size;
-	const max = renderDemandMax();
+	const max = renderDemandMax(item);
 	const interval = max * 0.035;
 	const ex = renderEconomy.isoX, ey = renderEconomy.isoY;
 	ctx.beginPath();
@@ -205,7 +253,7 @@ function renderFlowBand(ctx, time, min, max, bright) {
 }
 
 function renderGoodsFlow(ctx) {
-	if (!render.showFlow || mape.viewItem === MAPE_RES.CO2 || mape.flowDt <= 0) return;
+	if (!render.showFlow || mape.viewItem >= MAPE_RES.CO2 || mape.flowDt <= 0) return;
 	// Accepted transfers share simulation time; pausing freezes both animation and stock.
 	const time = (clock.seconds + clock.acc) * 0.73;
 	const low = mape.flowDt * 0.06;

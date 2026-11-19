@@ -27,6 +27,7 @@ const world = {
 	seed: 0,
 	terrain: new Uint8Array(MAP_N),
 	height: new Float32Array(MAP_N),
+	settleValue: new Float32Array(MAP_N),
 	startX: MAP_SIZE >> 1,
 	startY: MAP_SIZE >> 1
 };
@@ -44,7 +45,47 @@ function worldGenerate(seed) {
 			world.terrain[i] = worldTerrainOf(h, m);
 		}
 	}
+	worldSettleValues();
 	worldPickStart();
+}
+
+// How much room a cell offers a settlement; swamp interiors get nothing, open waterfront gets all of it.
+const SETTLE_VALUE_SWAMP_EDGE = 0.15;
+const SETTLE_VALUE_DESERT = 0.1;
+const SETTLE_VALUE_BY_TERRAIN = [/* meadow */ 0.6, /* forest */ 0.35, /* water */ 0, /* swamp */ 0, /* hills */ 0.45, /* desert */ SETTLE_VALUE_DESERT];
+
+function worldSettleValues() {
+	const terrain = world.terrain;
+	const value = world.settleValue;
+	const size = world.size;
+	for (let y = 0; y < size; y++) {
+		for (let x = 0; x < size; x++) {
+			const i = y * size + x;
+			const t = terrain[i];
+			if (t === TERRAIN.WATER) {
+				value[i] = 0;
+				continue;
+			}
+			const l = x > 0 ? terrain[i - 1] : t;
+			const r = x < size - 1 ? terrain[i + 1] : t;
+			const u = y > 0 ? terrain[i - size] : t;
+			const d = y < size - 1 ? terrain[i + size] : t;
+			const nearWater = l === TERRAIN.WATER || r === TERRAIN.WATER || u === TERRAIN.WATER || d === TERRAIN.WATER;
+			if (t === TERRAIN.SWAMP) {
+				const edge = nearWater || l !== TERRAIN.SWAMP || r !== TERRAIN.SWAMP || u !== TERRAIN.SWAMP || d !== TERRAIN.SWAMP;
+				value[i] = edge ? SETTLE_VALUE_SWAMP_EDGE : 0;
+				continue;
+			}
+			if (nearWater) {
+				value[i] = 1;
+				continue;
+			}
+			const forestMeadowEdge = (t === TERRAIN.FOREST || t === TERRAIN.MEADOW) &&
+				(l === TERRAIN.FOREST || r === TERRAIN.FOREST || u === TERRAIN.FOREST || d === TERRAIN.FOREST) &&
+				(l === TERRAIN.MEADOW || r === TERRAIN.MEADOW || u === TERRAIN.MEADOW || d === TERRAIN.MEADOW);
+			value[i] = forestMeadowEdge ? 0.8 : SETTLE_VALUE_BY_TERRAIN[t];
+		}
+	}
 }
 
 function worldTerrainOf(h, m) {
@@ -122,4 +163,4 @@ function worldRandomWalkable() {
 	return world.startY * MAP_SIZE + world.startX;
 }
 
-if (typeof module !== 'undefined') module.exports = { world, worldGenerate, worldWalkableAt, MAP_SIZE, TERRAIN };
+if (typeof module !== 'undefined') module.exports = { world, worldGenerate, worldWalkableAt, worldSettleValues, MAP_SIZE, TERRAIN };

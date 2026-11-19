@@ -2,10 +2,11 @@
 // edit for: scene playback controls and actor-tool feedback
 
 const HUD_SCENE_TOOL_NOTE = [
-	'Hover either map to inspect. Click to pin the same cell on both.',
+	'Hover either map to inspect. Click a mine or factory to watch it in the workforce block; click any other cell to pin the same cell on both.',
 	'Click an empty cell on either map to place a staffed coal mine.',
 	'Click an empty cell on either map to add a settlement and watch the routes change.',
-	'Click a mine or settlement to remove it without deleting the coal already on the map.'
+	'Click a mine, settlement or factory to remove it without deleting the coal already on the map.',
+	'Click an empty cell on either map to add an active factory and watch its staffing and rates.'
 ];
 
 const hudScene = {
@@ -46,6 +47,7 @@ function hudSceneInit() {
 
 function hudSceneSetTool(tool) {
 	mapScene.tool = tool;
+	inputClearSiteSelection();
 	for (let k = 0; k < hudScene.tools.length; k++) hudScene.tools[k].checked = k === tool;
 	hudScene.note.textContent = HUD_SCENE_TOOL_NOTE[tool];
 }
@@ -71,7 +73,7 @@ function hudSceneInspect(el) {
 	}
 	const idx = y * world.size + x;
 	const p = MAPE_RES.COAL * world.n + idx;
-	text += '\nCell ' + x + ',' + y + ' · stock ' + mape.goods[p].toFixed(2) + ' · pull ' + mape.demand[p].toFixed(3) +
+	text += '\nCell ' + x + ',' + y + ' · settle ' + world.settleValue[idx].toFixed(2) + ' · stock ' + mape.goods[p].toFixed(2) + ' · pull ' + mape.demand[p].toFixed(3) +
 		'\nNet flow ' + hudFlowRate(p).toFixed(2) + '/s';
 	if (mape.engine !== MAPE_ENGINE.DIFFUSION && mapeIsSettlement(idx)) {
 		text += ' · target ' + Math.round(100 * mapeMarketPull(MAPE_RES.COAL, idx)) + '% of hungry pull';

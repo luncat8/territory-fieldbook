@@ -15,7 +15,7 @@ const MAPE_SCENE_LAYOUTS = {
 		towns: [[27, 23], [17, 38], [42, 36]]
 	}
 };
-const MAPE_SCENE_TOOLS = ['Inspect', 'Mine', 'Settlement', 'Erase'];
+const MAPE_SCENE_TOOLS = ['Inspect', 'Mine', 'Settlement', 'Erase', 'Factory'];
 const MAPE_SCENE_POP = 100;
 
 const mapScene = { id: '', tool: 0 };
@@ -37,6 +37,7 @@ function mapSceneWorld(seed) {
 	world.terrain.fill(TERRAIN.MEADOW);
 	world.height.fill(0.5);
 	world.startX = world.startY = world.size >> 1;
+	worldSettleValues();
 }
 
 function mapSceneSeed() {
@@ -55,21 +56,33 @@ function mapSceneAddMine(idx) {
 	return true;
 }
 
+function mapSceneAddFactory(idx) {
+	const x = idx % world.size;
+	const y = (idx / world.size) | 0;
+	const f = mapeAddFactory(x, y, MAPE_FACTORY_STATE.ACTIVE);
+	if (f < 0) return false;
+	mape.pop[idx] = MAPE_FACTORY_WORKERS;
+	return true;
+}
+
 function mapSceneEdit(x, y) {
 	if (!mapScene.tool) return;
 	const idx = y * world.size + x;
 	const mine = mapeMineAt(x, y);
+	const factory = mapeFactoryAt(x, y);
 	const town = mapeIsSettlement(idx);
 	const before = mape.pop[idx];
 	if (mapScene.tool === 3) {
-		if (!town && mine < 0) return eventsStatus('No actor in this cell.');
+		if (!town && mine < 0 && factory < 0) return eventsStatus('No actor in this cell.');
 		if (mine >= 0) mapeRemoveMine(mine);
+		if (factory >= 0) mapeRemoveFactory(factory);
 		mape.pop[idx] = mape.money[idx] = 0;
 		eventsStatus('Actor removed. Coal already on the map stays in circulation.');
 	} else {
-		if (town || mine >= 0) return eventsStatus('This cell already has an actor.');
+		if (town || mine >= 0 || mapeFactoryAt(x, y) >= 0) return eventsStatus('This cell already has an actor.');
 		if (mapScene.tool === 1 && !mapSceneAddMine(idx)) return eventsStatus('No room for another mine.');
 		if (mapScene.tool === 2) mapePlaceSettlement(idx, MAPE_SCENE_POP, false);
+		if (mapScene.tool === 4 && !mapSceneAddFactory(idx)) return eventsStatus('No room for another factory.');
 		eventsStatus(MAPE_SCENE_TOOLS[mapScene.tool] + ' placed at ' + x + ',' + y + '.');
 	}
 	mape.popDelta += mape.pop[idx] - before;

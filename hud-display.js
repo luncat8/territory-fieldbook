@@ -2,7 +2,7 @@
 // edit for: display defaults, control applicability and map visibility
 
 const HUD_DISPLAY_CONTROLS = [
-	['ui-flow', 'showFlow', 'supply'],
+	['ui-flow', 'showFlow', 'amount'],
 	['ui-flow-motion', 'animateFlow', 'flow'],
 	['ui-flow-arrows', 'flowArrows', 'flow'],
 	['ui-contours', 'showContours', 'demand'],
@@ -50,10 +50,10 @@ function hudSetLook(style) {
 
 function hudDisplayEnabled(scope) {
 	const field = renderIsFieldView(render.view);
-	const supply = renderHasSupply() && mape.viewItem !== MAPE_RES.CO2;
-	if (scope === 'supply') return supply;
-	if (scope === 'flow') return supply && render.showFlow;
-	if (scope === 'demand') return render.view === VIEW.DEMAND || renderIsPaired();
+	const amount = renderHasAmount() && mape.viewItem < MAPE_RES.CO2;
+	if (scope === 'amount') return amount;
+	if (scope === 'flow') return amount && render.showFlow;
+	if (scope === 'demand') return (render.view === VIEW.DEMAND || renderIsPaired()) && mape.viewItemDemand <= MAPE_RES.CO2;
 	if (scope === 'field') return field;
 	if (scope === 'labels') return field && (render.showSettlements || render.showSources);
 	if (scope === 'survey') return !mapScene.id;
@@ -75,6 +75,6 @@ function hudDisplaySync() {
 		control.checked = render[config[1]];
 		control.disabled = !hudDisplayEnabled(config[2]);
 	}
-	$('ui-canvas').setAttribute('aria-label', renderIsFieldView(render.view) ? (render.view === VIEW.DEMAND ? 'Demand · ' : 'Supply · ') + MAPE_RES_NAME[mape.viewItem] : VIEW_NAME[render.view] + ' map');
-	$('ui-demand-canvas').setAttribute('aria-label', 'Demand · ' + MAPE_RES_NAME[mape.viewItem]);
+	$('ui-canvas').setAttribute('aria-label', renderIsFieldView(render.view) ? (render.view === VIEW.DEMAND ? 'Demand · ' : 'Amount · ') + MAPE_VIEW_ITEM_NAME[renderViewItem(render.view)] : VIEW_NAME[render.view] + ' map');
+	$('ui-demand-canvas').setAttribute('aria-label', 'Demand · ' + MAPE_VIEW_ITEM_NAME[mape.viewItemDemand]);
 }

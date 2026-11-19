@@ -27,6 +27,10 @@ function mapeAddFactory(x, y, state) {
 	mape.factoryState[f] = state;
 	mape.factoryProgress[f] = state === MAPE_FACTORY_STATE.ACTIVE ? 1 : 0;
 	mape.factoryStarved[f] = 0;
+	mape.factoryCoal[f] = 0;
+	mape.factoryIron[f] = 0;
+	mape.factoryGoods[f] = 0;
+	mape.factoryCo2[f] = 0;
 	mape.factoryCount = f + 1;
 	mape.cellExport[y * world.size + x] |= MAPE_CELL_INDUSTRY;
 	mapeAddStorage(x, y, 255);
@@ -126,16 +130,141 @@ function mapeDepositState(x, y) {
 
 function mapeStepMines(dt) {
 	const size = world.size;
-	const pop = mape.pop;
 	for (let m = 0; m < mape.mineCount; m++) {
 		if (!mapeMineActive(m)) continue;
 		const idx = mape.mineY[m] * size + mape.mineX[m];
-		const workers = pop[idx];
+		const workers = mapeWorkPresent(idx);
 		if (workers < MAPE_MINE_MIN_WORKERS) continue;
 		const staff = workers >= MAPE_MINE_WORKERS ? 1 : workers / MAPE_MINE_WORKERS;
 		const units = sitesExtract(mape.mineSite[m], MAPE_MINE_RATE * staff * dt, -1);
 		mape.minedTotal += mapeProduceStock(mape.mineRes[m], idx, units);
 	}
+}
+
+function mapeFactoryAt(x, y) {
+	for (let f = 0; f < mape.factoryCount; f++) {
+		if (mape.factoryX[f] === x && mape.factoryY[f] === y && mape.factoryState[f] !== MAPE_FACTORY_STATE.GONE) return f;
+	}
+	return -1;
+}
+
+function mapeStepFactories(dt) {
+	const size = world.size;
+	const n = world.n;
+	const goods = mape.goods;
+	const coalOff = MAPE_RES.COAL * n;
+	const ironOff = MAPE_RES.IRON * n;
+	const goodsOff = MAPE_RES.GOODS * n;
+	const co2Off = MAPE_RES.CO2 * n;
+	for (let f = 0; f < mape.factoryCount; f++) {
+		const st = mape.factoryState[f];
+		if (st === MAPE_FACTORY_STATE.GONE) continue;
+		const idx = mape.factoryY[f] * size + mape.factoryX[f];
+		const need = mapeFactoryWorkers(st);
+		const staff = need > 0 ? Math.min(1, mapeWorkPresent(idx) / need) : 0;
+		if (st !== MAPE_FACTORY_STATE.BUILDING && staff <= 0) {
+			mape.factoryCoal[f] = mape.factoryIron[f] = mape.factoryGoods[f] = mape.factoryCo2[f] = 0;
+			continue;
+		}
+		if (st === MAPE_FACTORY_STATE.BUILDING) {
+			const ironWant = MAPE_FACTORY_BUILD_IRON * staff * dt;
+			if (staff > 0 && goods[ironOff + idx] >= ironWant) {
+				goods[ironOff + idx] -= ironWant;
+				mape.massOut += ironWant;
+				mape.factoryProgress[f] += staff * dt / MAPE_FACTORY_BUILD_SEC;
+				mape.factoryIron[f] = MAPE_FACTORY_BUILD_IRON * staff;
+				landDisturb(idx, MAPE_FACTORY_BUILD_DISTURB * staff * dt);
+			} else {
+				mape.factoryStarved[f] += dt;
+				mape.factoryIron[f] = 0;
+			}
+			mape.factoryCoal[f] = 0;
+			mape.factoryGoods[f] = 0;
+			mape.factoryCo2[f] = 0;
+			if (mape.factoryProgress[f] >= 1) {
+				mape.factoryProgress[f] = 1;
+				mape.factoryState[f] = MAPE_FACTORY_STATE.ACTIVE;
+				eventsAdd('Factory at ' + mape.factoryX[f] + ',' + mape.factoryY[f] + ' is online.');
+			}
+			continue;
+		}
+		const coalWant = MAPE_FACTORY_COAL * staff * dt;
+		const ironWant = MAPE_FACTORY_IRON * staff * dt;
+		const k = Math.min(1, goods[coalOff + idx] / coalWant, goods[ironOff + idx] / ironWant);
+		if (k < 1) mape.factoryStarved[f] += dt;
+		if (k <= 0) {
+			mape.factoryCoal[f] = mape.factoryIron[f] = mape.factoryGoods[f] = mape.factoryCo2[f] = 0;
+			continue;
+		}
+		goods[coalOff + idx] -= coalWant * k;
+		goods[ironOff + idx] -= ironWant * k;
+		mape.massOut += coalWant * k + ironWant * k;
+		const made = MAPE_FACTORY_YIELD * staff * k * dt;
+		const co2 = MAPE_FACTORY_CO2 * staff * k * dt;
+		const before = goods[goodsOff + idx];
+		goods[goodsOff + idx] = before + made;
+		goods[co2Off + idx] += co2;
+		mape.massIn += made + co2;
+		landDisturb(idx, MAPE_FACTORY_DISTURB * staff * k * dt);
+		mape.factoryCoal[f] = MAPE_FACTORY_COAL * staff * k;
+		mape.factoryIron[f] = MAPE_FACTORY_IRON * staff * k;
+		mape.factoryGoods[f] = MAPE_FACTORY_YIELD * staff * k;
+		mape.factoryCo2[f] = MAPE_FACTORY_CO2 * staff * k;
+	}
+}
+
+function mapeRemoveFactory(f) {
+	if (f < 0 || f >= mape.factoryCount) return;
+	const x = mape.factoryX[f];
+	const y = mape.factoryY[f];
+	mape.factoryState[f] = MAPE_FACTORY_STATE.GONE;
+	for (let k = 0; k < mape.storageCount; k++) {
+		if (mape.storageSite[k] !== 255 || mape.storageX[k] !== x || mape.storageY[k] !== y) continue;
+		const last = --mape.storageCount;
+		mape.storageX[k] = mape.storageX[last];
+		mape.storageY[k] = mape.storageY[last];
+		mape.storageSite[k] = mape.storageSite[last];
+		break;
+	}
+}
+
+const mapeJobTotals = { slots: 0, staffed: 0, open: 0, fresh: 0, depleted: 0 };
+
+function mapeJobSummary() {
+	const t = mapeJobTotals;
+	const size = world.size;
+	let slots = 0;
+	let staffed = 0;
+	for (let m = 0; m < mape.mineCount; m++) {
+		if (!mapeMineActive(m)) continue;
+		const present = mapeWorkPresent(mape.mineY[m] * size + mape.mineX[m]);
+		slots += MAPE_MINE_WORKERS;
+		staffed += present >= MAPE_MINE_WORKERS ? MAPE_MINE_WORKERS : present;
+	}
+	for (let f = 0; f < mape.factoryCount; f++) {
+		const need = mapeFactoryWorkers(mape.factoryState[f]);
+		if (need === 0) continue;
+		const present = mapeWorkPresent(mape.factoryY[f] * size + mape.factoryX[f]);
+		staffed += present >= need ? need : present;
+		slots += need;
+	}
+	t.slots = slots;
+	t.staffed = staffed;
+	t.open = slots > staffed ? slots - staffed : 0;
+	if (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID) {
+		let fresh = 0;
+		let depleted = 0;
+		for (let i = 0; i < world.n; i++) {
+			fresh += mape.wfFresh[i];
+			depleted += mape.wfDepleted[i];
+		}
+		t.fresh = fresh;
+		t.depleted = depleted;
+	} else {
+		t.fresh = 0;
+		t.depleted = 0;
+	}
+	return t;
 }
 
 function mapeProduceStock(r, idx, units) {
@@ -184,5 +313,5 @@ function mapeStepWorkshops(dt) {
 }
 
 if (typeof module !== 'undefined') {
-	module.exports = { mapeAddStorage, mapeAddFactory, mapeSeedMines, mapeUnlockMine, mapeStepMines, mapeStepWorkshops };
+	module.exports = { mapeAddStorage, mapeAddFactory, mapeSeedMines, mapeUnlockMine, mapeMineActive, mapeRemoveFactory, mapeStepMines, mapeStepWorkshops, mapeStepFactories, mapeFactoryAt, mapeJobSummary, MAPE_MINE_RATE };
 }

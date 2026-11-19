@@ -4,10 +4,19 @@
 const MAPE_R = 4;
 const MAPE_RES = { COAL: 0, IRON: 1, GOODS: 2, CO2: 3 };
 const MAPE_RES_NAME = ['coal', 'iron', 'goods', 'co2'];
+const MAPE_VIEW_ITEM = { POPULATION: 4, FRESH: 5, WORKFORCE: 6, DEPLETED: 7 };
+const MAPE_VIEW_ITEM_NAME = ['coal', 'iron', 'goods', 'co2', 'population', 'fresh', 'workforce', 'depleted'];
+const MAPE_VIEW_AMOUNT_IDS = [0, 1, 2, 3, 4, 5, 7];
+const MAPE_VIEW_DEMAND_IDS = [0, 1, 2, 3, 6, 5, 7];
+const MAPE_VIEW_AMOUNT_NAMES = MAPE_VIEW_AMOUNT_IDS.map(id => MAPE_VIEW_ITEM_NAME[id]);
+const MAPE_VIEW_DEMAND_NAMES = MAPE_VIEW_DEMAND_IDS.map(id => MAPE_VIEW_ITEM_NAME[id]);
 const MAPE_ENGINE = { DIFFUSION: 0, CATCHMENT: 1, QUEUE: 2, SITES: 3 };
 const MAPE_ENGINE_NAME = ['Diffusion', 'A · Catchment', 'B · Queue', 'Sites'];
+const MAPE_WORKFORCE_MODE = { RESIDENTS: 0, FLUID: 1 };
+const MAPE_WORKFORCE_MODE_NAME = ['Residents', 'Fluid field'];
 const MAPE_FIELD = { DEMAND: 0, GOODS: 1, POP: 2, WORKFORCE: 3 };
 const MAPE_FACTORY_STATE = { GONE: 0, BUILDING: 1, ACTIVE: 2, IDLE: 3 };
+const MAPE_FACTORY_STATE_NAME = ['gone', 'building', 'active', 'idle'];
 const MAPE_CELL_INDUSTRY = 128;
 
 // All rates are per sim-second; on 1x speed, 1 s = 1 real second = 1 storyline day.
@@ -36,6 +45,10 @@ const MAPE_FACTORY_COAL = 0.5;
 const MAPE_FACTORY_IRON = 0.5;
 const MAPE_FACTORY_CO2 = 0.5;
 const MAPE_FACTORY_WORKERS = 8;
+const MAPE_FACTORY_BUILD_SEC = 20;
+const MAPE_FACTORY_YIELD = 1.0;
+const MAPE_FACTORY_DISTURB = 0.0006;
+const MAPE_FACTORY_BUILD_DISTURB = 0.0003;
 const MAPE_WORKFORCE_PER_UNIT = 0.4;
 const MAPE_CO2_INIT = 0.4;
 const MAPE_FOREST_CO2 = 0.004;
@@ -43,15 +56,18 @@ const MAPE_MONEY_PER_POP = 25;
 const MAPE_MONEY_REGEN = 0.04;
 const MAPE_SUPPLY_GOODS = 0.2;
 const MAPE_VIEW_WORK_MAX = 4;
+const MAPE_VIEW_POOL_MAX = 100;
 
 const mape = {
 	engine: MAPE_ENGINE.CATCHMENT,
+	workforceMode: MAPE_WORKFORCE_MODE.FLUID,
 	surplusFeedback: true,
 	localPressure: false,
 	marketFill: 0,
 	marketSignal: null,
 	fixedResidents: false,
 	viewItem: MAPE_RES.GOODS,
+	viewItemDemand: MAPE_RES.GOODS,
 	pop: null,
 	popNext: null,
 	demand: null,
@@ -65,6 +81,14 @@ const mape = {
 	goodsView: null,
 	workforce: null,
 	workforceNext: null,
+	wfFresh: null,
+	wfFreshNext: null,
+	wfDepleted: null,
+	wfDepletedNext: null,
+	fluidRested: 0,
+	fluidTired: 0,
+	fluidSpent: 0,
+	fluidSpawned: 0,
 	usedGoods: null,
 	usedCoal: null,
 	satGoods: null,
@@ -82,6 +106,10 @@ const mape = {
 	factoryState: new Uint8Array(MAPE_FACTORY_CAP),
 	factoryProgress: new Float32Array(MAPE_FACTORY_CAP),
 	factoryStarved: new Float32Array(MAPE_FACTORY_CAP),
+	factoryCoal: new Float32Array(MAPE_FACTORY_CAP),
+	factoryIron: new Float32Array(MAPE_FACTORY_CAP),
+	factoryGoods: new Float32Array(MAPE_FACTORY_CAP),
+	factoryCo2: new Float32Array(MAPE_FACTORY_CAP),
 	factoryCount: 0,
 	mineX: new Uint8Array(MAPE_MINE_CAP),
 	mineY: new Uint8Array(MAPE_MINE_CAP),
@@ -117,6 +145,10 @@ function mapeInit(mode, fixedResidents = false) {
 		mape.flowY = new Float32Array(MAPE_R * n);
 		mape.workforce = new Float32Array(n);
 		mape.workforceNext = new Float32Array(n);
+		mape.wfFresh = new Float32Array(n);
+		mape.wfFreshNext = new Float32Array(n);
+		mape.wfDepleted = new Float32Array(n);
+		mape.wfDepletedNext = new Float32Array(n);
 		mape.usedGoods = new Float64Array(n);
 		mape.usedCoal = new Float64Array(n);
 		mape.satGoods = new Float32Array(n);
@@ -151,6 +183,8 @@ function mapeReset() {
 	mape.flowDt = 0;
 	mape.workforce.fill(0);
 	mape.workforceNext.fill(0);
+	for (const field of ['wfFresh', 'wfFreshNext', 'wfDepleted', 'wfDepletedNext']) mape[field].fill(0);
+	for (const field of ['fluidRested', 'fluidTired', 'fluidSpent', 'fluidSpawned']) mape[field] = 0;
 	mape.usedGoods.fill(0);
 	mape.usedCoal.fill(0);
 	mape.satGoods.fill(0);
@@ -161,6 +195,10 @@ function mapeReset() {
 	mape.factoryState.fill(MAPE_FACTORY_STATE.GONE);
 	mape.factoryProgress.fill(0);
 	mape.factoryStarved.fill(0);
+	mape.factoryCoal.fill(0);
+	mape.factoryIron.fill(0);
+	mape.factoryGoods.fill(0);
+	mape.factoryCo2.fill(0);
 	mape.factoryCount = 0;
 	mape.mineUnlocked.fill(0);
 	mape.mineCount = 0;
@@ -187,6 +225,12 @@ function mapeSeedSurvey() {
 }
 
 function mapeFinishSetup(fill, warm) {
+	if (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID) {
+		// Day one opens with the workforce residents already are.
+		const pop = mape.pop;
+		const fresh = mape.wfFresh;
+		for (let i = 0; i < world.n; i++) fresh[i] = pop[i];
+	}
 	mapeRebuildSettlements();
 	mape.initialPop = mape.totalPop;
 	mape.initialGoods = mapeGoodsTotal();
@@ -205,6 +249,23 @@ function mapeSetEngine(mode) {
 	mapeResetMarketFields(mape.marketFill);
 	mapeWarmDemand(true);
 	return true;
+}
+
+function mapeSetWorkforceMode(mode) {
+	if (mode === mape.workforceMode || (mode !== MAPE_WORKFORCE_MODE.RESIDENTS && mode !== MAPE_WORKFORCE_MODE.FLUID)) return false;
+	// Pools start empty; jobs pull fresh fluid, residents model resumes walking immediately.
+	mape.workforceMode = mode;
+	return true;
+}
+
+function mapeWorkPresent(idx) {
+	return mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID ? mape.wfFresh[idx] : mape.pop[idx];
+}
+
+function mapeFactoryWorkers(state) {
+	if (state === MAPE_FACTORY_STATE.BUILDING) return MAPE_FACTORY_BUILD_WORKERS;
+	if (state === MAPE_FACTORY_STATE.ACTIVE || state === MAPE_FACTORY_STATE.IDLE) return MAPE_FACTORY_WORKERS;
+	return 0;
 }
 
 function mapeField(kind, r) {
@@ -428,7 +489,8 @@ function mapePopResidual() {
 
 if (typeof module !== 'undefined') {
 	module.exports = {
-		mape, mapeInit, mapeStep, mapeField, mapeSetEngine, mapeEngineAvailable,
-		mapeFinishSetup, mapeSeedSurvey, mapeLedgerResidual, mapePopResidual, MAPE_R, MAPE_RES, MAPE_RES_NAME, MAPE_ENGINE, MAPE_ENGINE_NAME, MAPE_FIELD
+		mape, mapeInit, mapeStep, mapeField, mapeSetEngine, mapeEngineAvailable, mapeSetWorkforceMode, mapeWorkPresent,
+		mapeFinishSetup, mapeSeedSurvey, mapeLedgerResidual, mapePopResidual, MAPE_R, MAPE_RES, MAPE_RES_NAME, MAPE_ENGINE, MAPE_ENGINE_NAME, MAPE_FIELD, MAPE_FACTORY_STATE, MAPE_FACTORY_STATE_NAME, MAPE_WORKFORCE_MODE, MAPE_WORKFORCE_MODE_NAME, MAPE_FACTORY_WORKERS, MAPE_FACTORY_BUILD_WORKERS, MAPE_FACTORY_BUILD_SEC,
+		MAPE_VIEW_ITEM, MAPE_VIEW_ITEM_NAME, MAPE_VIEW_AMOUNT_IDS, MAPE_VIEW_DEMAND_IDS, MAPE_VIEW_AMOUNT_NAMES, MAPE_VIEW_DEMAND_NAMES, MAPE_VIEW_POOL_MAX
 	};
 }

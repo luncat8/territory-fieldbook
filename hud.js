@@ -16,6 +16,7 @@ const hud = {
 	actionsEl: null,
 	viewsEl: null,
 	itemGroup: null,
+	itemGroupDemand: null,
 	timeEl: null,
 	victoryEl: null,
 	statusEl: null,
@@ -23,6 +24,7 @@ const hud = {
 	timeButtons: [],
 	viewRadios: [],
 	itemRadios: [],
+	demandItemRadios: [],
 	acc: 0,
 	key: '',
 	logVersion: -1,
@@ -76,20 +78,21 @@ function hudBuildTime() {
 }
 
 // Each segmented group has one writer (its change handler); hover and keys route through radio state.
-function hudMakeSeg(name, ariaLabel, labels, selected, radios, onPick, preview) {
+function hudMakeSeg(name, ariaLabel, labels, selected, radios, onPick, preview, ids) {
 	radios.length = 0;
 	const group = document.createElement('div');
 	group.className = 'ui-seg';
 	group.setAttribute('role', 'radiogroup');
 	group.setAttribute('aria-label', ariaLabel);
 	for (let k = 0; k < labels.length; k++) {
+		const id = ids ? ids[k] : k;
 		const item = document.createElement('label');
 		item.className = 'ui-seg-item';
 		const radio = document.createElement('input');
 		radio.type = 'radio';
 		radio.name = name;
-		radio.value = String(k);
-		radio.checked = selected === k;
+		radio.value = String(id);
+		radio.checked = selected === id;
 		const text = document.createElement('span');
 		text.textContent = labels[k];
 		item.appendChild(radio);
@@ -132,16 +135,21 @@ function hudBuildViews() {
 	if (mapScene.id) {
 		for (let k = 0; k < VIEW_NAME.length; k++) group.children[k].hidden = !renderIsFieldView(k);
 	}
-	group.children[VIEW.PAIRED].title = 'Supply and demand side by side · key 0';
+	group.children[VIEW.PAIRED].title = 'Amount and demand side by side · key 0';
 	host.appendChild(group);
-	hud.itemGroup = hudMakeSeg('ui-item', 'economy item', MAPE_RES_NAME, mape.viewItem, hud.itemRadios, hudSetItem, true);
+	hud.itemGroup = hudMakeSeg('ui-item', 'amount item', MAPE_VIEW_AMOUNT_NAMES, mape.viewItem, hud.itemRadios, hudSetAmountItem, true, MAPE_VIEW_AMOUNT_IDS);
+	hud.itemGroupDemand = hudMakeSeg('ui-item-demand', 'demand item', MAPE_VIEW_DEMAND_NAMES, mape.viewItemDemand, hud.demandItemRadios, hudSetDemandItem, true, MAPE_VIEW_DEMAND_IDS);
 	hudSyncItemVisibility();
 	host.appendChild(hud.itemGroup);
+	host.appendChild(hud.itemGroupDemand);
 }
 
 function hudSyncItemVisibility() {
 	if (!hud.itemGroup) return;
-	hud.itemGroup.hidden = !!mapScene.id || !renderIsFieldView(render.view);
+	const field = renderIsFieldView(render.view);
+	const scene = !!mapScene.id;
+	hud.itemGroup.hidden = scene || !field || render.view === VIEW.DEMAND;
+	hud.itemGroupDemand.hidden = scene || !field || render.view === VIEW.AMOUNT;
 }
 
 function hudSetView(view) {
@@ -155,15 +163,22 @@ function hudSetView(view) {
 	renderDraw();
 }
 
-function hudSetItem(item) {
-	if (mape.viewItem === item) return;
-	mape.viewItem = item;
-	for (let k = 0; k < hud.itemRadios.length; k++) hud.itemRadios[k].checked = item === k;
+function hudSyncItemRadios(radios, ids, value) {
+	for (let k = 0; k < radios.length; k++) radios[k].checked = ids[k] === value;
+}
+
+function hudSetSideItem(radios, ids, key, item) {
+	if (mape[key] === item) return;
+	mape[key] = item;
+	hudSyncItemRadios(radios, ids, item);
 	hudSyncMapLegend();
 	hudDisplaySync();
 	hudRefresh(false);
 	renderDraw();
 }
+
+function hudSetAmountItem(item) { hudSetSideItem(hud.itemRadios, MAPE_VIEW_AMOUNT_IDS, 'viewItem', item); }
+function hudSetDemandItem(item) { hudSetSideItem(hud.demandItemRadios, MAPE_VIEW_DEMAND_IDS, 'viewItemDemand', item); }
 
 function hudTick(dt) {
 	hud.acc += dt;
@@ -178,6 +193,8 @@ function hudRefresh(force) {
 	if (mapScene.id) {
 		hudSceneUpdate();
 		hudUpdateInspect();
+		hudUpdateWorkforce();
+		hudUpdateJobSite();
 		hudUpdateStatus();
 		hudUpdateLog(force);
 		return;
@@ -187,6 +204,8 @@ function hudRefresh(force) {
 	hudUpdateMembers();
 	hudUpdateSite();
 	hudUpdateInspect();
+	hudUpdateWorkforce();
+	hudUpdateJobSite();
 	hudUpdateNearby();
 	hudUpdateVictory();
 	hudUpdateLog(force);

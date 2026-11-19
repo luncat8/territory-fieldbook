@@ -179,8 +179,10 @@ const metrics = vm.runInThisContext(`
 	}
 
 	// Verifies coal discovery -> worker demand -> worker diffusion -> mining -> settlement & factory delivery.
+	// Residents model: workers physically walk; the fluid variant is covered in mape_fluid.js.
 	function measureCoalLoop() {
 		blankMap();
+		mapeSetWorkforceMode(MAPE_WORKFORCE_MODE.RESIDENTS);
 		const coalSite = sitesPlaceDeposit(idx(24, 32), RES.FUEL, SITE_STATE.MARKED, 0.25);
 		const stockStart = sites.stock[coalSite];
 		mapeSeedMines();
@@ -265,6 +267,7 @@ const metrics = vm.runInThisContext(`
 	const coal = measureCoalLoop();
 
 	main.setup(START_SEED, '', 0, MAPE_ENGINE.DIFFUSION);
+	mapeSetWorkforceMode(MAPE_WORKFORCE_MODE.RESIDENTS);
 	let realCoalMine = -1;
 	for (let m = 0; m < mape.mineCount; m++) {
 		if (mape.mineRes[m] === MAPE_RES.COAL) { realCoalMine = m; break; }

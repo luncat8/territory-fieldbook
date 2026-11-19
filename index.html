@@ -167,11 +167,32 @@ button.ui-chip.on { background: #2c5f6e; border-color: #4f8d9d; color: #f2fbfd; 
 	max-height: 180px;
 	overflow-y: auto;
 }
-#ui-stats, #ui-skills, #ui-members, #ui-site, #ui-inspect, #ui-victory {
+#ui-stats, #ui-skills, #ui-members, #ui-site, #ui-inspect, #ui-victory, #ui-workforce-stats {
 	white-space: pre-line;
 	color: #c8d2dd;
 }
 #ui-inspect { font-size: 12px; margin-top: 8px; }
+#ui-workforce-stats { font-size: 12px; margin-top: 6px; }
+#ui-site-panel {
+	flex: 0 0 218px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	align-self: flex-start;
+	background: var(--ui-surface);
+	border: 1px solid var(--ui-line);
+	border-radius: var(--ui-radius-sm);
+	padding: 10px 12px;
+}
+#ui-site-panel h2 {
+	margin: 0;
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: #7f8fa1;
+}
+#ui-jobsite { white-space: pre-line; color: #e6edf4; font-size: 12px; }
 .ui-economy-toggles { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: #c7d6e2; }
 .ui-economy-toggles label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .ui-economy-toggles input { margin: 0; accent-color: #66bdc8; }
@@ -217,6 +238,7 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 #ui-log li:first-child { color: #d5e2ee; }
 @media (max-width: 960px) {
 	#ui-app { flex-direction: column; }
+	#ui-site-panel { flex: 0 0 auto; width: 100%; }
 	#ui-app:not(.ui-paired) #ui-mapwrap, #ui-mapwrap { flex: 0 0 auto; max-width: none; width: 100%; }
 	#ui-panel { flex: 0 0 auto; width: 100%; max-width: none; max-height: none; }
 	#ui-app.ui-scene-active { gap: 10px; }
@@ -234,6 +256,10 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 </head>
 <body>
 <div id="ui-app">
+	<aside id="ui-site-panel" aria-labelledby="ui-site-panel-title" hidden>
+		<h2 id="ui-site-panel-title">selected site</h2>
+		<div id="ui-jobsite"></div>
+	</aside>
 	<main id="ui-mapwrap">
 		<header id="ui-maphead">
 			<div><div class="ui-kicker" id="ui-map-kicker">Live survey</div><h1 id="ui-map-title">Territory Fieldbook</h1></div>
@@ -251,9 +277,9 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 		</div>
 		<div id="ui-maps">
 			<section class="ui-field">
-				<div id="ui-map-meta" class="ui-field-meta" hidden><h2 id="ui-map-layer">Supply · goods</h2><span id="ui-map-unit">Stock per cell</span></div>
+				<div id="ui-map-meta" class="ui-field-meta" hidden><h2 id="ui-map-layer">Amount · goods</h2><span id="ui-map-unit">Amount per cell</span></div>
 				<canvas id="ui-canvas" aria-label="Survey map"></canvas>
-				<div id="ui-map-legend" class="ui-field-legend" hidden><i id="ui-map-scale" class="ui-scale" aria-hidden="true"></i><span id="ui-map-range">Empty → stocked</span><span class="ui-map-key" id="ui-map-key"></span></div>
+				<div id="ui-map-legend" class="ui-field-legend" hidden><i id="ui-map-scale" class="ui-scale" aria-hidden="true"></i><span id="ui-map-range">0 → 8/cell</span><span class="ui-map-key" id="ui-map-key"></span></div>
 			</section>
 			<section class="ui-field" id="ui-demand-map" hidden>
 				<div id="ui-demand-meta" class="ui-field-meta"><h2 id="ui-demand-layer">Demand · coal</h2><span id="ui-demand-unit">Pull / 0–1</span></div>
@@ -299,6 +325,12 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 			</div>
 			<div id="ui-inspect"></div>
 		</section>
+		<section class="ui-block" aria-labelledby="ui-workforce-title">
+			<h2 id="ui-workforce-title">workforce</h2>
+			<div id="ui-workforce" class="ui-row"></div>
+			<p id="ui-workforce-note" class="ui-help"></p>
+			<div id="ui-workforce-stats"></div>
+		</section>
 		<div id="ui-survey-panel">
 			<section class="ui-block"><h2>party</h2><div id="ui-stats"></div></section>
 			<section class="ui-block"><h2>skills</h2><div id="ui-skills"></div></section>
@@ -322,6 +354,7 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 <script src="map-market-flow.js"></script>
 <script src="map-market-demand.js"></script>
 <script src="map-population.js"></script>
+<script src="map-fluid.js"></script>
 <script src="map-scenes.js"></script>
 <script src="investigate.js"></script>
 <script src="party.js"></script>

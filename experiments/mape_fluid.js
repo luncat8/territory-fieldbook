@@ -1,0 +1,186 @@
+// owns: fluid workforce model and factory runtime gates — staffing, recycling, spawning, ledgers
+// run: node experiments/mape_fluid.js
+
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+
+const root = path.join(__dirname, '..');
+const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+for (const [, file] of html.matchAll(/<script src="([^"]+)"><\/script>/g)) {
+	vm.runInThisContext(fs.readFileSync(path.join(root, file), 'utf8'), { filename: file });
+}
+
+function poolSums() {
+	let fresh = 0;
+	let depleted = 0;
+	let peakDepleted = 0;
+	for (let i = 0; i < world.n; i++) {
+		fresh += mape.wfFresh[i];
+		const d = mape.wfDepleted[i];
+		depleted += d;
+		if (d > peakDepleted) peakDepleted = d;
+	}
+	return { fresh, depleted, peakDepleted };
+}
+
+function popSum() {
+	let sum = 0;
+	for (let i = 0; i < world.n; i++) sum += mape.pop[i];
+	return sum;
+}
+
+function activateFluid() {
+	mapeSetWorkforceMode(MAPE_WORKFORCE_MODE.FLUID);
+	assert.equal(mape.workforceMode, MAPE_WORKFORCE_MODE.FLUID, 'fluid mode active');
+}
+
+const checks = [];
+function check(name, value) {
+	checks.push([name, value]);
+	console.log('check_' + name + '=' + (value ? 'pass' : 'fail'));
+}
+
+// --- Section 1: fluid staffing in scene A (CATCHMENT holds demographics, isolating job pull)
+main.setup(START_SEED, 'a', 0, MAPE_ENGINE.CATCHMENT);
+activateFluid();
+const seededFresh = poolSums().fresh; // day-one pool seeded from pop at setup
+const minedBefore = mape.minedTotal;
+let genAcc = 0;
+for (let k = 0, steps = Math.round(150 / SIM_STEP_SEC); k < steps; k++) {
+	main.step(SIM_STEP_SEC);
+	genAcc += popSum() * MAPE_WF_GEN * SIM_STEP_SEC;
+}
+const pools = poolSums();
+const poolResidual = pools.fresh + pools.depleted + MAPE_WF_SPAWN * mape.fluidSpawned - genAcc - seededFresh;
+console.log('fluid_log=spent ' + mape.fluidSpent.toFixed(2) + ' tired ' + mape.fluidTired.toFixed(2) + ' rested ' + mape.fluidRested.toFixed(2) + ' spawned ' + mape.fluidSpawned + ' mined ' + mape.minedTotal.toFixed(1));
+console.log('pool_log=fresh ' + pools.fresh.toFixed(2) + ' depleted ' + pools.depleted.toFixed(2) + ' peak ' + pools.peakDepleted.toFixed(2) + ' generated ' + genAcc.toFixed(2) + ' residual ' + poolResidual.toFixed(4));
+console.log('ledger_log=mape ' + mapeLedgerResidual().toFixed(6) + ' pop ' + mapePopResidual().toFixed(6));
+check('mines_staffed_by_fluid', mape.minedTotal > minedBefore);
+check('jobs_consume_fresh', mape.fluidSpent > 0);
+check('fresh_generated', genAcc > 1);
+check('settlements_rest_depleted', mape.fluidRested > 0);
+check('pool_conserved', Math.abs(poolResidual) < 0.5);
+check('goods_ledger_balanced', Math.abs(mapeLedgerResidual()) < 1e-3);
+check('population_ledger_balanced', Math.abs(mapePopResidual()) < 1e-3);
+
+// --- Section 2: factory runtime — active production, construction, starvation
+{
+	main.setup(START_SEED, 'a', 0, MAPE_ENGINE.CATCHMENT);
+	mapeSetWorkforceMode(MAPE_WORKFORCE_MODE.RESIDENTS);
+	const totalCo2 = () => {
+		let sum = 0;
+		for (let i = 0; i < world.n; i++) sum += mape.goods[MAPE_RES.CO2 * world.n + i];
+		return sum;
+	};
+	const idx = 39 * world.size + 34;
+	assert.equal(mape.factoryCount, 0, 'scene starts with no factories');
+	const f = mapeAddFactory(34, 39, MAPE_FACTORY_STATE.ACTIVE);
+	const n = world.n;
+	mape.goods[MAPE_RES.COAL * n + idx] = 100;
+	mape.goods[MAPE_RES.IRON * n + idx] = 100;
+	mape.pop[idx] = MAPE_FACTORY_WORKERS;
+	const co2Before = totalCo2();
+	const disturbBefore = land.disturbed[idx];
+	for (let k = 0, steps = Math.round(30 / SIM_STEP_SEC); k < steps; k++) main.step(SIM_STEP_SEC);
+	console.log('factory_log=goods ' + mape.goods[MAPE_RES.GOODS * n + idx].toFixed(2) + ' coal_left ' + mape.goods[MAPE_RES.COAL * n + idx].toFixed(2) + ' rate ' + mape.factoryGoods[f].toFixed(2));
+	check('factory_produces_goods', mape.factoryGoods[f] > 0.5);
+	check('factory_consumes_coal', mape.goods[MAPE_RES.COAL * n + idx] < 100);
+	check('factory_emits_co2', totalCo2() > co2Before + 5);
+	check('factory_disturbs_cell', land.disturbed[idx] > disturbBefore);
+	check('factory_goods_rate_recorded', mape.factoryGoods[f] > 0);
+
+	const b = mapeAddFactory(36, 39, MAPE_FACTORY_STATE.BUILDING);
+	const bidx = 39 * world.size + 36;
+	mape.goods[MAPE_RES.IRON * n + bidx] = 100;
+	mape.pop[bidx] = MAPE_FACTORY_BUILD_WORKERS;
+	for (let k = 0, steps = Math.round(5 / SIM_STEP_SEC); k < steps; k++) main.step(SIM_STEP_SEC);
+	check('factory_builds_with_iron', mape.factoryProgress[b] > 0.05);
+	const c = mapeAddFactory(3, 3, MAPE_FACTORY_STATE.BUILDING);
+	const cidx = 3 * world.size + 3;
+	mape.pop[cidx] = MAPE_FACTORY_BUILD_WORKERS;
+	const starvedBefore = mape.factoryStarved[c];
+	for (let k = 0, steps = Math.round(5 / SIM_STEP_SEC); k < steps; k++) main.step(SIM_STEP_SEC);
+	check('factory_starves_without_iron', mape.factoryProgress[c] === 0 && mape.factoryStarved[c] > starvedBefore + 4);
+
+	const s = mapeAddFactory(3, 9, MAPE_FACTORY_STATE.ACTIVE);
+	const sidx = 9 * world.size + 3;
+	mape.pop[sidx] = MAPE_FACTORY_WORKERS;
+	const starved = mape.factoryStarved[s];
+	for (let k = 0, steps = Math.round(3 / SIM_STEP_SEC); k < steps; k++) main.step(SIM_STEP_SEC);
+	check('factory_starves_without_inputs', mape.factoryStarved[s] > starved + 2 && mape.factoryGoods[s] === 0);
+}
+
+// --- Section 3: hamlet spawning from pooled depleted workforce and terrain gates
+{
+	main.setup(START_SEED, 'a', 0, MAPE_ENGINE.CATCHMENT);
+	activateFluid();
+	let farCell = -1;
+	for (let i = 0; i < world.n; i++) {
+		if (world.settleValue[i] < 0.6) continue;
+		if (mape.pop[i] > 0 || (mape.cellExport[i] & MAPE_CELL_INDUSTRY) !== 0) continue;
+		let near = false;
+		for (let k = 0; k < mape.settleCount; k++) {
+			const s = mape.settleCells[k];
+			const dx = (s % world.size) - (i % world.size);
+			const dy = ((s / world.size) | 0) - ((i / world.size) | 0);
+			if (dx * dx + dy * dy < 64) { near = true; break; }
+		}
+		if (!near) { farCell = i; break; }
+	}
+	assert.ok(farCell >= 0, 'found a remote meadow cell');
+	const settleBefore = mape.settleCount;
+	mape.wfDepleted[farCell] = MAPE_WF_SPAWN + 5;
+	main.step(SIM_STEP_SEC);
+	check('depleted_pool_founds_settlement', mape.fluidSpawned === 1 && mapeIsSettlement(farCell) && mape.settleCount === settleBefore + 1);
+	check('spawn_debits_pool', mape.wfDepleted[farCell] < 5 + MAPE_WF_SPAWN);
+
+	const swampIdx = 20 * world.size + 34;
+	world.terrain[swampIdx] = TERRAIN.SWAMP;
+	world.terrain[swampIdx - 1] = TERRAIN.SWAMP;
+	world.terrain[swampIdx + 1] = TERRAIN.SWAMP;
+	world.terrain[swampIdx - world.size] = TERRAIN.SWAMP;
+	world.terrain[swampIdx + world.size] = TERRAIN.SWAMP;
+	worldSettleValues();
+	assert.equal(world.settleValue[swampIdx], 0, 'swamp interior value is zero');
+	const spawned = mape.fluidSpawned;
+	mape.wfDepleted[swampIdx] = MAPE_WF_SPAWN * 2;
+	main.step(SIM_STEP_SEC);
+	check('swamp_pool_never_spawns', mape.fluidSpawned === spawned);
+	check('population_ledger_after_spawn', Math.abs(mapePopResidual()) < 1e-3);
+}
+
+// --- Section 4: diffusion engine with fluid mode — no migration walk, no NaN
+{
+	main.setup(START_SEED, '', 0, MAPE_ENGINE.DIFFUSION);
+	activateFluid();
+	for (let k = 0, steps = Math.round(60 / SIM_STEP_SEC); k < steps; k++) main.step(SIM_STEP_SEC);
+	const { fresh, depleted } = poolSums();
+	let ok = Number.isFinite(fresh) && Number.isFinite(depleted);
+	for (let i = 0; i < world.n && ok; i++) {
+		if (!Number.isFinite(mape.pop[i]) || mape.pop[i] < 0) ok = false;
+		if (!Number.isFinite(mape.wfFresh[i]) || !Number.isFinite(mape.wfDepleted[i])) ok = false;
+	}
+	check('diffusion_fluid_stable', ok && popSum() >= 0);
+}
+
+// --- Section 5: residents model unchanged (fluid off)
+{
+	main.setup(START_SEED, 'a', 0, MAPE_ENGINE.CATCHMENT);
+	mapeSetWorkforceMode(MAPE_WORKFORCE_MODE.RESIDENTS);
+	mapeSetWorkforceMode(MAPE_WORKFORCE_MODE.RESIDENTS);
+	let genStart = 0;
+	for (let i = 0; i < world.n; i++) genStart += mape.wfFresh[i];
+	for (let k = 0, steps = Math.round(10 / SIM_STEP_SEC); k < steps; k++) main.step(SIM_STEP_SEC);
+	let genAfter = 0;
+	for (let i = 0; i < world.n; i++) genAfter += mape.wfFresh[i];
+	check('residents_mode_generates_no_pool', genAfter === genStart);
+}
+
+const failed = checks.filter(([, ok]) => !ok);
+if (failed.length > 0) {
+	console.log('fluid_failures=' + failed.length + ' failed: ' + failed.map(([name]) => name).join(','));
+	process.exit(1);
+}
+console.log('fluid_failures=0');

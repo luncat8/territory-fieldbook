@@ -152,6 +152,7 @@ function verifyLiveSwitch() {
 
 function benchRealMap(mode) {
 	main.setup(START_SEED);
+	mapeSetWorkforceMode(MAPE_WORKFORCE_MODE.RESIDENTS); // resident staffing assertions; fluid covered in mape_fluid.js
 	mape.surplusFeedback = true;
 	if (mape.engine !== mode) mapeSetEngine(mode);
 	const mine = mape.mineCount - 1;

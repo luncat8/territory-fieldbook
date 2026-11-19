@@ -60,6 +60,7 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	map-market-flow.js — land stencil, catchment reach and joint intake admission.
 	map-market-demand.js — bounded A/B pull, stock feedback and household use.
 	map-population.js — settlement intake, satisfaction, population dynamics and waste.
+	map-fluid.js — optional fluid workforce model: fresh/depleted pools, settlement rest, hamlet spawn.
 	map-scenes.js — seeded coal scenes and actor edits.
 	investigate.js — investigation progress, float radius, Euclidean falloff, survey push, nearby list.
 	party.js — members, shared values, skills, movement, camping, hiring.
@@ -76,7 +77,7 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	hud-scenes.js — scene controls, readouts and actor tools.
 	actions.js — player verbs spanning features (move, work, sell, hire, restore, declare).
 	experiments/ — smoke (sim), dom_smoke + dom_fixture (boot/UI), map_views (display),
-	mape_compare (engines), mape_scenes (scenes), mape_population (settlements); never loaded by the page.
+	mape_compare (engines), mape_scenes (scenes), mape_population (settlements), mape_fluid (workforce); never loaded by the page.
 - new code goes to its owner, never appended "because the file is already there". no owner exists -> new file + header + map entry.
 - file > ~500 lines = defect. split by feature within the same plan.
 - moves are pure moves: contiguous ranges, snap to enclosing declarations, no behavior change.
@@ -153,8 +154,10 @@ Before all topics has minimal implementation Do not try to implement 100% of som
   smoke + dom_smoke after touching main.js, index.html or load order.
 - keep every file under ~500 lines; a new feature gets a new file, header and map entry.
 - economy playtest: Diffusion owns demographic growth; A/B hold growth and
-  satisfaction-led migration while shared job staffing remains active. Check
-  Catchment A on the survey and both scenes before Phase 3 factories/atmosphere.
+  satisfaction-led migration while shared job staffing remains active. Two
+  selectable workforce models: Residents (default) and Fluid field (map-fluid.js
+  pools; tire/rest/spawn constants are the balance subjects). Factory
+  build/recipe runtime exists; placement scan and idle rule remain Phase 3.
 
 ## housekeeping
 

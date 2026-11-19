@@ -26,6 +26,8 @@ function validateScene() {
 
 function replay(id, fill) {
 	main.setup(START_SEED, id, fill);
+	// The A/B goods-routing assertions assume resident staffing; the fluid model is covered in mape_fluid.js.
+	mapeSetWorkforceMode(MAPE_WORKFORCE_MODE.RESIDENTS);
 	assert.equal(mape.engine, mapSceneEngine(id));
 	assert.equal(clock.speed, CLOCK_DEFAULT_SPEED);
 	assert.equal(clock.seconds, 0);

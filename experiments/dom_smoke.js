@@ -48,15 +48,20 @@ if (!bootError) {
 		result.timeButtons = run('$("ui-time").children.length');
 		result.viewGroup = run('$("ui-views").children[0]');
 		result.itemGroup = run('$("ui-views").children[1]');
+		result.demandItemGroup = run('$("ui-views").children[2]');
 		result.engineGroup = run('$("ui-engine").children[0]');
+		result.workforceGroup = run('$("ui-workforce").children[0]');
 		result.viewRadios = result.viewGroup.children.length;
 		result.itemRadios = result.itemGroup.children.length;
-		result.startsOnSupply = run('render.view === VIEW.SUPPLY && mape.viewItem === MAPE_RES.GOODS') && !result.itemGroup.hidden;
+		result.demandItemRadios = result.demandItemGroup.children.length;
+		result.startsOnSupply = run('render.view === VIEW.AMOUNT && mape.viewItem === MAPE_RES.GOODS') && !result.itemGroup.hidden;
 		result.viewGroup.children[0].children[0].click();
 		result.itemHiddenOnTerrain = result.itemGroup.hidden === true;
 		result.engineRadios = result.engineGroup.children.length;
 		result.engineCatchmentChecked = result.engineGroup.children[1].children[0].checked;
 		result.engineSitesDisabled = result.engineGroup.children[3].children[0].disabled;
+		result.workforceRadios = result.workforceGroup ? result.workforceGroup.children.length : 0;
+		result.workforceStats = elements.get('ui-workforce-stats').textContent;
 		result.actionButtons = run('$("ui-actions").children.length');
 		result.siteText = run('$("ui-site").textContent');
 		result.inspectText = run('$("ui-inspect").textContent');
@@ -83,12 +88,11 @@ if (!bootError) {
 			viewSigs.add(pixelSignature(pixels));
 		}
 		result.distinctViews = viewSigs.size;
-
-		result.viewGroup.children[6].children[0].click();
-		result.itemShownOnDemand = result.itemGroup.hidden === false;
+		result.viewGroup.children[5].children[0].click();
+		result.itemShownOnDemand = result.demandItemGroup.hidden === false && result.itemGroup.hidden === true;
 		const itemSigs = new Set();
-		for (let r = 0; r < result.itemRadios; r++) {
-			result.itemGroup.children[r].children[0].click();
+		for (let r = 0; r < result.demandItemRadios; r++) {
+			result.demandItemGroup.children[r].children[0].click();
 			itemSigs.add(pixelSignature(pixels));
 		}
 		result.distinctItems = itemSigs.size;
@@ -145,10 +149,12 @@ if (!bootError) {
 		result.surveyLabel = run('hudActionList()[1].label');
 		result.surveyReady = run('hudActionList()[1].enabled');
 
+		// Diffusion vs market pull diverge from tick 0; the coal stock heatmap converges between engines.
 		const engines = result.engineGroup.children.map(item => item.children[0]);
 		result.engineGroup.dispatch('pointerover', { target: engines[0] });
 		result.engineClickOnly = engines[1].checked && !engines[0].checked;
-		result.itemGroup.children[0].children[0].click();
+		run('hudSetView(VIEW.DEMAND)');
+		result.demandItemGroup.children[0].children[0].click();
 		const beforeSwitch = run('[clock.seconds, party.x, party.y, mapeGoodsTotal(), mape.viewItem].join(":")');
 		const engineSigs = new Set([pixelSignature(pixels)]);
 		for (const radio of [engines[0], engines[2]]) {
@@ -156,9 +162,16 @@ if (!bootError) {
 			engineSigs.add(pixelSignature(pixels));
 		}
 		result.engineViews = engineSigs.size;
+		run('hudSetView(VIEW.AMOUNT)');
 		result.queuesSelected = engines[2].checked && !engines[0].checked && !engines[1].checked;
 		result.queueExplained = /short queue/.test(elements.get('ui-engine-note').textContent);
 		result.switchKeptProgress = beforeSwitch === run('[clock.seconds, party.x, party.y, mapeGoodsTotal(), mape.viewItem].join(":")');
+		result.workforceGroup.children[1].children[0].click();
+		result.fluidSwitch = run('mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID');
+		result.fluidInspect = elements.get('ui-inspect').textContent.indexOf('fresh') >= 0;
+		result.workforceGroup.children[0].children[0].click();
+		result.residentsSwitch = run('mape.workforceMode === MAPE_WORKFORCE_MODE.RESIDENTS');
+
 		const feedback = elements.get('ui-surplus');
 		feedback.tagName = 'INPUT';
 		let prevented = false;
@@ -200,8 +213,15 @@ function checkSceneDom() {
 	step.click();
 	const sceneStep = run('clock.seconds === 0.05 && mape.minedTotal > 0');
 	const tools = elements.get('ui-tools').children[0].children;
-	tools[1].children[0].click();
 	const demand = elements.get('ui-demand-canvas');
+	result.factoryTool = tools.length;
+	tools[4].children[0].click();
+	demand.dispatch('click', { clientX: 64, clientY: 64 });
+	result.factoryPlaced = run('mapeFactoryAt(5, 5) >= 0');
+	tools[0].children[0].click();
+	demand.dispatch('click', { clientX: 64, clientY: 64 });
+	result.factorySelected = run('input.selX === 5 && input.selY === 5 && !$("ui-jobsite").hidden && /Factory F1/.test($("ui-jobsite").textContent)');
+	tools[1].children[0].click();
 	demand.dispatch('click', { clientX: 30, clientY: 30 });
 	const sceneEdit = run('mape.mineCount === 4 && mapeMineAt(2, 2) >= 0 && render.markX === 2 && render.markY === 2');
 	tools[3].children[0].click();
@@ -213,7 +233,8 @@ function checkSceneDom() {
 	const sceneFlow = run('!render.showFlow');
 	windowStub.listeners.keydown[0]({ key: ' ', preventDefault() {} });
 	const sceneResume = run('clock.speed === CLOCK_DEFAULT_SPEED && clock.seconds === 0.05');
-	return { sceneBoots, sceneFill, sceneStep, sceneEdit, sceneErase, sceneFlow, sceneResume };
+	return { sceneBoots, sceneFill, sceneStep, sceneEdit, sceneErase, sceneFlow, sceneResume,
+		factoryToolCount: result.factoryTool, factoryPlaced: result.factoryPlaced, factorySelected: result.factorySelected };
 }
 
 let failures = 0;
@@ -244,9 +265,11 @@ check('no_runtime_error', !result.runtimeError);
 check('frames_advance_at_4x', result.clockSec >= 7.8 && result.clockSec <= 8.1 && result.initialClock === 'day 1 · 0s · 4×' && /^day 8 · 7s/.test(result.clockText || ''));
 check('canvas_painted', result.litCells > 3000);
 check('time_controls', result.timeButtons === 4);
-check('view_controls', result.viewRadios === 10 && result.distinctViews === 9);
-check('item_controls', result.startsOnSupply && result.itemRadios === 4 && result.itemHiddenOnTerrain && result.itemShownOnDemand && result.distinctItems === 4);
+check('view_controls', result.viewRadios === 8 && result.distinctViews === 7);
+check('item_controls', result.startsOnSupply && result.itemRadios === 7 && result.demandItemRadios === 7 && result.itemHiddenOnTerrain && result.itemShownOnDemand && result.distinctItems >= 5);
 check('engine_controls', result.engineRadios === 4 && result.engineCatchmentChecked && result.engineSitesDisabled && result.engineClickOnly);
+check('workforce_controls', result.workforceRadios === 2 && /Jobs/.test(result.workforceStats || ''));
+check('workforce_switch', result.fluidSwitch && result.residentsSwitch);
 check('engine_switch_and_redraw', result.engineViews === 3 && result.queuesSelected && result.queueExplained && result.switchBack);
 check('engine_switch_keeps_progress', result.switchKeptProgress);
 check('engine_feedback_toggle', result.feedbackOff && result.feedbackKeyboard);
@@ -272,6 +295,7 @@ check('new_survey_restarts', result.restartState === 'true:0');
 check('test_scene_boot', result.sceneBoots);
 check('test_scene_replay_and_step', result.sceneFill && result.sceneStep && result.sceneResume);
 check('test_scene_paired_tools', result.sceneEdit && result.sceneErase && result.sceneFlow);
+check('test_scene_factory_select', result.factoryPlaced === true && result.factorySelected === true && result.factoryToolCount === 5);
 
 if (failures > 0) {
 	console.log('dom_smoke_failures=' + failures);

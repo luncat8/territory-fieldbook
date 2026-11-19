@@ -5,7 +5,9 @@ const input = {
 	lastX: -1,
 	lastY: -1,
 	hoverX: -1,
-	hoverY: -1
+	hoverY: -1,
+	selX: -1,
+	selY: -1
 };
 
 function inputInit(canvas, demandCanvas) {
@@ -47,14 +49,37 @@ function inputLeave() {
 }
 
 function inputClearSelection() {
+	input.selX = input.selY = -1;
 	inputLeave();
 	input.lastX = input.lastY = render.markX = render.markY = -1;
 }
 
+function inputClearSiteSelection() {
+	input.selX = input.selY = -1;
+}
+
+function inputJobSiteAt(x, y) {
+	if (mapeFactoryAt(x, y) >= 0) return true;
+	return mapeMineAt(x, y) >= 0;
+}
+
 function inputClick(event) {
 	if (!inputReadCell(event, true)) return;
-	if (mapScene.id) mapSceneEdit(input.lastX, input.lastY);
-	else actionsMoveTo(input.lastX, input.lastY);
+	const x = input.lastX;
+	const y = input.lastY;
+	const sceneTool = mapScene.id ? mapScene.tool : -1;
+	const selecting = inputJobSiteAt(x, y) && (!mapScene.id || sceneTool === 0);
+	if (selecting) {
+		input.selX = x;
+		input.selY = y;
+		if (!mapScene.id) render.markX = render.markY = -1;
+		hudRefresh(false);
+		renderDraw();
+		return;
+	}
+	inputClearSiteSelection();
+	if (mapScene.id) mapSceneEdit(x, y);
+	else actionsMoveTo(x, y);
 	hudRefresh(false);
 	renderDraw();
 }
@@ -63,6 +88,12 @@ function inputKey(event) {
 	const key = event.key;
 	const tag = event.target && event.target.tagName;
 	if (tag === 'INPUT' || tag === 'BUTTON' || tag === 'A') return;
+	if (key === 'Escape') {
+		inputClearSiteSelection();
+		hudRefresh(false);
+		renderDraw();
+		return;
+	}
 	if (key === ' ') {
 		event.preventDefault();
 		actionsTogglePause();

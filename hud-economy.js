@@ -7,15 +7,26 @@ const HUD_ENGINE_NOTE = [
 	'A short queue meters arrivals. Stock in the queue and on nearby tiles both ease the pull.'
 ];
 
-const hudEconomy = { radios: [], noteEl: null, inspectEl: null, pressureEl: null, primary: null, secondary: null };
+const MAPE_WORKFORCE_NOTE = [
+	'Residents walk to jobs up the pull.',
+	'Fresh workforce flows to jobs and returns exhausted; full settlements stop draining it, so it pools into new hamlets.'
+];
+
+const hudEconomy = { radios: [], workforceRadios: [], noteEl: null, workforceNoteEl: null, inspectEl: null, pressureEl: null, primary: null, secondary: null, statsEl: null, jobsiteEl: null };
 
 function hudEconomyInit() {
 	hudEconomy.noteEl = $('ui-engine-note');
 	hudEconomy.inspectEl = $('ui-inspect');
 	hudEconomy.pressureEl = $('ui-pressure');
+	hudEconomy.statsEl = $('ui-workforce-stats');
+	hudEconomy.jobsiteEl = $('ui-jobsite');
+	hudEconomy.workforceNoteEl = $('ui-workforce-note');
 	hudEconomy.primary = hudLegendRefs('ui-map');
 	hudEconomy.secondary = hudLegendRefs('ui-demand');
 	hudBuildEngine();
+	const workforce = hudMakeSeg('ui-workforce-mode', 'workforce model', MAPE_WORKFORCE_MODE_NAME, mape.workforceMode, hudEconomy.workforceRadios, hudSetWorkforce, false);
+	$('ui-workforce').appendChild(workforce);
+	hudEconomy.workforceNoteEl.textContent = MAPE_WORKFORCE_NOTE[mape.workforceMode];
 	const surplus = $('ui-surplus');
 	surplus.checked = mape.surplusFeedback;
 	surplus.addEventListener('change', () => {
@@ -54,6 +65,16 @@ function hudSetEngine(mode) {
 	hudSyncEngine();
 }
 
+function hudSetWorkforce(mode) {
+	actionsSetWorkforceMode(mode);
+	hudSyncWorkforce();
+}
+
+function hudSyncWorkforce() {
+	for (let k = 0; k < hudEconomy.workforceRadios.length; k++) hudEconomy.workforceRadios[k].checked = mape.workforceMode === k;
+	hudEconomy.workforceNoteEl.textContent = MAPE_WORKFORCE_NOTE[mape.workforceMode];
+}
+
 function hudSyncEngine() {
 	for (let k = 0; k < hudEconomy.radios.length; k++) hudEconomy.radios[k].checked = mape.engine === k;
 	hudEconomy.noteEl.textContent = HUD_ENGINE_NOTE[mape.engine];
@@ -63,24 +84,53 @@ function hudSyncEngine() {
 
 function hudSyncMapLegend() {
 	if (!hudEconomy.primary) return;
+	const paired = renderIsPaired();
 	const show = renderIsFieldView(render.view);
 	hudEconomy.primary.meta.hidden = hudEconomy.primary.legend.hidden = !show;
+	hudEconomy.secondary.meta.hidden = hudEconomy.secondary.legend.hidden = !paired;
 	if (!show) return;
 	hudPaintFieldLegend(hudEconomy.primary, render.view === VIEW.DEMAND);
-	hudPaintFieldLegend(hudEconomy.secondary, true);
+	if (paired) hudPaintFieldLegend(hudEconomy.secondary, true);
 }
 
 function hudPaintFieldLegend(refs, demand) {
-	const item = mape.viewItem;
+	const item = demand ? mape.viewItemDemand : mape.viewItem;
+	const name = MAPE_VIEW_ITEM_NAME[item];
 	const style = render.fieldStyle;
-	const bounded = renderDemandMax() === 1;
-	refs.layer.textContent = (demand ? 'Demand · ' : 'Supply · ') + MAPE_RES_NAME[item];
-	refs.unit.textContent = demand ? bounded ? 'Pull / 0–1' : 'Signed pull / ±6' : 'Stock per cell';
-	refs.scale.className = 'ui-scale look-' + style + (demand ? bounded ? ' demand' : ' demand signed' : '');
+	const stockScale = 'ui-scale look-' + style;
+	refs.layer.textContent = (demand ? 'Demand · ' : 'Amount · ') + name;
+	const resource = item <= MAPE_RES.CO2;
 	const stockMax = style === RENDER_STYLE.A ? RENDER_A_STOCK_MAX : RENDER_STOCK_MAX;
-	refs.range.textContent = demand ? bounded ? '0 → 1 pull' : '−6 surplus → +6 pull' : '0 → ' + stockMax + '/cell' + (style === RENDER_STYLE.FIELDBOOK ? '' : ' · log');
+	if (demand) {
+		if (resource) {
+			const bounded = renderDemandMax(item) === 1;
+			refs.unit.textContent = bounded ? 'Pull / 0–1' : 'Signed pull / ±6';
+			refs.scale.className = stockScale + (bounded ? ' demand' : ' demand signed');
+			refs.range.textContent = bounded ? '0 → 1 pull' : '−6 surplus → +6 pull';
+		} else if (item === MAPE_VIEW_ITEM.WORKFORCE) {
+			refs.unit.textContent = 'Job pull / 0–4';
+			refs.scale.className = stockScale + ' demand';
+			refs.range.textContent = '0 → 4 pull';
+		} else {
+			refs.unit.textContent = (item === MAPE_VIEW_ITEM.FRESH ? 'Fresh' : 'Depleted') + ' pool / cell';
+			refs.scale.className = stockScale + ' demand';
+			refs.range.textContent = 'log 0 → 100';
+		}
+	} else if (resource) {
+		refs.unit.textContent = 'Amount per cell';
+		refs.scale.className = stockScale;
+		refs.range.textContent = '0 → ' + stockMax + '/cell' + (style === RENDER_STYLE.FIELDBOOK ? '' : ' · log');
+	} else if (item === MAPE_VIEW_ITEM.POPULATION) {
+		refs.unit.textContent = 'Persons / cell';
+		refs.scale.className = stockScale;
+		refs.range.textContent = '0 → 120 · sqrt';
+	} else {
+		refs.unit.textContent = (item === MAPE_VIEW_ITEM.FRESH ? 'Fresh' : 'Depleted') + ' pool / cell';
+		refs.scale.className = stockScale;
+		refs.range.textContent = 'log 0 → 100';
+	}
 	let key = render.showSettlements ? '○ Settlement' : '';
-	const showSource = render.showSources && (item === MAPE_RES.GOODS || !demand || style !== RENDER_STYLE.A);
+	const showSource = render.showSources && resource && (item === MAPE_RES.GOODS || !demand || style !== RENDER_STYLE.A);
 	if (showSource && item !== MAPE_RES.CO2) {
 		const source = item === MAPE_RES.GOODS ? '◇ Workshop' : style === RENDER_STYLE.A ? '■ Mine' : style === RENDER_STYLE.B ? '◆ Mine' : '▲ Mine';
 		key += (key ? ' · ' : '') + source;
@@ -106,11 +156,14 @@ function hudUpdateInspect() {
 	const pct = (mape.settleCount / n * 100).toFixed(1);
 	let text = 'Settlements ' + mape.settleCount + ' (' + pct + '%) · pop ' + Math.round(mape.totalPop) +
 		'\nCell ' + x + ',' + y + ' · ' + TERRAIN_NAME[world.terrain[idx]] +
-		' · pop ' + mape.pop[idx].toFixed(1) + ' · work ' + mape.workforce[idx].toFixed(1);
+		' · pop ' + mape.pop[idx].toFixed(1) + ' · work ' + mape.workforce[idx].toFixed(1) + ' · settle ' + world.settleValue[idx].toFixed(2);
 	for (let r = 0; r < MAPE_R; r++) {
 		const slot = r * n + idx;
 		text += (r % 2 === 0 ? '\n' : ' · ') + MAPE_RES_NAME[r] +
 			' d ' + hudSigned(mape.demand[slot]) + ' s ' + mape.goods[slot].toFixed(2);
+	}
+	if (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID) {
+		text += '\nfresh ' + mape.wfFresh[idx].toFixed(1) + ' · depleted ' + mape.wfDepleted[idx].toFixed(1);
 	}
 	if (mape.engine !== MAPE_ENGINE.DIFFUSION && mapeIsSettlement(idx)) {
 		text += '\nImport pull · coal ' + Math.round(100 * mapeMarketPull(MAPE_RES.COAL, idx)) +
@@ -118,8 +171,81 @@ function hudUpdateInspect() {
 	}
 	const lock = mapeDepositState(x, y);
 	if (lock >= 0) text += '\nDeposit ' + hudMineText(lock, idx);
-	if (renderHasSupply() && mape.viewItem !== MAPE_RES.CO2) {
+	if (renderHasAmount() && mape.viewItem < MAPE_RES.CO2) {
 		text += '\nNet flow ' + hudFlowRate(mape.viewItem * n + idx).toFixed(2) + '/s';
 	}
 	hudEconomy.inspectEl.textContent = text;
+}
+
+function hudFactorySiteText(f, idx) {
+	const st = mape.factoryState[f];
+	const need = mapeFactoryWorkers(st);
+	const present = mapeWorkPresent(idx);
+	const staff = need > 0 ? Math.min(1, present / need) : 0;
+	let text = 'Factory F' + (f + 1) + ' · ' + MAPE_FACTORY_STATE_NAME[st];
+	if (st === MAPE_FACTORY_STATE.BUILDING) text += ' · ' + Math.floor(mape.factoryProgress[f] * 100) + '%';
+	text += '\nCell ' + mape.factoryX[f] + ',' + mape.factoryY[f] + ' · productivity ' + Math.round(100 * landProductivity(idx)) + '% · disturbed ' + Math.round(100 * land.disturbed[idx]) + '%';
+	text += '\nWorkers ' + present.toFixed(1) + '/' + need + ' · ' + Math.round(100 * staff) + '% staffed';
+	if (st === MAPE_FACTORY_STATE.BUILDING) {
+		text += '\niron −' + mape.factoryIron[f].toFixed(2) + '/s · starved ' + Math.floor(mape.factoryStarved[f]) + 's';
+		text += '\niron stock ' + mape.goods[MAPE_RES.IRON * world.n + idx].toFixed(2);
+		return text;
+	}
+	text += '\ncoal −' + mape.factoryCoal[f].toFixed(2) + '/s · iron −' + mape.factoryIron[f].toFixed(2) + '/s';
+	text += '\ngoods +' + mape.factoryGoods[f].toFixed(2) + '/s · co2 +' + mape.factoryCo2[f].toFixed(2) + '/s';
+	text += '\nstarved ' + Math.floor(mape.factoryStarved[f]) + 's';
+	text += '\nstock coal ' + mape.goods[MAPE_RES.COAL * world.n + idx].toFixed(2) + ' · iron ' + mape.goods[MAPE_RES.IRON * world.n + idx].toFixed(2);
+	return text;
+}
+
+function hudMineSiteText(m) {
+	const site = mape.mineSite[m];
+	const idx = mape.mineY[m] * world.size + mape.mineX[m];
+	const present = mapeWorkPresent(idx);
+	const staff = Math.min(1, present / MAPE_MINE_WORKERS);
+	const active = mapeMineActive(m);
+	const fuel = sites.res[site] === RES.FUEL;
+	const state = !mape.mineUnlocked[m] ? 'locked' : active ? 'active' : 'inactive';
+	let text = 'Mine S' + (m + 1) + ' · ' + (fuel ? 'coal' : 'iron') + ' · ' + state;
+	text += '\nCell ' + mape.mineX[m] + ',' + mape.mineY[m] + ' · productivity ' + Math.round(100 * landProductivity(idx)) + '% · disturbed ' + Math.round(100 * land.disturbed[idx]) + '%';
+	text += '\nWorkers ' + present.toFixed(1) + '/' + MAPE_MINE_WORKERS + ' · ' + Math.round(100 * staff) + '% staffed';
+	text += '\nRate ' + (active ? (MAPE_MINE_RATE * staff).toFixed(2) : '0.00') + '/s · deposit left ' + sites.stock[site].toFixed(1);
+	return text;
+}
+
+function hudUpdateJobSite() {
+	const el = hudEconomy.jobsiteEl;
+	const panel = $('ui-site-panel');
+	if (!el || !panel) return;
+	const show = (hidden) => {
+		el.hidden = hidden;
+		panel.hidden = hidden;
+	};
+	const x = input.selX;
+	const y = input.selY;
+	if (x < 0) {
+		show(true);
+		return;
+	}
+	const f = mapeFactoryAt(x, y);
+	const m = f >= 0 ? -1 : mapeMineAt(x, y);
+	if (f < 0 && m < 0) {
+		show(true);
+		inputClearSiteSelection();
+		return;
+	}
+	el.textContent = f >= 0 ? hudFactorySiteText(f, y * world.size + x) : hudMineSiteText(m);
+	show(false);
+}
+
+function hudUpdateWorkforce() {
+	const el = hudEconomy.statsEl;
+	if (!el) return;
+	const t = mapeJobSummary();
+	let text = 'Jobs ' + t.staffed.toFixed(1) + '/' + Math.round(t.slots) + ' staffed · open ' + t.open.toFixed(1);
+	if (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID) {
+		text += '\nfresh ' + t.fresh.toFixed(1) + ' · depleted ' + t.depleted.toFixed(1);
+		text += '\nrested ' + mape.fluidRested.toFixed(1) + ' · spawned ' + mape.fluidSpawned;
+	}
+	el.textContent = text;
 }

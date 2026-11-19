@@ -30,9 +30,13 @@ goods plus waste plus CO2; settlements consuming goods leave waste and burning
 coal releases CO2; waste is disturbed land (`land.js`); CO2 feeds forest growth;
 production and transport create workforce demand that attracts migration;
 population grows where needs are met and declines where they are not. The player
-observes the fields, inspects any cell, trades and hires at settlements, and
+observes the fields, inspects any cell, selects a job site to read its staffing
+and performance, trades and hires at settlements, and
 unlocks deposits by investigating to 100% and holding territory so mines can work
-them. Factories are placed by the engine, not by the player.
+them. Factories are placed by the engine, not by the player. Two population
+workforce models are available: **Fluid field** (default; a workforce pool diffuses to
+jobs and recycles through settlements) and the **Residents** model (default off;
+workers physically walk to jobs); see **Workforce models**.
 
 Deferred to follow-up after 4.1a: oxygen as a population/factory need and low-O2
 production throttle (closing the full CO2↔O2 constraint), multi-product recipes
@@ -111,9 +115,14 @@ fields (`territory.js`), disturbed fraction (`land.js`), biomass and oxygen
   worker staffing (`workers / MAPE_MINE_WORKERS`, active at `≥ 0.1` workers), and
   disturbs its cell.
 - **Forest**: biomass cell demanding and consuming local CO2 to grow (Phase 3).
-- **Workforce `workforce[i]`**: worker-seconds per second demanded by unlocked
-  mines, factories and goods transport. Diffuses over walkable cells so unmet
-  jobs pull idle residents from settlements into mines and factories.
+- **Workforce `workforce[i]`**: job pull. Unlocked mines, building and active
+  factories and goods transport raise it at their cells (`MAPE_WORK_SIGNAL`,
+  transport effort at a quarter rate); it decays at `MAPE_WORK_DECAY` and
+  diffuses over walkable cells so jobs pull across the map. Two selectable
+  population models consume the same pull (see **Workforce models**):
+  Residents moves idle residents up the pull physically; Fluid field generates
+  fresh workforce at population cells, advects it up the pull, and recycles it
+  through depleted workforce and settlements.
 
 ## Data model
 
@@ -123,8 +132,9 @@ workshop output. `map-diffusion.js` owns signed diffusion, the shared tick and
 worker transport. `map-market-demand.js` owns A/B import pull and household
 uptake; `map-population.js` records intake, satisfaction, population dynamics and
 household waste. `map-market-flow.js` builds the reflecting land stencil,
-catchment membership and B's queue transport buffers. All buffers are reused per
-tick.
+catchment membership and B's queue transport buffers. `map-fluid.js` owns the
+Fluid field workforce model (the default). `world.js` owns terrain and the
+settlement location value map. All buffers are reused per tick.
 
 ```
 MAPE_R = 4                       // coal, iron, goods, co2
@@ -174,7 +184,16 @@ MAPE_FACTORY_YIELD = 1.0         // goods produced /s per active factory (feeds 
 MAPE_FACTORY_CO2 = 0.5           // CO2 emitted /s per active factory
 MAPE_FACTORY_DISTURB = 0.0006    // disturbance /s while producing (outruns recovery)
 MAPE_MINE_RATE = 2.4             // resource extracted/s at full staff and productivity
-MAPE_WORKFORCE_PER_UNIT = 0.4    // worker-s per unit produced or transported
+MAPE_WORKFORCE_PER_UNIT = 0.4    // transport effort / workforce per unit moved (diffusion)
+MAPE_WF_GEN = 0.05               // fluid model: fresh workforce per resident per second
+MAPE_WF_TIRE = 0.02              // fluid model: fresh → depleted rate /s (balance subject)
+MAPE_WF_DIFFUSE = 0.35           // fluid model: depleted spread mix (slower than goods)
+MAPE_WF_FLOW = 1.8               // fluid model: fresh advection rate /s up the pull
+MAPE_WF_GRAD_REF = 0.03          // fluid model: Michaelis-Menten half saturation for advection
+MAPE_WF_SPEND = 1.0              // fluid model: fresh consumed per need per second by jobs
+MAPE_WF_REST = 0.05              // fluid model: depleted absorbed per free person per second
+MAPE_WF_SPAWN = 10               // fluid model: pooled depleted that spawns a settlement
+MAPE_WF_SPAWN_VALUE = 0.35       // fluid model: min settlement location value to spawn
 MAPE_CO2_INIT = 0.4              // ambient CO2 per land cell at start
 MAPE_FOREST_CO2 = 0.004          // CO2 consumed /s per full-growth forest cell
 MAPE_MONEY_PER_POP = 25          // market funds target per resident
@@ -195,6 +214,11 @@ State:
 - `flowX, flowY: Float32Array(R * N)` — net accepted shipments per cell and tick;
   outflow magnitude is divided by `flowDt` for the display rate.
 - `workforce, workforceNext: Float32Array(N)` — diffused job demand and scratch.
+- `wfFresh, wfDepleted: Float32Array(N)` (+ `wfFreshNext, wfDepletedNext`) —
+  fluid model pools: available workforce and exhausted workforce.
+- `workforceMode`: `FLUID` (default) or `RESIDENTS`; independent of `engine`.
+  Ledger counters `fluidRested, fluidTired, fluidSpent, fluidSpawned` track pool
+  recycling for experiments.
 - `jobNeed: Float32Array(N)`, `cellExport: Uint8Array(N)` — per-cell
   retained site jobs, industry marker.
 - `money: Float32Array(N)` — market cash at settlement cells.
@@ -272,6 +296,102 @@ Catchment A and Queue B record household intake and apply its waste/emissions, b
 hold demographic growth and satisfaction-led migration for stable routing comparisons;
 shared job staffing remains active.
 
+## Workforce models
+
+`mape.workforceMode` selects how jobs are staffed. Everything else — the
+`workforce` pull field, goods routing, satisfaction, growth, metabolism and
+waste — is shared. An HUD **workforce** segment switches the model at any time
+without touching stocks, population or clock; the pull field keeps diffusing in
+both models.
+
+### Residents
+
+Idle residents leave settlements gradually (`MAPE_WORK_LEAVE`) and walk up the
+`workforce` pull quickly (`MAPE_WORK_SPEED`); jobs check `pop` at their cell.
+See **Population dynamics**.
+
+### Fluid field (default, `map-fluid.js`)
+
+Per-cell pools `wfFresh` and `wfDepleted`; no residents ever walk to work:
+
+1. Each walkable population cell generates `wfFresh += pop * MAPE_WF_GEN * dt`
+   every tick.
+2. Fresh workforce advects up the `workforce` pull over walkable cells
+   (`MAPE_WF_FLOW`, `MAPE_WF_GRAD_REF`, same Michaelis-Menten normalization as
+   goods) — the pull is the job-demand gradient, so factories and mines draw
+   it exactly like a goods consumer.
+3. Fresh workforce degrades over time: `wfFresh → wfDepleted` at
+   `MAPE_WF_TIRE` per second. The tire rate is the main balance subject —
+   raise it and jobs starve far from habitation; lower it and pools linger.
+4. Jobs consume fresh workforce (`MAPE_WF_SPEND` per unit of need per
+   second) at their cell and hand the same amount back as `wfDepleted` —
+   workers leave tired. Output staffing reads pooled fresh workforce at the
+   site, so production ramps as workers arrive instead of on demand alone.
+5. Settlements absorb `wfDepleted` at `MAPE_WF_REST` per free person
+   (`MAPE_POP_CAP × landProductivity − pop`) and return it as `wfFresh` —
+   workers rest at home. A settlement at its cap absorbs nothing, which
+   flattens the gradient that draws depleted fluid in. Depleted spreads
+   between cells at `MAPE_WF_DIFFUSE`, slower than goods, so tired workers
+   linger at the job that spent them.
+6. If no settlement drains a cell, depleted pooling crosses `MAPE_WF_SPAWN`:
+   the cell becomes a new settlement (pop `MAPE_POP_SEED_MIN`, market funds and
+   starter stock as if seeded), the pool is debited by `MAPE_WF_SPAWN`, and the
+   spawn event is logged. Spawn requires `world.settleValue[i] ≥
+   MAPE_WF_SPAWN_VALUE` and no industry cell. At most one settlement spawns
+   per tick, at the highest pooled cell.
+
+`workforceMode` is orthogonal to the goods routing engine and applies in the
+test scenes too, where it is the fastest way to watch mines fill and hamlets
+found themselves.
+
+## Settlement location values
+
+`world.settleValue[i]` (0…1) ranks how much room a cell offers a settlement.
+Computed from terrain and the four neighbours once per world generation or
+scene setup, shown in the inspector (`settle 0.80`) and used by the Fluid
+field spawn gate (`MAPE_WF_SPAWN_VALUE`):
+
+| value | cells |
+|---|---|
+| 1.00 | non-swamp cell adjacent to water |
+| 0.80 | forest ↔ meadow edge |
+| 0.60 | meadow |
+| 0.45 | hills |
+| 0.35 | forest |
+| 0.15 | swamp edge (any swamp cell touching non-swamp, water included) |
+| 0.10 | desert (absent from draft 4.1a; treated as hostile) |
+| 0.00 | swamp interior |
+
+With the current moisture bands (desert ≤ 0.38 < meadow ≤ 0.52 < swamp ≤ 0.62
+< forest) meadow and forest are normally separated by swamp, so the 0.80
+class is rare — adjacent-cell noise can still produce it. It encodes the
+draft's design intent (a tree line is the best non-waterfront site); the
+spawn gate works without it. Map-border cells do not inherit water credit;
+adjacency requires an actual water cell.
+
+Initial ~2% settlement seeding is unchanged; the values shape where fluid-field
+spawning (and later, planned placement) puts new settlements.
+
+## Job-site inspection
+
+Clicking a factory or mine cell selects it (the party does not move; `Esc` or
+clicking any other cell clears). The **workforce** block then shows:
+
+- per site: kind and id, state, cell, productivity and disturbance, workers
+  present / needed and staffing percent; factories add build progress (or
+  live input/output rates — coal and iron in, goods and CO2 out — once
+  active) plus cumulative starved seconds; mines add extract rate and deposit
+  remaining;
+- global, always: `Jobs staffed/slots · open`, counted over unlocked mines
+  (`MAPE_MINE_WORKERS`) and non-GONE factories (`MAPE_FACTORY_BUILD_WORKERS`
+  while building, `MAPE_FACTORY_WORKERS` otherwise); fluid mode adds pool
+  totals (`fresh · depleted · rested · spawned`).
+
+Test scenes place an active factory with the **Factory** tool (after Erase);
+the scene keeps coal-only stock, so iron-starved construction and production
+read directly in the panel. Factory placement scan, the idle rule and the CO2
+forest gate remain Phase 3.
+
 ## Factory and mine lifecycle
 
 1. **Placement scan** every `MAPE_SCAN_SEC` (`5 s`): score each walkable cell at
@@ -282,7 +402,9 @@ shared job staffing remains active.
    spacing plus build-iron demand prevent simultaneous duplicate builds during
    the 20 s construction lag.
 2. **Construction**: `progress` advances `0 → 1` over `MAPE_FACTORY_BUILD_SEC`
-   (`20 s` on 1×), injecting iron demand and disturbing at `0.0003/s`.
+   (`20 s` on 1×) at the site's staffing fraction, injecting and drawing
+   `MAPE_FACTORY_BUILD_IRON` iron; construction stalls while iron is missing
+   and disturbs at `0.0003/s`.
 3. **Active**: consumes `0.5 coal + 0.5 iron/s`, produces `1.0 goods + 0.5 CO2/s`,
    disturbs at `0.0006/s` (above natural recovery so active industry requires
    restoration or management). Idles after `MAPE_FACTORY_IDLE_SEC` (`40 s`) of
@@ -334,11 +456,13 @@ staffed mines, fixed populations, no party/rivals, and only coal production.
 The standalone `prototype/economy-demand-product-diffusion/` pages serve as
 independent references.
 
-Supply and Demand are linked side by side. Replay either scene from uniform 0
+Amount and Demand are linked side by side. Replay either scene from uniform 0
 or 0.5 demand and no stock; the selected engine and playback speed are kept.
-Pause and advance 0.05 s at a time. Inspect either map, or place and erase mines
-and settlements to redirect shipments without clearing stock already in transit.
-The readout shows stored, mined and used coal.
+Pause and advance 0.05 s at a time. Inspect either map, place and erase mines,
+settlements and factories, or select one of them to redirect shipments without
+clearing stock already in transit. With the Inspect tool active, clicking a
+mine or factory selects it in the panel left of the canvas. The readout shows stored,
+mined and used coal.
 
 ## Site engine (Phase 4)
 
@@ -411,15 +535,23 @@ increasing per-frame work proportionally.
 
 ### V1 · Independent map presentation
 
-`render.js` provides ten map modes: `terrain`, `investigation`, `influence`,
-`disturbance`, `biosphere`, `population`, `demand`, `supply`, `workforce`, and
-`supply + demand`. Keys `1`…`9` retain the original single-map modes; `0` selects
-the paired supply/demand view. Both maps share the selected item, hover and pinned
-cell. The survey opens at 4× on Supply → goods. Reference scenes open on paired
-coal fields and retain supply, demand and paired radios instead of hiding them.
+`render.js` provides eight map modes: `terrain`, `investigation`, `influence`,
+`disturbance`, `biosphere`, `demand`, `amount`, and `amount + demand`. Keys
+`1`…`8` select the single-map modes; `0` selects the paired amount/demand view.
+Each side has its own item picker: the amount side shows factual per-cell
+amounts (`coal`, `iron`, `goods`, `co2`, `population`, `fresh`, `depleted`) and
+the demand side shows movement gradients (`coal`, `iron`, `goods`, `co2`,
+`workforce` job pull, `fresh`, `depleted`). Both sides carry the fresh and
+depleted workforce pool chips, so diffusion and the return of exhausted workers
+to settlements are visible on either side. The survey opens at 4× on Amount →
+goods. Reference scenes open on paired coal fields and retain amount, demand
+and paired radios instead of hiding them.
 
 - **Population**: dark land → warm ivory-gold (`sqrt` over `MAPE_POP_CAP`).
-- **Workforce**: dark → amber-gold by `workforce[i]`.
+- **Workforce pull**: dark → amber-gold by `workforce[i]` (`sqrt` over
+  `MAPE_VIEW_WORK_MAX`).
+- **Fresh/depleted pools**: dark → amber-gold by `log1p` over `MAPE_VIEW_POOL_MAX`
+  (100), water blocked like other land fields.
 - **Fieldbook look**: navy/cyan-white stock, warm demand and moving flow traces.
 - **Prototype A look**: crisp logarithmic blue-white stock (0–10/cell),
   red/orange/yellow demand, green sources and white settlement rings.
@@ -440,12 +572,16 @@ atmospheric CO2. Contours omit water-crossing cells and cap their levels at the
 fixed display range. Grid paths and actor label strings are built at setup;
 per-frame field drawing reuses its raster and contour scratch buffers.
 
-The view and item (`coal`, `iron`, `goods`, `co2`) radiogroups use a single-writer
-`change` handler and fine-pointer hover preview. The coal-only reference scenes
-hide the other layers and item picker. Look radios are click/keyboard-only so
-passing the pointer cannot reset overlay choices. Inapplicable checkboxes are
-disabled without losing their settings. Labels follow visible actors; visual
-marker toggles never stop production or settlement consumption.
+The view radiogroup and the two item radiogroups (amount: `coal`, `iron`,
+`goods`, `co2`, `population`, `fresh`, `depleted`; demand: `coal`, `iron`,
+`goods`, `co2`, `workforce`, `fresh`, `depleted`) use a single-writer `change`
+handler and fine-pointer hover preview. The coal-only reference scenes hide the
+other layers and item pickers. Look radios are click/keyboard-only so passing
+the pointer cannot reset overlay choices. Inapplicable checkboxes are disabled
+without losing their settings. Labels follow visible actors; visual marker
+toggles never stop production or settlement consumption. The selected job site
+(factory or mine) is inspected in a separate panel to the left of the canvas,
+not in the right aside.
 
 `render-economy.js` owns palettes, grid, isolines and flow; `render-markers.js`
 owns settlement/industry markers and cached actor labels. `hud-display.js` owns
@@ -517,7 +653,10 @@ and total population stays bounded.
 Deliverable: `5 s` placement scan with spacing guard, `20 s` construction with
 build-iron demand, active `coal + iron → goods + waste + CO2`, `40 s` idle rule,
 unlocked mine extraction, CO2-gated forest growth, `MAPE_GATE_ON_GOODS` on vs off
-comparison in `experiments/mape_factory.js` over `300 s`.
+comparison in `experiments/mape_factory.js` over `300 s`. The construction and
+production runtime (iron draw, recipe, CO2, disturbance, worker-staffed output
+under both workforce models, scene Factory tool) is implemented; the placement
+scan, idle rule, forest CO2 gate comparison and the experiment remain.
 
 Gate: factories site between goods need and coal/iron surplus (never on water or
 high disturbance, no duplicate stack during construction), builds finish in
@@ -547,23 +686,33 @@ Gate: runtime switches preserve the stock ledger, all engines pass `smoke` and
 
 ## Manual pass list
 
-- Survey opens at 4× on Supply → goods; workshop stock moves toward settlements.
+- Survey opens at 4× on Amount → goods; workshop stock moves toward settlements.
   1× and 2× advance 1 and 2 days per real second; pause freezes the traces and clock.
+- Pause, open a scene and pick the Factory tool; click a cell to place a factory.
+  Click it (Inspect tool) — the workforce block shows state, staffing and rates;
+  the global row shows staffed/open slots. Esc clears the selection.
+- The workforce segment opens on **Fluid field**: fresh workforce gathers at the
+  mine, depleted pool returns to settlements, and a hamlet founds itself
+  where depleted piles on high-value land (meadow or water-adjacent, never swamp).
+  Switching to Residents replays the walking-workers model on the same seed.
 - Settlement dots read at ~2% density across walkable land, never on water; around
   list shows nearest settlement distance and population. In Diffusion, stocked
   settlements grow and isolated ones shrink; A/B hold demographic growth and migration.
-- Switching views `1`…`9` (click, fine-pointer hover, keys) updates the canvas;
-  `0` or Supply + demand shows paired fields in the survey as well as the scenes.
-  Changing an item updates both maps and legends; returning to a non-field view
-  restores the single map and hides the item picker.
+- Switching views `1`…`8` (click, fine-pointer hover, keys) updates the canvas;
+  `0` or Amount + demand shows paired fields in the survey as well as the scenes.
+  Each side has its own item picker; changing an item updates that side's map and
+  legend. Returning to a non-field view restores the single map and hides the
+  item pickers. On the amount side, population shows persons per cell and
+  fresh/depleted show the workforce pools; on the demand side, workforce shows
+  job pull and fresh/depleted show the same pools as movement gradients.
 - Pause on paired fields and choose each look. A shows blue stock and warm pull;
   B shows amber stock, purple pull, contours, grid and labelled arrows. Engine,
   stock, demand and clock do not change. Engine switching and scene replay retain
-  custom overlay settings. In both scenes, select supply/demand alone and back.
+  custom overlay settings. In both scenes, select amount/demand alone and back.
 - Toggle each overlay; hidden settlement/source markers do not stop their economy.
   Turn off flow animation while running: arrows stay still while stock changes.
   Pause freezes moving traces. With reduced motion, arrows start static.
-- Demand smoothing leaves supply crisp. Contours remain finite on flat, signed
+- Demand smoothing leaves amount crisp. Contours remain finite on flat, signed
   and saturated fields and do not cross water for land items. At narrow widths
   paired maps stack without horizontal scrolling; all controls stay reachable.
 - Pause on Demand → Coal and pick Diffusion, A and B. The demand map and help

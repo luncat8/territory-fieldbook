@@ -7,15 +7,13 @@ const VIEW = {
 	INFLUENCE: 2,
 	DISTURBANCE: 3,
 	BIOSPHERE: 4,
-	POPULATION: 5,
-	DEMAND: 6,
-	SUPPLY: 7,
-	WORKFORCE: 8,
-	PAIRED: 9
+	DEMAND: 5,
+	AMOUNT: 6,
+	PAIRED: 7
 };
 const VIEW_NAME = [
 	'terrain', 'investigation', 'influence', 'disturbance', 'biosphere',
-	'population', 'demand', 'supply', 'workforce', 'supply + demand'
+	'demand', 'amount', 'amount + demand'
 ];
 const CELL_PX = 12;
 const TAU = Math.PI * 2;
@@ -67,8 +65,8 @@ function renderInit(canvas, demandCanvas) {
 	render.offCtx = render.off.getContext('2d');
 	render.image = render.offCtx.createImageData(world.size, world.size);
 	render.pixels = render.image.data;
-	render.view = mapScene.id ? VIEW.PAIRED : VIEW.SUPPLY;
-	if (mapScene.id) mape.viewItem = MAPE_RES.COAL;
+	render.view = mapScene.id ? VIEW.PAIRED : VIEW.AMOUNT;
+	if (mapScene.id) mape.viewItem = mape.viewItemDemand = MAPE_RES.COAL;
 	renderEconomyInit();
 	renderMarkersInit();
 }
@@ -81,20 +79,20 @@ function renderMapContext(canvas) {
 }
 
 function renderIsFieldView(view) {
-	return view === VIEW.DEMAND || view === VIEW.SUPPLY || view === VIEW.PAIRED;
+	return view === VIEW.DEMAND || view === VIEW.AMOUNT || view === VIEW.PAIRED;
 }
 
 function renderIsPaired() {
 	return render.view === VIEW.PAIRED;
 }
 
-function renderHasSupply() {
-	return render.view === VIEW.SUPPLY || renderIsPaired();
+function renderHasAmount() {
+	return render.view === VIEW.AMOUNT || renderIsPaired();
 }
 
 function renderDraw() {
 	if (!render.ctx) return;
-	renderDrawMap(render.ctx, renderIsPaired() ? VIEW.SUPPLY : render.view);
+	renderDrawMap(render.ctx, renderIsPaired() ? VIEW.AMOUNT : render.view);
 	if (renderIsPaired()) renderDrawMap(render.demandCtx, VIEW.DEMAND);
 }
 
@@ -119,6 +117,20 @@ function renderDrawMap(ctx, view) {
 	}
 	if (field) renderHover(ctx);
 	renderMark(ctx);
+	renderSelection(ctx);
+}
+
+function renderSelection(ctx) {
+	if (input.selX < 0) return;
+	const cx = (input.selX + 0.5) * CELL_PX;
+	const cy = (input.selY + 0.5) * CELL_PX;
+	ctx.strokeStyle = '#79c9d4';
+	ctx.lineWidth = 1.6;
+	ctx.setLineDash([4, 3]);
+	ctx.beginPath();
+	ctx.arc(cx, cy, CELL_PX * 0.66, 0, TAU);
+	ctx.stroke();
+	ctx.setLineDash(DASH_NONE);
 }
 
 function renderPaintCells(view) {
@@ -131,8 +143,6 @@ function renderPaintCells(view) {
 	const disturbed = land.disturbed;
 	const fields = territory.fields;
 	const biomass = economy.biomass;
-	const pop = mape.pop;
-	const work = mape.workforce;
 	const originX = party.x;
 	const originY = party.y;
 	const here = terrain[originY * size + originX];
@@ -207,29 +217,6 @@ function renderPaintCells(view) {
 					g += (104 - g) * d * 0.7;
 					b += (70 - b) * d * 0.7;
 				}
-			} else if (t === TERRAIN.WATER) {
-				r *= 0.72;
-				g *= 0.72;
-				b *= 0.78;
-			} else if (view === VIEW.POPULATION) {
-				const p = pop[i];
-				if (p <= 0) {
-					r *= 0.22;
-					g *= 0.22;
-					b *= 0.24;
-				} else {
-					const raw = p / MAPE_POP_CAP;
-					const k = Math.sqrt(raw > 1 ? 1 : raw);
-					r = 58 + 192 * k;
-					g = 44 + 186 * k;
-					b = 28 + 132 * k;
-				}
-			} else {
-				const raw = work[i] / MAPE_VIEW_WORK_MAX;
-				const k = raw <= 0 ? 0 : Math.sqrt(raw > 1 ? 1 : raw);
-				r = 26 + 212 * k;
-				g = 28 + 152 * k;
-				b = 36 + 32 * k;
 			}
 			pixels[o] = r;
 			pixels[o + 1] = g;

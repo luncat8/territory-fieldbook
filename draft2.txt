@@ -268,6 +268,48 @@ Solves shared pitfalls early: catches town-to-settlement market balance, water-i
 i dislike "construction 24h".
 better use real time seconds to better prototype that 1s correspond to 1day in storyline, so typical build will be 10-30sec on 1x speed.
 
+### Population
+
+to visually test: need something so select factory and see it performance and maybe global workforce usage and empty work spaces.
+
+i think good to implement optional another population workforce engine:
+population every tick create workforce to map cells.
+workforce diffuse by workforce demand gradient.
+workforce deplete over time to 'depleted workforce'. This is subject of balance.
+workforce consumed by demand (factories, mines)
+in exchange they return 'depleted workforce' to map.
+'depleted workforce' diffuse to settlements and if gradient is low (settlements are full, out of free space) then somehow big concentration of 'depleted workforce' will spawn new settlement. 
+to make this more interesting need a map that provide good settlement location values:
+from good value (big space for population) to bad (no space)
+- near water (edge cells) - best cells, except swamp edge
+- in the edge of forest and meadow
+- meadow
+- hills
+- forest
+- swamp edge cells
+- swamp
+
+### population - workforce
+
+
+previous task was
+
+both supply and demand should have both workforce fresh and depleted. and better rename 'supply' to amount or value. if i understand properly all these arrays belongs to 'supply' is factual amount of items in cells, but 'demand' is just gradients for movement. this will be clear and understandable.
+
+current visual observation at commit 33f2b2ac370c3103a41c2d41b7277075b829c594
+
+now 
+on amount tab:
+	fresh and depleted looks good
+	population - i expect population of settlement as color but map looks black or i dont see it.
+
+on demand  tab:
+workforce - what is it for? looks like leftover or agent something not properly implement
+fresh depleted - i am not sure it is proper work or proper colored. i expect big demand of fresh if factory and big demand of depleted in settlements. in case they are not full.
+
+
+small improvement above canvas caption 'Amount · depleted' add 'workforce' because user doubt what is depleted or fresh.
+
 ### 4.2 Layers
 
 - **Resources:** easy, concentrated deposits are extracted first. Later, recovery of dispersed material needs investigation and processing knowledge.

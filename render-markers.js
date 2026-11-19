@@ -56,6 +56,7 @@ function renderSettlements(ctx, field) {
 
 function renderIndustry(ctx, field, view) {
 	const cell = CELL_PX;
+	const item = view === VIEW.DEMAND ? mape.viewItemDemand : mape.viewItem;
 	ctx.fillStyle = STORAGE_CSS;
 	const box = cell * 0.22;
 	for (let k = 0; k < mape.storageCount; k++) {
@@ -66,12 +67,12 @@ function renderIndustry(ctx, field, view) {
 	}
 	const hideMines = field && view === VIEW.DEMAND && render.fieldStyle === RENDER_STYLE.A;
 	for (let m = 0; m < mape.mineCount; m++) {
-		if (hideMines || (field && mape.mineRes[m] !== mape.viewItem)) continue;
+		if (hideMines || (field && item <= MAPE_RES.CO2 && mape.mineRes[m] !== item)) continue;
 		const slot = mape.mineSite[m];
 		if (sites.state[slot] !== SITE_STATE.VISIBLE) continue;
 		renderMineMarker(ctx, m, field);
 	}
-	if (!field || mape.viewItem === MAPE_RES.GOODS) renderWorkshops(ctx, field);
+	if (!field || item === MAPE_RES.GOODS) renderWorkshops(ctx, field);
 	const fsize = cell * 0.56;
 	for (let f = 0; f < mape.factoryCount; f++) {
 		const st = mape.factoryState[f];
@@ -147,6 +148,7 @@ function renderWorkshops(ctx, field) {
 }
 
 function renderActorLabels(ctx, view) {
+	const item = view === VIEW.DEMAND ? mape.viewItemDemand : mape.viewItem;
 	ctx.font = '500 14px ui-monospace, monospace';
 	ctx.textBaseline = 'middle';
 	ctx.textAlign = 'left';
@@ -156,10 +158,10 @@ function renderActorLabels(ctx, view) {
 	if (!render.showSources) return;
 	const hideMines = view === VIEW.DEMAND && render.fieldStyle === RENDER_STYLE.A;
 	for (let k = 0; k < mape.mineCount; k++) {
-		if (hideMines || mape.mineRes[k] !== mape.viewItem || sites.state[mape.mineSite[k]] !== SITE_STATE.VISIBLE) continue;
+		if (hideMines || item > MAPE_RES.CO2 || mape.mineRes[k] !== item || sites.state[mape.mineSite[k]] !== SITE_STATE.VISIBLE) continue;
 		renderActorLabel(ctx, mape.mineY[k] * world.size + mape.mineX[k], renderMarkers.mines[k], true);
 	}
-	if (mape.viewItem === MAPE_RES.GOODS) {
+	if (item === MAPE_RES.GOODS) {
 		for (let k = 0; k < mape.workshopCount; k++) renderActorLabel(ctx, mape.workshopCells[k], renderMarkers.workshops[k], true);
 	}
 	for (let k = 0; k < mape.factoryCount; k++) {

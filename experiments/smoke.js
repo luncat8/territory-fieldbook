@@ -142,7 +142,7 @@ const result = run(`
 	move(mape.mineX[coalMine], mape.mineY[coalMine]);
 	main.step(60);
 	const mineUnlockedAfter = mape.mineUnlocked[coalMine] === 1;
-	const mineWorkersAfter = mape.pop[mineIdx];
+	const mineWorkersAfter = (typeof mapeWorkPresent === 'function' ? mapeWorkPresent(mineIdx) : mape.pop[mineIdx]);
 	const minedAfter = mape.minedTotal;
 	const exportedAfter = minedAfter - mape.goods[MAPE_RES.COAL * world.n + mineIdx];
 	const nearCoalAfter = mape.goods[MAPE_RES.COAL * world.n + nearForCoal];

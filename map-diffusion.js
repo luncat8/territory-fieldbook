@@ -41,11 +41,8 @@ function mapeSyncCells() {
 		if (st === MAPE_FACTORY_STATE.GONE) continue;
 		const idx = mape.factoryY[f] * size + mape.factoryX[f];
 		exp[idx] |= MAPE_CELL_INDUSTRY;
-		if (st === MAPE_FACTORY_STATE.BUILDING) {
-			job[idx] += MAPE_FACTORY_BUILD_WORKERS;
-		} else if (st === MAPE_FACTORY_STATE.ACTIVE) {
-			job[idx] += MAPE_FACTORY_WORKERS;
-		}
+		const need = mapeFactoryWorkers(st);
+		if (need > 0) job[idx] += need;
 	}
 }
 
@@ -316,7 +313,7 @@ function mapeStepWorkforce(dt, transportBuffer) {
 		const totalNeed = siteNeed + haulNeed;
 		if (siteNeed > 0) {
 			job[i] = totalNeed;
-			if (totalNeed > pop[i]) work[i] += (totalNeed - pop[i]) * signal;
+			if (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID || totalNeed > pop[i]) work[i] += totalNeed * signal;
 		} else if (haulNeed > pop[i]) {
 			work[i] += (haulNeed - pop[i]) * 0.25 * dt;
 		}
@@ -390,9 +387,11 @@ function mapeDiffusionSubstep(dt) {
 	if (catchment) mapeUseCatchments(dt);
 	if (mape.engine === MAPE_ENGINE.DIFFUSION) mapeUseDiffusionStock(dt);
 	mapeStepWorkforce(dt, workScratch);
-	if (!mape.fixedResidents) mapeTransportWorkers(dt);
+	if (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID) mapeFluidStep(dt);
+	else if (!mape.fixedResidents) mapeTransportWorkers(dt);
 	mapePopulationStep(dt);
 	mapeStepMines(dt);
+	mapeStepFactories(dt);
 	mapeStepWorkshops(dt);
 	mapeRecoverMoney(dt);
 }

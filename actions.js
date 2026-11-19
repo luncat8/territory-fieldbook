@@ -23,6 +23,13 @@ function actionsSetEngine(mode) {
 	renderDraw();
 }
 
+function actionsSetWorkforceMode(mode) {
+	if (!mapeSetWorkforceMode(mode)) return;
+	eventsStatus('Workforce model: ' + MAPE_WORKFORCE_MODE_NAME[mape.workforceMode] + ' · stock and population kept.');
+	hudRefresh(true);
+	renderDraw();
+}
+
 function actionsReplayScene(fill) {
 	const speed = clock.speed;
 	const resume = clock.resumeSpeed;
