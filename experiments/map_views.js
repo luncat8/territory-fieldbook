@@ -144,6 +144,14 @@ check('signed_surplus_stays_green', run('render.pixels[1] > render.pixels[0] && 
 run('world.terrain[0] = TERRAIN.WATER; renderEconomyCells(VIEW.DEMAND)');
 check('water_masks_land_fields', run('Array.from(render.pixels.slice(0,4)).join()') === '21,34,53,255');
 
+run('world.terrain[0] = TERRAIN.MEADOW; mape.pop[0] = 0; hudSetAmountItem(MAPE_VIEW_ITEM.POPULATION)');
+check('population_hides_town_icons', !run('renderSettlementIcons(VIEW.AMOUNT)') && !/Settlement/.test(elements.get('ui-map-key').textContent));
+run('renderEconomyCells(VIEW.AMOUNT)');
+check('population_empty_land_is_visible', run('render.pixels[0] + render.pixels[1] + render.pixels[2] > 60'));
+run('mape.pop[0] = 20; renderEconomyCells(VIEW.AMOUNT)');
+check('population_town_is_warm', run('render.pixels[0] > 150 && render.pixels[0] > render.pixels[2]'));
+run('mape.pop[0] = 0; hudSetAmountItem(MAPE_RES.COAL)');
+
 run('render.ctx.trace = []; world.terrain.fill(TERRAIN.MEADOW); mape.demandView[0].fill(0.25); renderDemandContours(render.ctx)');
 check('flat_contours_empty', run('render.ctx.trace.length === 0'));
 run('for (let i = 0; i < world.n; i++) mape.demandView[0][i] = (i % world.size) / (world.size - 1); renderDemandContours(render.ctx)');

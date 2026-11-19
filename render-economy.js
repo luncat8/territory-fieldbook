@@ -12,6 +12,9 @@ const RENDER_A_LOG = Math.log1p(RENDER_A_STOCK_MAX);
 const RENDER_B_STOCK = [[0, 25, 24, 27], [0.12, 53, 39, 42], [0.26, 109, 58, 38], [0.41, 169, 86, 39], [0.55, 225, 138, 54], [0.7, 255, 202, 112], [1, 255, 241, 198]];
 const RENDER_B_NEED = [[0, 23, 21, 31], [0.16, 39, 31, 52], [0.3, 59, 42, 82], [0.48, 99, 65, 135], [0.69, 147, 100, 192], [0.88, 192, 148, 229], [1, 237, 207, 255]];
 const RENDER_POP_RAMP = [[0, 30, 26, 30], [0.12, 110, 74, 78], [0.3, 190, 126, 96], [0.55, 240, 186, 112], [1, 255, 246, 214]];
+const RENDER_CIVIC_GAIN = 2;
+const RENDER_CIVIC_DIM = 0.24;
+const RENDER_CIVIC_LIFT = 10;
 const RENDER_ISO_EDGES = [[], [3, 0], [0, 1], [3, 1], [1, 2], [3, 0, 1, 2], [0, 2], [3, 2], [2, 3], [0, 2], [0, 1, 2, 3], [1, 2], [1, 3], [0, 1], [0, 3], []];
 const RENDER_FLOW_SOFT = ['rgba(151, 225, 255, 0.46)', 'rgba(151, 225, 255, 0.46)', 'rgba(255, 225, 173, 0.46)'];
 const RENDER_FLOW_BRIGHT = ['rgba(222, 249, 255, 0.86)', 'rgba(222, 249, 255, 0.86)', 'rgba(255, 240, 202, 0.90)'];
@@ -20,6 +23,7 @@ const renderEconomy = {
 	stockPalette: null,
 	needPalette: null,
 	popPalette: null,
+	civicBase: null,
 	grid: null,
 	isoX: new Float64Array(4),
 	isoY: new Float64Array(4)
@@ -29,6 +33,7 @@ function renderEconomyInit() {
 	renderEconomy.stockPalette = renderFieldPalette(RENDER_B_STOCK);
 	renderEconomy.needPalette = renderFieldPalette(RENDER_B_NEED);
 	renderEconomy.popPalette = renderFieldPalette(RENDER_POP_RAMP);
+	renderEconomy.civicBase = renderCivicBase();
 	renderEconomy.grid = document.createElement('canvas');
 	renderEconomy.grid.width = renderEconomy.grid.height = render.size;
 	const ctx = renderEconomy.grid.getContext('2d');
@@ -64,6 +69,15 @@ function renderSetStyle(style) {
 	render.flowArrows = render.showContours = render.showGrid = render.smoothDemand = render.showLabels = fancy;
 	render.showSettlements = render.showSources = true;
 	render.showSurvey = style === RENDER_STYLE.FIELDBOOK;
+}
+
+// Single-cell towns sit on a dim terrain tint, not on the black end of the population ramp.
+function renderCivicBase() {
+	const base = new Uint8Array(TERRAIN_RGB.length * 3);
+	for (let t = 0; t < TERRAIN_RGB.length; t++) {
+		for (let c = 0; c < 3; c++) base[t * 3 + c] = RENDER_CIVIC_LIFT + TERRAIN_RGB[t][c] * RENDER_CIVIC_DIM;
+	}
+	return base;
 }
 
 function renderFieldPalette(stops) {
@@ -118,10 +132,12 @@ function renderEconomyCells(view) {
 	const demandMax = renderDemandMax(item);
 	const style = render.fieldStyle;
 	const palette = civic ? renderEconomy.popPalette : demand ? renderEconomy.needPalette : renderEconomy.stockPalette;
+	const civicBase = renderEconomy.civicBase;
+	const terrain = world.terrain;
 	for (let i = 0, p = 0; i < world.n; i++, p += 4) {
 		const value = field[i];
 		const norm = renderItemNorm(item, value, demand);
-		if (item !== MAPE_RES.CO2 && world.terrain[i] === TERRAIN.WATER) {
+		if (item !== MAPE_RES.CO2 && terrain[i] === TERRAIN.WATER) {
 			pixels[p] = 21;
 			pixels[p + 1] = 34;
 			pixels[p + 2] = 53;
@@ -130,9 +146,16 @@ function renderEconomyCells(view) {
 			pixels[p] = 27 + 43 * k;
 			pixels[p + 1] = 15 + 204 * k;
 			pixels[p + 2] = 23 + 137 * k;
+		} else if (civic) {
+			const at = Math.round(norm * 1024) * 3;
+			const b = terrain[i] * 3;
+			const k = norm * RENDER_CIVIC_GAIN > 1 ? 1 : norm * RENDER_CIVIC_GAIN;
+			pixels[p] = civicBase[b] + (palette[at] - civicBase[b]) * k;
+			pixels[p + 1] = civicBase[b + 1] + (palette[at + 1] - civicBase[b + 1]) * k;
+			pixels[p + 2] = civicBase[b + 2] + (palette[at + 2] - civicBase[b + 2]) * k;
 		} else if (norm >= 0) {
 			const k = norm;
-			if (civic || style === RENDER_STYLE.B) {
+			if (style === RENDER_STYLE.B) {
 				const at = Math.round(k * 1024) * 3;
 				pixels[p] = palette[at];
 				pixels[p + 1] = palette[at + 1];

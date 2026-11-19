@@ -86,6 +86,12 @@ function renderIsPaired() {
 	return render.view === VIEW.PAIRED;
 }
 
+// Population is a continuous field there: a town ring would cover the cell colour it explains.
+function renderSettlementIcons(view) {
+	if (!renderIsFieldView(view)) return true;
+	return renderViewItem(view) !== MAPE_VIEW_ITEM.POPULATION;
+}
+
 function renderHasAmount() {
 	return render.view === VIEW.AMOUNT || renderIsPaired();
 }
@@ -104,7 +110,7 @@ function renderDrawMap(ctx, view) {
 	ctx.imageSmoothingEnabled = view === VIEW.DEMAND && render.smoothDemand;
 	ctx.drawImage(render.off, 0, 0, render.size, render.size);
 	if (field) renderEconomyOverlays(ctx, view);
-	if (render.showSettlements) renderSettlements(ctx, field);
+	if (render.showSettlements && renderSettlementIcons(view)) renderSettlements(ctx, field);
 	if (render.showSources) renderIndustry(ctx, field, view);
 	if (field && render.showLabels) renderActorLabels(ctx, view);
 	if (!mapScene.id && render.showSurvey) {

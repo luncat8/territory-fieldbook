@@ -71,9 +71,12 @@ fields (`territory.js`), disturbed fraction (`land.js`), biomass and oxygen
   allocations. Material stock uses Float64 so larger shipments and longer runs
   don't accumulate visible ledger drift.
 - Waste is not an item: mining, factory construction/production and settlement
-  goods consumption all call `landDisturb` (`land.js`). Productivity `(1 − d)`
-  scales population cap, mine rate and forest growth, while natural recovery
-  scales with `(1 − d)`.
+  goods consumption call `landDisturbAround` (`land.js`), so the source keeps
+  `LAND_WASTE_SOURCE_SHARE` of it and the rest lands on the walkable neighbours;
+  mines also add a spoil ring around the shaft. Waste then creeps outward with
+  `LAND_WASTE_SPREAD` over land only. Productivity `(1 − d)` scales population
+  cap, mine rate and forest growth, so a fully wasted cell has no carrying
+  capacity, while natural recovery scales with `(1 − d)`.
 - Biomass (`economy.js`) stays unconditional in Phase 0 and gains its CO2 growth
   gate in Phase 3: coal burning in settlements and factories adds CO2, forests
   consume CO2 to grow. Global oxygen tracking remains as in `plan-prototype.md`
@@ -87,7 +90,10 @@ fields (`territory.js`), disturbed fraction (`land.js`), biomass and oxygen
   from growth and migration. Market funds `money[i]` scale with `pop[i]` and
   recover over time, so larger settlements carry deeper purchasing power (draft
   4.4). Mine and factory cells (`MAPE_CELL_INDUSTRY`) hold resident workers and
-  count toward `totalPop` without acting as town markets.
+  count toward `totalPop` without acting as town markets. They hold no
+  settlement population: in Fluid field their `pop` is pinned to zero, in
+  Residents the crew standing there is workforce only — it never grows, wears no
+  town marker and never trades.
 - **Population `pop[i]`**: persons in cell `i`, range `0…120 × productivity[i]`.
 - **Items (`R = 4`)**: `COAL (0)`, `IRON (1)`, `GOODS (2)`, `CO2 (3)`. Coal fuels
   factories and settlements, releasing CO2; iron ore feeds factory construction
@@ -108,12 +114,13 @@ fields (`territory.js`), disturbed fraction (`land.js`), biomass and oxygen
   and iron factory recipe.
 - **Factory**: built over `MAPE_FACTORY_BUILD_SEC` (`20 s` default, `10–30 s`
   typical) while demanding iron; when active, runs
-  `coal + iron → 2 × coal goods + waste + CO2`, needs workforce, disturbs its cell.
+  `coal + iron → 2 × coal goods + waste + CO2`, needs workforce, and leaves
+  waste on its cell and the ring around it.
 - **Mine**: bound to a coal or iron deposit from `sites.js`. Starts locked with
   zero mined stock; once unlocked, injects workforce demand (`MAPE_MINE_WORKERS`),
   draws workers across walkable cells, extracts into local storage scaled by
   worker staffing (`workers / MAPE_MINE_WORKERS`, active at `≥ 0.1` workers), and
-  disturbs its cell.
+  drops a spoil ring beside the shaft.
 - **Forest**: biomass cell demanding and consuming local CO2 to grow (Phase 3).
 - **Job slots `jobNeed[i]`**: the factual workforce a cell asks for — unlocked
   mines, building and active factories. It never diffuses and drives the
@@ -148,14 +155,14 @@ MAPE_R = 4                       // coal, iron, goods, co2
 MAPE_SETTLE_TARGET = 0.02        // seeded fraction of cells with pop > 0 (~82)
 MAPE_SETTLE_MIN = 3              // min pop for active settlement market
 MAPE_HIRE_MIN_POP = 4            // min settlement pop to recruit a party member
-MAPE_POP_CAP = 120               // per-cell carrying cap at d = 0
+MAPE_POP_CAP = 120               // per-cell carrying cap at d = 0 (d = 1 holds nobody)
 MAPE_POP_SEED_MIN = 8            // seeded settlement persons, low
 MAPE_POP_SEED_MAX = 20           // seeded settlement persons, high
 MAPE_NEED_GOODS = 0.02           // signed reference goods need/person/s
 MAPE_NEED_COAL = 0.005           // signed reference coal need/person/s
 MAPE_MARKET_GOODS_USE = 0.024    // A/B household goods use/person/s
 MAPE_MARKET_COAL_USE = 0.03      // A/B household coal use/person/s
-MAPE_SETTLE_DISTURB = 0.0015     // disturbance per unit goods consumed
+MAPE_SETTLE_DISTURB = 0.003      // disturbance per unit goods consumed, spread around the cell
 MAPE_SAT_SCALE = 4                // satisfaction response timescale in seconds
 MAPE_DEMAND_GAIN = 8.0           // demand signal scale for unmet need rates
 MAPE_STOCK_SIGNAL = 0.25       // negative demand per stock unit per s
@@ -189,8 +196,13 @@ MAPE_FACTORY_COAL = 0.5          // coal consumed /s per active factory
 MAPE_FACTORY_IRON = 0.5          // iron consumed /s per active factory
 MAPE_FACTORY_YIELD = 1.0         // goods produced /s per active factory (feeds 50 pop)
 MAPE_FACTORY_CO2 = 0.5           // CO2 emitted /s per active factory
-MAPE_FACTORY_DISTURB = 0.0006    // disturbance /s while producing (outruns recovery)
+MAPE_FACTORY_DISTURB = 0.004     // disturbance /s while producing, spills onto neighbours
+MAPE_FACTORY_BUILD_DISTURB = 0.0015 // disturbance /s while building, spills onto neighbours
+MAPE_MINE_WASTE = 0.0016         // spoil /s on the ring of an active mine shaft
+LAND_WASTE_SOURCE_SHARE = 0.55   // share of a source's waste kept on its own cell
+LAND_WASTE_SPREAD = 0.0012       // landfill leachate mix per second over walkable land
 MAPE_MINE_RATE = 2.4             // resource extracted/s at full staff and productivity
+LAND_MINE_DISTURB_PER_UNIT = 0.00025 // disturbed fraction per extracted unit
 MAPE_WORKFORCE_PER_UNIT = 0.4    // transport effort / workforce per unit moved (diffusion)
 MAPE_WF_GEN = 0.05               // fluid model: fresh workforce per resident per second
 MAPE_WF_TIRE = 0.02              // fluid model: fresh → depleted rate /s (balance subject)
@@ -279,11 +291,12 @@ moving stocks or people:
    (`MAPE_WORK_SPEED`) up the `workforce` gradient.
 5. **Mines, factories and settlements.** Unlocked mines extract via `sitesExtract`
    at `MAPE_MINE_RATE * min(1, pop / MAPE_MINE_WORKERS) * productivity` (once
-   `pop ≥ MAPE_MINE_MIN_WORKERS`) into local `goods[res]` and disturb land.
-   Building factories consume iron (when `MAPE_GATE_ON_GOODS` is on) and advance
-   over `MAPE_FACTORY_BUILD_SEC`. Active factories consume coal and iron, emit
-   goods and CO2, and disturb land. Settlements consume goods (`MAPE_SETTLE_DISTURB`
-   waste) and coal (emitting CO2).
+   `pop ≥ MAPE_MINE_MIN_WORKERS`) into local `goods[res]` and leave waste on the
+   shaft and its ring. Building factories consume iron (when `MAPE_GATE_ON_GOODS`
+   is on) and advance over `MAPE_FACTORY_BUILD_SEC`. Active factories consume coal
+   and iron, emit goods and CO2, and leave waste around them. Settlements consume
+   goods (`MAPE_SETTLE_DISTURB` waste, spread around the cell) and coal (emitting
+   CO2). Wasted capacity then feeds back through step 7.
 6. **Forest CO2 uptake.** Growing biomass cells scale growth by
    `clamp(goods[CO2][i] / MAPE_FOREST_CO2_SCALE, 0, 1)` and deduct consumed CO2.
 7. **Population growth, migration and workforce update.**
@@ -298,7 +311,11 @@ Growth per tick:
 `pop += pop * (MAPE_GROWTH * sat - MAPE_DEATH * (1 - sat)) * s`, capped at
 `MAPE_POP_CAP * landProductivity(i)` in Residents mode; in Fluid field,
 settlement growth additionally respects landscape capacity without abruptly
-clamping an existing over-cap town. A supplied settlement doubles in ~90 s on
+clamping an existing over-cap town. Landfill waste therefore caps a settlement:
+every clamp pass pulls `pop` down to the wasted carrying capacity, and `d = 1`
+empties the cell. A dense supplied town outproduces natural recovery, so its own
+landfill keeps shrinking its capacity until its population settles at the lower
+cap; a village stays below `d = 0.25` and keeps growing. A supplied settlement doubles in ~90 s on
 1×; a completely unsupplied settlement halves in ~46 s.
 
 Residents-model migration per tick: positive edge flux across walkable 4-neighbours,
@@ -588,9 +605,12 @@ never has to be guessed from the colour. The survey opens at 4× on Amount →
 goods. Reference scenes open on paired coal fields and retain amount, demand
 and paired radios instead of hiding them.
 
-- **Population**: dark ground → warm ivory-gold (`sqrt` over
-  `MAPE_VIEW_POP_MAX` = 40), one bright dot per settlement instead of a shade
-  that disappears into the stock palette.
+- **Population**: empty cells keep a dim terrain tint (`RENDER_CIVIC_DIM`,
+  `RENDER_CIVIC_GAIN`) with water in navy, so a warm ivory-gold dot (`sqrt` over
+  `MAPE_VIEW_POP_MAX` = 40) reads as a settlement on a legible map instead of
+  disappearing into the black end of the population palette. This layer draws no
+  settlement rings or town labels — a ring would cover the very colour it
+  explains — and the legend drops its town key.
 - **Job slots**: dark → amber-gold by `jobNeed[i]` (`sqrt` over
   `MAPE_VIEW_JOB_MAX` = 8); mines show 6, active factories 8, buildings 4.
 - **Workforce pulls**: fresh and rest pull are drawn as demand with
@@ -693,8 +713,9 @@ growth and satisfaction-led migration; fluid workforce-boundary migration and sh
 
 Gate: supplied Diffusion settlements grow, unsupplied decline, no cell exceeds
 `MAPE_POP_CAP * productivity`, no NaN, small-village disturbance stays below
-`0.25` while dense-city disturbance exceeds it, goods/population ledgers balance,
-and total population stays bounded.
+`0.25` while dense-city disturbance exceeds it and spills onto its neighbours,
+a fully wasted cell holds no population, goods/population ledgers balance, and
+total population stays bounded.
 
 ### Phase 3 — Factories, mines and forest CO2 loop (diffusion)
 
@@ -743,14 +764,16 @@ Gate: runtime switches preserve the stock ledger, all engines pass `smoke` and
   mine, depleted pool returns to settlements, and a hamlet founds itself
   where depleted piles on high-value land (meadow or water-adjacent, never swamp).
   Switching to Residents replays the walking-workers model on the same seed.
-- Settlement dots read at ~2% density across walkable land, never on water; around
+- Settlement dots read at ~2% density across walkable land, never on water; the
+  population layer replaces town rings with their colour; around
   list shows nearest settlement distance and population. In Diffusion, stocked
   settlements grow and isolated ones shrink; A/B hold demographic growth and Residents migration, while Fluid settlement migration follows workforce flow.
 - Switching views `1`…`8` (click, fine-pointer hover, keys) updates the canvas;
   `0` or Amount + demand shows paired fields in the survey as well as the scenes.
   Each side has its own item picker; changing an item updates that side's map and
   legend. Returning to a non-field view restores the single map and hides the
-  item pickers. On the amount side, population shows persons per cell and
+  item pickers. On the amount side, population shows persons per cell over a dim
+  terrain tint, without settlement icons, and
   fresh/depleted show the workforce pools; on the demand side, jobs shows the
   slots that seed the pull, fresh shows the pull toward those slots, and
   depleted shows the rest pull toward settlements with room.

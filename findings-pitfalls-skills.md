@@ -122,3 +122,20 @@ silently destroys population while adding the seed to `popDelta`, and only shows
 large negative `pop_residual`. Any "place a new settlement" scan has to reject `pop > 0`:
 concentrating a pool (advection toward rest) makes a settlement's own cell exceed the
 threshold far more often than scattered diffusion did.
+
+## a field view whose ramp starts at black paints a black map
+
+`RENDER_POP_RAMP` begins at `(30, 26, 30)`, so every cell without population rendered as
+near-black while the few settlement cells were single bright pixels — the map read as
+"nothing there". Give a sparse field its own dim base (a fraction of the terrain colour, see
+`RENDER_CIVIC_DIM`/`RENDER_CIVIC_GAIN`) and blend the ramp on top, so empty land still shows
+coastlines and the data reads as dots. Also drop markers that cover the cell they explain:
+a settlement ring is larger than the town's own colour patch.
+
+## waste placed "around" a source must beat recovery on the ring
+
+Distributing a source's waste to its neighbours is useless while `LAND_RECOVERY` (~`2e-4`/s)
+is larger than the share each ring cell receives: the ring decays to zero every tick and only
+the source cell ever looks disturbed. Check the ring cell's rate, not the source's — a
+factory at `0.0006`/s gave each neighbour `1e-4`/s and left no trace. Mine spoil is emitted as
+a ring-only halo so the shaft keeps the productivity its yield multiplies by.

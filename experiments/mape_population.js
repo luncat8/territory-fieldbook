@@ -52,6 +52,7 @@ function validate(mode) {
 		assert.ok(mape.pop[supplied] > startSupplied, 'supplied settlement grows');
 		assert.ok(mape.pop[hungry] < startHungry, 'unsupplied settlement declines');
 		assert.ok(land.disturbed[supplied] < 0.25 && land.disturbed[dense] > 0.25, 'waste scales from a small village to a dense city');
+		assert.ok(land.disturbed[dense + 1] > 0.01, 'household waste settles on neighbouring land');
 	} else {
 		assert.ok(mape.massOut > 0, `${MAPE_ENGINE_NAME[mode]} consumes household stock`);
 	}
@@ -65,10 +66,19 @@ function validate(mode) {
 	assert.ok(mape.totalPop < world.n * MAPE_POP_CAP, 'population remains bounded');
 	assert.ok(Math.abs(mapeLedgerResidual()) < 1e-4);
 	assert.ok(Math.abs(mapePopResidual()) < 1e-3);
-	console.log(`engine=${MAPE_ENGINE_NAME[mode]} supplied=${startSupplied.toFixed(1)}->${mape.pop[supplied].toFixed(1)} unsupplied=${startHungry.toFixed(1)}->${mape.pop[hungry].toFixed(1)} dense_d=${land.disturbed[dense].toFixed(3)} small_d=${land.disturbed[supplied].toFixed(3)} residual=${mapeLedgerResidual().toExponential(1)}`);
+	console.log(`engine=${MAPE_ENGINE_NAME[mode]} supplied=${startSupplied.toFixed(1)}->${mape.pop[supplied].toFixed(1)} unsupplied=${startHungry.toFixed(1)}->${mape.pop[hungry].toFixed(1)} dense_d=${land.disturbed[dense].toFixed(3)} ring_d=${land.disturbed[dense + 1].toFixed(3)} small_d=${land.disturbed[supplied].toFixed(3)} residual=${mapeLedgerResidual().toExponential(1)}`);
 }
 
 for (const mode of [MAPE_ENGINE.DIFFUSION, MAPE_ENGINE.CATCHMENT, MAPE_ENGINE.QUEUE]) validate(mode);
+
+// A filled landfill leaves no carrying capacity for a settlement.
+const full = setup(MAPE_ENGINE.DIFFUSION);
+land.disturbed[full.dense] = 1;
+mapePopulationClamp();
+mapeRebuildSettlements();
+assert.equal(mape.pop[full.dense], 0, 'full waste leaves no settlement room');
+assert.ok(Math.abs(mapePopResidual()) < 1e-3, 'waste eviction stays on the population ledger');
+console.log(`waste_checks=pass empty_cell_pop=${mape.pop[full.dense]}`);
 
 const { supplied } = setup(MAPE_ENGINE.DIFFUSION);
 const destination = supplied + 1;

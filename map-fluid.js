@@ -207,13 +207,12 @@ function mapeFluidMigrate(dt) {
 // One hamlet per tick, at the deepest pool on settlement-worthy land.
 function mapeFluidSpawn(depleted, terrain) {
 	const n = world.n;
-	const exp = mape.cellExport;
 	let best = -1;
 	let bestPool = MAPE_WF_SPAWN;
 	for (let i = 0; i < n; i++) {
 		const pool = depleted[i];
 		if (pool <= bestPool) continue;
-		if (mape.pop[i] > 0 || terrain[i] === TERRAIN.WATER || (exp[i] & MAPE_CELL_INDUSTRY) !== 0) continue;
+		if (mape.pop[i] > 0 || terrain[i] === TERRAIN.WATER || mapeIsIndustry(i)) continue;
 		if (world.settleValue[i] < MAPE_WF_SPAWN_VALUE) continue;
 		best = i;
 		bestPool = pool;

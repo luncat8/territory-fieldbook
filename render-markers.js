@@ -152,7 +152,7 @@ function renderActorLabels(ctx, view) {
 	ctx.font = '500 14px ui-monospace, monospace';
 	ctx.textBaseline = 'middle';
 	ctx.textAlign = 'left';
-	if (render.showSettlements) {
+	if (render.showSettlements && renderSettlementIcons(view)) {
 		for (let k = 0; k < mape.settleCount; k++) renderActorLabel(ctx, mape.settleCells[k], renderMarkers.towns[k], false);
 	}
 	if (!render.showSources) return;

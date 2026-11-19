@@ -51,7 +51,7 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	random.js — seeded LCG streams for generation, sites, rivals.
 	world.js — 64x64 terrain grid, seeded generation, map queries.
 	events.js — event feed and status line.
-	land.js — disturbed fraction, productivity, recovery, restoration.
+	land.js — disturbed fraction, productivity, waste spreading, recovery, restoration.
 	economy.js — resources, recipes, biosphere, conservation ledger.
 	sites.js — site pool, discovery, claims, extraction, payouts.
 	map-economy.js — shared fields, settlement and market state, engine selection and ledgers.

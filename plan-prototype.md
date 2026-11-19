@@ -36,7 +36,7 @@ File map:
 | `random.js` | seeded LCG streams shared by generation, sites and rivals |
 | `world.js` | terrain grid, heightmap generation, map queries |
 | `events.js` | the event feed and the transient status line |
-| `land.js` | disturbed fraction, productivity, recovery, restoration |
+| `land.js` | disturbed fraction, productivity, waste spreading, recovery, restoration |
 | `economy.js` | resources, recipes, biosphere, conservation ledger |
 | `sites.js` | site pool, discovery, claims, extraction, site payouts |
 | `map-economy.js` | settlements, markets, demand/goods/workforce state, mines, factories (`plan-map-economy.md`) |
@@ -258,7 +258,10 @@ biosphere growth. Natural
 recovery runs at the terrain rate scaled by `(1 − d)`: the more disturbed a cell is, the
 slower it recovers, and fully disturbed land (`d = 1`) does not recover on its own.
 Active restoration costs 12 funds and 2 supplies and removes 0.25 `d` from the party's
-cell immediately.
+cell immediately. Waste from extraction, industry and households settles on the source and
+its walkable ring (`landDisturbAround`), then creeps to neighbouring land at
+`0.0012` mix/s; water holds no waste, and a cell at `d = 1` carries no settlement
+population.
 
 Appearance blends the terrain colour toward degraded brown by `d × 0.75`, and the disturbance
 view shows `d` directly.

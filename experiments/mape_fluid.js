@@ -158,6 +158,13 @@ check('population_ledger_balanced', Math.abs(mapePopResidual()) < 1e-3);
 	const starved = mape.factoryStarved[s];
 	for (let k = 0, steps = Math.round(3 / SIM_STEP_SEC); k < steps; k++) main.step(SIM_STEP_SEC);
 	check('factory_starves_without_inputs', mape.factoryStarved[s] > starved + 2 && mape.factoryGoods[s] === 0);
+
+	mapeSetWorkforceMode(MAPE_WORKFORCE_MODE.FLUID);
+	const industryPop = mape.pop[idx];
+	mape.pop[idx] = 5;
+	mape.popDelta += 5 - industryPop;
+	mapePopulationClamp();
+	check('industry_cell_holds_no_residents', mape.pop[idx] === 0);
 }
 
 // --- Section 3: hamlet spawning from pooled depleted workforce and terrain gates

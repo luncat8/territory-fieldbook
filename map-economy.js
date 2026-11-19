@@ -33,7 +33,7 @@ const MAPE_STORAGE_CAP = 96;
 const MAPE_WORKSHOP_CAP = 8;
 const MAPE_NEED_GOODS = 0.02;
 const MAPE_NEED_COAL = 0.005;
-const MAPE_SETTLE_DISTURB = 0.0015;
+const MAPE_SETTLE_DISTURB = 0.003;
 const MAPE_GROWTH = 0.008;
 const MAPE_DEATH = 0.015;
 const MAPE_MIGRATE = 0.01;
@@ -48,8 +48,8 @@ const MAPE_FACTORY_CO2 = 0.5;
 const MAPE_FACTORY_WORKERS = 8;
 const MAPE_FACTORY_BUILD_SEC = 20;
 const MAPE_FACTORY_YIELD = 1.0;
-const MAPE_FACTORY_DISTURB = 0.0006;
-const MAPE_FACTORY_BUILD_DISTURB = 0.0003;
+const MAPE_FACTORY_DISTURB = 0.004;
+const MAPE_FACTORY_BUILD_DISTURB = 0.0015;
 const MAPE_WORKFORCE_PER_UNIT = 0.4;
 const MAPE_CO2_INIT = 0.4;
 const MAPE_FOREST_CO2 = 0.004;
@@ -388,8 +388,12 @@ function mapeStep(seconds) {
 	if (seconds > 0) mapeStepDiffusion(seconds);
 }
 
+function mapeIsIndustry(idx) {
+	return idx >= 0 && (mape.cellExport[idx] & MAPE_CELL_INDUSTRY) !== 0;
+}
+
 function mapeIsSettlement(idx) {
-	return idx >= 0 && mape.pop[idx] >= MAPE_SETTLE_MIN && (mape.cellExport[idx] & MAPE_CELL_INDUSTRY) === 0;
+	return idx >= 0 && mape.pop[idx] >= MAPE_SETTLE_MIN && !mapeIsIndustry(idx);
 }
 
 function mapeNearestSettlement(x, y) {

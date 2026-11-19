@@ -26,7 +26,7 @@ function mapeUseDiffusionStock(dt) {
 	const pop = mape.pop;
 	for (let i = 0; i < world.n; i++) {
 		const p = pop[i];
-		if (p <= 0 || (mape.cellExport[i] & MAPE_CELL_INDUSTRY) !== 0) continue;
+		if (p <= 0 || mapeIsIndustry(i)) continue;
 		mapeUseLocalStock(MAPE_RES.GOODS, i, p * MAPE_NEED_GOODS * dt);
 		mapeUseLocalStock(MAPE_RES.COAL, i, p * MAPE_NEED_COAL * dt);
 	}
@@ -35,6 +35,13 @@ function mapeUseDiffusionStock(dt) {
 function mapePopulationRate(r) {
 	if (mape.engine === MAPE_ENGINE.DIFFUSION) return r === MAPE_RES.GOODS ? MAPE_NEED_GOODS : MAPE_NEED_COAL;
 	return r === MAPE_RES.GOODS ? MAPE_MARKET_GOODS_USE : MAPE_MARKET_COAL_USE;
+}
+
+// Waste cuts carrying capacity to zero; Fluid field also empties industry cells, while
+// Residents keeps the crew that walked to the site.
+function mapePopCapacity(i) {
+	if (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID && mapeIsIndustry(i)) return 0;
+	return MAPE_POP_CAP * landProductivity(i);
 }
 
 function mapePopulationAttract(i) {
@@ -53,8 +60,7 @@ function mapePopulationTransfer(a, b, dt, next) {
 	if (Math.abs(flux) <= 1e-9) return;
 	const src = flux > 0 ? a : b;
 	const dst = flux > 0 ? b : a;
-	const cap = MAPE_POP_CAP * landProductivity(dst);
-	const amount = Math.min(Math.abs(flux), next[src], cap - next[dst]);
+	const amount = Math.min(Math.abs(flux), next[src], mapePopCapacity(dst) - next[dst]);
 	if (amount <= 0) return;
 	const before = next[src] + next[dst];
 	next[src] -= amount;
@@ -85,7 +91,8 @@ function mapePopulationClamp() {
 	let changed = false;
 	for (let i = 0; i < world.n; i++) {
 		const before = pop[i];
-		const cap = MAPE_POP_CAP * landProductivity(i);
+		if (before <= 0) continue;
+		const cap = mapePopCapacity(i);
 		if (before <= cap) continue;
 		pop[i] = cap;
 		mape.popDelta += pop[i] - before;
@@ -113,7 +120,7 @@ function mapePopulationStep(dt) {
 		satCoal[i] += (c - satCoal[i]) * blend;
 		const goods = mape.usedGoods[i];
 		const coal = mape.usedCoal[i];
-		if (goods > 0) landDisturb(i, goods * MAPE_SETTLE_DISTURB);
+		if (goods > 0) landDisturbAround(i, goods * MAPE_SETTLE_DISTURB);
 		if (coal <= 0) continue;
 		const slot = MAPE_RES.CO2 * world.n + i;
 		const before = mape.goods[slot];
@@ -130,13 +137,12 @@ function mapePopulationStep(dt) {
 function mapePopulationGrowth(dt) {
 	const pop = mape.pop;
 	const terrain = world.terrain;
-	const disturbed = land.disturbed;
 	for (let i = 0; i < world.n; i++) {
 		const before = pop[i];
-		if (before <= 0 || terrain[i] === TERRAIN.WATER) continue;
+		if (before <= 0 || terrain[i] === TERRAIN.WATER || mapeIsIndustry(i)) continue;
 		const sat = 0.75 * mape.satGoods[i] + 0.25 * mape.satCoal[i];
 		const change = before * (MAPE_GROWTH * sat - MAPE_DEATH * (1 - sat)) * dt;
-		let cap = MAPE_POP_CAP * (1 - disturbed[i]);
+		let cap = mapePopCapacity(i);
 		if (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID && mapeIsSettlement(i)) cap = Math.max(before, mapeFluidCapacity(i));
 		pop[i] = Math.max(0, Math.min(cap, before + change));
 		mape.popDelta += pop[i] - before;

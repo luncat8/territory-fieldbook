@@ -3,6 +3,7 @@
 
 const MAPE_MINE_RATE = 2.4;
 const MAPE_MINE_MIN_WORKERS = 0.1;
+const MAPE_MINE_WASTE = 0.0016;
 const MAPE_WORKSHOP_RATE = 1.8;
 const MAPE_WORKSHOP_STOCK = 8;
 
@@ -137,7 +138,10 @@ function mapeStepMines(dt) {
 		if (workers < MAPE_MINE_MIN_WORKERS) continue;
 		const staff = workers >= MAPE_MINE_WORKERS ? 1 : workers / MAPE_MINE_WORKERS;
 		const units = sitesExtract(mape.mineSite[m], MAPE_MINE_RATE * staff * dt, -1);
+		if (units <= 0) continue;
 		mape.minedTotal += mapeProduceStock(mape.mineRes[m], idx, units);
+		// Spoil heaps land beside the shaft; the pit itself keeps the productivity its yield reads.
+		landDisturbRing(idx, MAPE_MINE_WASTE * dt);
 	}
 }
 
@@ -173,7 +177,7 @@ function mapeStepFactories(dt) {
 				mape.massOut += ironWant;
 				mape.factoryProgress[f] += staff * dt / MAPE_FACTORY_BUILD_SEC;
 				mape.factoryIron[f] = MAPE_FACTORY_BUILD_IRON * staff;
-				landDisturb(idx, MAPE_FACTORY_BUILD_DISTURB * staff * dt);
+				landDisturbAround(idx, MAPE_FACTORY_BUILD_DISTURB * staff * dt);
 			} else {
 				mape.factoryStarved[f] += dt;
 				mape.factoryIron[f] = 0;
@@ -205,7 +209,7 @@ function mapeStepFactories(dt) {
 		goods[goodsOff + idx] = before + made;
 		goods[co2Off + idx] += co2;
 		mape.massIn += made + co2;
-		landDisturb(idx, MAPE_FACTORY_DISTURB * staff * k * dt);
+		landDisturbAround(idx, MAPE_FACTORY_DISTURB * staff * k * dt);
 		mape.factoryCoal[f] = MAPE_FACTORY_COAL * staff * k;
 		mape.factoryIron[f] = MAPE_FACTORY_IRON * staff * k;
 		mape.factoryGoods[f] = MAPE_FACTORY_YIELD * staff * k;

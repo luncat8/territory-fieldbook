@@ -209,7 +209,7 @@ function sitesExtract(i, amount, owner) {
 	sites.remainingStock -= units;
 	const res = sites.res[i];
 	const impact = res === RES.FUEL || res === RES.ORE ? LAND_MINE_DISTURB_PER_UNIT : LAND_DISTURB_PER_UNIT;
-	landDisturb(idx, units * impact);
+	landDisturbAround(idx, units * impact);
 	economyAccountMining(units);
 	if (owner === FACTION_PLAYER) economyAddResource(res, units * EXTRACT_SHARE);
 	if (owner >= 0) sitesClaim(i, owner);

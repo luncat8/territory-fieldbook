@@ -139,7 +139,8 @@ function hudPaintStockLegend(refs, style, scale) {
 
 function hudPaintLegendKey(refs, item, demand, style) {
 	const resource = item <= MAPE_RES.CO2;
-	let key = render.showSettlements ? '○ Settlement' : '';
+	const towns = render.showSettlements && item !== MAPE_VIEW_ITEM.POPULATION;
+	let key = towns ? '○ Settlement' : '';
 	const showSource = render.showSources && resource && (item === MAPE_RES.GOODS || !demand || style !== RENDER_STYLE.A);
 	if (showSource && item !== MAPE_RES.CO2) {
 		const source = item === MAPE_RES.GOODS ? '◇ Workshop' : style === RENDER_STYLE.A ? '■ Mine' : style === RENDER_STYLE.B ? '◆ Mine' : '▲ Mine';
@@ -168,7 +169,7 @@ function hudUpdateInspect() {
 		'\nCell ' + x + ',' + y + ' · ' + TERRAIN_NAME[world.terrain[idx]] +
 		' · pop ' + mape.pop[idx].toFixed(1) + ' · jobs ' + mape.jobNeed[idx].toFixed(0) +
 		' · pull ' + mape.workforce[idx].toFixed(2) + (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID ? ' · rest ' + mape.wfRestPull[idx].toFixed(2) : '') +
-		' · settle ' + world.settleValue[idx].toFixed(2);
+		' · settle ' + world.settleValue[idx].toFixed(2) + ' · waste ' + Math.round(100 * land.disturbed[idx]) + '%';
 	for (let r = 0; r < MAPE_R; r++) {
 		const slot = r * n + idx;
 		text += (r % 2 === 0 ? '\n' : ' · ') + MAPE_RES_NAME[r] +

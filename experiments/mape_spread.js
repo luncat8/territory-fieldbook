@@ -178,6 +178,20 @@ const metrics = vm.runInThisContext(`
 		};
 	}
 
+	// Same gas run with and without a water column: water must not slow the spread.
+	function measureGasParity() {
+		function plume(crossWater) {
+			blankMap();
+			if (crossWater) for (let y = 0; y < size; y++) world.terrain[idx(32, y)] = TERRAIN.WATER;
+			for (let i = 0; i < n; i++) mape.goods[MAPE_RES.CO2 * n + i] = (i % size) < 32 ? 2.0 : 0.1;
+			for (let s = 0; s < 100; s++) mapeStep(dt);
+			return mape.goods[MAPE_RES.CO2 * n + idx(34, 32)];
+		}
+		const dry = plume(false);
+		const wet = plume(true);
+		return { dry, wet, ratio: wet / dry };
+	}
+
 	// Verifies coal discovery -> worker demand -> worker diffusion -> mining -> settlement & factory delivery.
 	// Residents model: workers physically walk; the fluid variant is covered in mape_fluid.js.
 	function measureCoalLoop() {
@@ -264,6 +278,7 @@ const metrics = vm.runInThisContext(`
 	const spread = measureSpread();
 	const iso = measureIsotropy();
 	const water = measureWater();
+	const gasParity = measureGasParity();
 	const coal = measureCoalLoop();
 
 	main.setup(START_SEED, '', 0, MAPE_ENGINE.DIFFUSION);
@@ -350,7 +365,7 @@ const metrics = vm.runInThisContext(`
 		}
 	}
 
-	return Object.assign({}, spread, iso, water, coal, {
+	return Object.assign({}, spread, iso, water, gasParity, coal, {
 		realMinePop, realMined, realMineStock, nearCoalBefore, nearCoalAfter, realLedgerRes, realPopRes, badValues,
 		liveMs, scaling
 	});
@@ -405,6 +420,7 @@ console.log('real_map_mine_pop=' + metrics.realMinePop.toFixed(2) +
 	' ledger_res=' + metrics.realLedgerRes.toFixed(6) +
 	' pop_res=' + metrics.realPopRes.toFixed(6) +
 	' bad_values=' + metrics.badValues);
+console.log('gas_parity_dry=' + metrics.dry.toFixed(4) + ' wet=' + metrics.wet.toFixed(4) + ' ratio=' + metrics.ratio.toFixed(4));
 console.log('tick_live_64_r4_ms=' + metrics.liveMs.toFixed(4));
 for (const row of metrics.scaling) {
 	console.log('bench_s' + row.size + '_r' + row.r + '_ms=' + row.ms.toFixed(4));
@@ -417,7 +433,8 @@ check('arrival_20cell', metrics.midBeforeStore > 0 && metrics.midZeroSec > 0 && 
 check('isotropy', Math.abs(metrics.arriveRatio - 1) <= 0.15 && Math.abs(metrics.valRatio - 1) <= 0.15);
 check('water_blocks_materials', metrics.waterMatLeak === 0 && metrics.eastGoodsDemand === 0 && metrics.eastIronStock === 0 && metrics.eastPop === 0);
 check('co2_crosses_water', metrics.waterCo2 > 10 && metrics.eastCo2Gain > 5 && Math.abs(metrics.eastCo2DemandFromWest) > 0.05);
-	check('water_routing', metrics.routedBuyerGoods + metrics.routedBuyerUse > 0.5);
+	check('gas_crosses_water_at_land_rate', metrics.ratio > 0.9 && metrics.ratio < 1.1);
+check('water_routing', metrics.routedBuyerGoods + metrics.routedBuyerUse > 0.5);
 check('locked_mine_idle', metrics.preUnlocked === 0 && metrics.preMineWork === 0 && metrics.preMinePop === 0 && metrics.preMined === 0 && metrics.minedBeforeWorkers === 0);
 check('coal_workers_demand', metrics.tUnlock > 0 && metrics.peakMineWork > 1 && metrics.tWorkAtS1 > 0 && metrics.tWorkAtS1 < 15);
 check('workers_diffuse_to_mine', metrics.tWorkerAtMine > 0 && metrics.chainMinePop >= 3 && metrics.chainFacPop >= 2);
