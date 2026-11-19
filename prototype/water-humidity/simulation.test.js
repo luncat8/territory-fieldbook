@@ -216,13 +216,16 @@ test('localized rain keeps land channelized; uniform rain floods it', () => {
 });
 
 test('rivers persist and still discharge into the sea', () => {
-	const model = coast(120);
+	// Stable lake leveling fills upstream storage without numerical surges to the coast.
+	const model = coast(240);
 	let channels = 0;
 	let rainyChannels = 0;
 	for (let i = 0; i < model.n; i++) {
 		if (model.sea[i] || model.water[i] <= RIVER_LEVEL) continue;
+		// Deep, slow lake water is not a demand-emitting river.
+		if (model.fluxRate[i] / (model.water[i] + model.params.groupSpeedEps) < model.params.groupSpeedRef) continue;
 		channels++;
-		if (model.group[i] > 0.4) rainyChannels++;
+		if (model.group[i] > RAIN_G_MIN) rainyChannels++;
 	}
 	assert.ok(channels > 40, 'no channels survived: ' + channels);
 	assert.ok(rainyChannels > channels * 0.5, 'channels lost their grouping demand');
@@ -279,4 +282,35 @@ test('WET_LEVEL and RIVER_LEVEL are ordered and used by the metrics', () => {
 	assert.ok(r.landCells > 0 && r.landCells < model.n);
 	assert.ok(r.wetFraction >= 0 && r.wetFraction <= 1);
 	assert.ok(r.riverShare >= 0 && r.riverShare <= 1);
+});
+
+test('lake ripples decay without alternating depth or creating water', () => {
+	for (const depth of [0.42, 1, 2]) {
+		for (const dt of [WATER_DT / 2, WATER_DT, WATER_DT * 2]) {
+			const model = new WaterLab({ width: 12, height: 12, scenario: 'blank', params: { flowK: 400 } });
+			model.grouping = false;
+			model.sea.fill(0);
+			model.elev.fill(0.5);
+			model.filled.fill(0.5);
+			for (let i = 0; i < model.n; i++) {
+				const parity = ((i % model.width) + Math.floor(i / model.width)) % 2;
+				model.water[i] = depth + (parity ? -0.01 : 0.01);
+			}
+			const before = sum(model.water);
+			let previousError = Infinity;
+			for (let step = 0; step < 80; step++) {
+				model.transportWater(dt);
+				let error = 0;
+				for (let i = 0; i < model.n; i++) {
+					assert.ok(Math.abs(model.water[i] - depth) <= 0.010000001, 'ripple amplified');
+					error += (model.water[i] - depth) ** 2;
+				}
+				assert.ok(error <= previousError + 1e-14, 'lake variance grew');
+				previousError = error;
+				if (step === 0) assert.ok(model.water[26] >= depth - 1e-12, 'high cell overshot equilibrium');
+			}
+			assert.ok(previousError < 1e-6, 'lake did not settle');
+			assert.ok(Math.abs(sum(model.water) - before) < 1e-9, 'leveling changed water mass');
+		}
+	}
 });

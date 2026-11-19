@@ -223,11 +223,19 @@ class WaterLab {
 		const mi = this.mobile[i];
 		const mj = this.mobile[j];
 		if (mi <= 0 && mj <= 0) return;
-		const dh = this.pot[i] - this.pot[j];
+		const p = this.params;
+		const groundI = this.filled[i] - (1 - p.fillMix) * (this.filled[i] - this.elev[i]);
+		const groundJ = this.filled[j] - (1 - p.fillMix) * (this.filled[j] - this.elev[j]);
+		const dh = groundI - groundJ;
+		const ds = this.pot[i] - this.pot[j] - dh;
 		const dg = this.group[j] - this.group[i];
 		let f = 0;
 		if (dh > 0) f += k * mi * dh;
 		else if (dh < 0) f -= k * mj * -dh;
+		// Bound only lake leveling: four neighbours must not over-correct a depth ripple.
+		const levelLimit = p.surfacePull > 0 ? 0.125 / p.surfacePull : Infinity;
+		if (ds > 0) f += Math.min(k * mi, levelLimit) * ds;
+		else if (ds < 0) f -= Math.min(k * mj, levelLimit) * -ds;
 		if (dg > 0) f += kg * mi * dg;
 		else if (dg < 0) f -= kg * mj * -dg;
 		if (f === 0) return;
