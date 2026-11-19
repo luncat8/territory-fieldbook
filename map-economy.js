@@ -79,6 +79,8 @@ const mape = {
 	goodsNext: null,
 	flowX: null,
 	flowY: null,
+	wfFlowX: null,
+	wfFlowY: null,
 	flowDt: 0,
 	demandView: null,
 	goodsView: null,
@@ -90,6 +92,8 @@ const mape = {
 	wfDepletedNext: null,
 	wfRestPull: null,
 	wfRestPullNext: null,
+	wfMigration: null,
+	wfBalance: null,
 	fluidRested: 0,
 	fluidTired: 0,
 	fluidSpent: 0,
@@ -146,8 +150,10 @@ function mapeInit(mode, fixedResidents = false) {
 		mape.goods = new Float64Array(MAPE_R * n);
 		mape.goodsNext = new Float64Array(MAPE_R * n);
 		mape.marketSignal = new Float32Array(MAPE_R * n);
-		mape.flowX = new Float32Array(MAPE_R * n);
-		mape.flowY = new Float32Array(MAPE_R * n);
+		mape.flowX = new Float32Array(MAPE_VIEW_ITEM.DEPLETED * n + n);
+		mape.flowY = new Float32Array(MAPE_VIEW_ITEM.DEPLETED * n + n);
+		mape.wfFlowX = [mape.flowX.subarray(MAPE_VIEW_ITEM.FRESH * n, (MAPE_VIEW_ITEM.FRESH + 1) * n), mape.flowX.subarray(MAPE_VIEW_ITEM.DEPLETED * n)];
+		mape.wfFlowY = [mape.flowY.subarray(MAPE_VIEW_ITEM.FRESH * n, (MAPE_VIEW_ITEM.FRESH + 1) * n), mape.flowY.subarray(MAPE_VIEW_ITEM.DEPLETED * n)];
 		mape.workforce = new Float32Array(n);
 		mape.workforceNext = new Float32Array(n);
 		mape.wfFresh = new Float32Array(n);
@@ -156,6 +162,8 @@ function mapeInit(mode, fixedResidents = false) {
 		mape.wfDepletedNext = new Float32Array(n);
 		mape.wfRestPull = new Float32Array(n);
 		mape.wfRestPullNext = new Float32Array(n);
+		mape.wfMigration = new Float32Array(n);
+		mape.wfBalance = new Float32Array(n);
 		mape.usedGoods = new Float64Array(n);
 		mape.usedCoal = new Float64Array(n);
 		mape.satGoods = new Float32Array(n);
@@ -190,7 +198,7 @@ function mapeReset() {
 	mape.flowDt = 0;
 	mape.workforce.fill(0);
 	mape.workforceNext.fill(0);
-	for (const field of ['wfFresh', 'wfFreshNext', 'wfDepleted', 'wfDepletedNext', 'wfRestPull', 'wfRestPullNext']) mape[field].fill(0);
+	for (const field of ['wfFresh', 'wfFreshNext', 'wfDepleted', 'wfDepletedNext', 'wfRestPull', 'wfRestPullNext', 'wfMigration', 'wfBalance']) mape[field].fill(0);
 	for (const field of ['fluidRested', 'fluidTired', 'fluidSpent', 'fluidSpawned']) mape[field] = 0;
 	for (const field of ['usedGoods', 'usedCoal', 'satGoods', 'satCoal', 'jobNeed', 'cellExport', 'money',
 		'factoryState', 'factoryProgress', 'factoryStarved', 'factoryCoal', 'factoryIron', 'factoryGoods', 'factoryCo2', 'mineUnlocked']) mape[field].fill(0);
@@ -249,7 +257,12 @@ function mapeSetWorkforceMode(mode) {
 	if (mode === mape.workforceMode || (mode !== MAPE_WORKFORCE_MODE.RESIDENTS && mode !== MAPE_WORKFORCE_MODE.FLUID)) return false;
 	// Residents ignore the pools, so their rest pull must not linger on the demand side.
 	mape.workforceMode = mode;
-	if (mode === MAPE_WORKFORCE_MODE.RESIDENTS) mape.wfRestPull.fill(0);
+	mape.wfMigration.fill(0);
+	mape.wfBalance.fill(0);
+	if (mode === MAPE_WORKFORCE_MODE.RESIDENTS) {
+		mape.wfRestPull.fill(0);
+		for (let k = 0; k < 2; k++) { mape.wfFlowX[k].fill(0); mape.wfFlowY[k].fill(0); }
+	}
 	return true;
 }
 

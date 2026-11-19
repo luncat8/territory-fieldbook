@@ -21,6 +21,7 @@ function setup(mode) {
 	sites.stock.fill(0);
 	sites.claim.fill(0);
 	sites.initialStock = sites.remainingStock = 0;
+	mapeSetWorkforceMode(MAPE_WORKFORCE_MODE.RESIDENTS);
 	mapeInit(mode);
 	mape.surplusFeedback = false;
 	const supplied = 20 * world.size + 20;

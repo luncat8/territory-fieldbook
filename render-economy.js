@@ -182,7 +182,7 @@ function renderEconomyOverlays(ctx, view) {
 	const item = renderViewItem(view);
 	if (view === VIEW.DEMAND && render.showContours && item <= MAPE_RES.CO2) renderDemandContours(ctx);
 	if (render.showGrid) ctx.drawImage(renderEconomy.grid, 0, 0);
-	if (view === VIEW.AMOUNT && mape.viewItem < MAPE_RES.CO2) renderGoodsFlow(ctx);
+	if (view === VIEW.AMOUNT && renderHasFlowItem(mape.viewItem)) renderGoodsFlow(ctx);
 }
 
 function renderDemandContours(ctx) {
@@ -259,8 +259,12 @@ function renderFlowBand(ctx, time, min, max, bright) {
 	ctx.stroke();
 }
 
+function renderHasFlowItem(item) {
+	return item < MAPE_RES.CO2 || (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID && (item === MAPE_VIEW_ITEM.FRESH || item === MAPE_VIEW_ITEM.DEPLETED));
+}
+
 function renderGoodsFlow(ctx) {
-	if (!render.showFlow || mape.viewItem >= MAPE_RES.CO2 || mape.flowDt <= 0) return;
+	if (!render.showFlow || !renderHasFlowItem(mape.viewItem) || mape.flowDt <= 0) return;
 	// Accepted transfers share simulation time; pausing freezes both animation and stock.
 	const time = (clock.seconds + clock.acc) * 0.73;
 	const low = mape.flowDt * 0.06;

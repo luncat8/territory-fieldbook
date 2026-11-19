@@ -127,7 +127,7 @@ fields (`territory.js`), disturbed fraction (`land.js`), biomass and oxygen
   generates fresh workforce at population cells, advects it up the pull, and
   recycles it through depleted workforce and settlements.
 - **Rest pull `wfRestPull[i]`**: fluid model. Settlement cells advertise their
-  free capacity (`1 − pop / (MAPE_POP_CAP × productivity)`); the signal decays
+  absolute free capacity (`max(0, MAPE_POP_CAP × settleValue × productivity − pop) / MAPE_POP_CAP`); the signal decays
   at `MAPE_WF_REST_DECAY` and diffuses over walkable cells, so exhausted
   workers are drawn home. Full settlements advertise nothing.
 
@@ -199,9 +199,12 @@ MAPE_WF_FLOW = 1.8               // fluid model: fresh advection rate /s up the 
 MAPE_WF_GRAD_REF = 0.03          // fluid model: Michaelis-Menten half saturation for advection
 MAPE_WF_SPEND = 1.0              // fluid model: fresh consumed per need per second by jobs
 MAPE_WF_REST = 0.05              // fluid model: depleted absorbed per free person per second
-MAPE_WF_RETURN = 0.8             // fluid model: depleted advection rate /s up the rest pull
+MAPE_WF_RETURN = 1.8             // fluid model: depleted advection rate /s up the rest pull
+MAPE_WF_REST_GRAD_REF = 0.005   // fluid model: rest pull gradient half saturation
 MAPE_WF_REST_SIGNAL = 0.9        // fluid model: rest pull relaxation per second at settlements
-MAPE_WF_REST_DECAY = 0.20        // fluid model: rest pull decay per s (reach ≈ 2 cells)
+MAPE_WF_REST_DECAY = 0.02        // fluid model: rest pull decay per s (uses MAPE_DIFFUSE for reach)
+MAPE_WF_MIGRATION_TIME = 10      // seconds of exponential smoothing for net workforce flow
+MAPE_WF_MIGRATION_SHARE = 0.1    // fraction of net flow reflected in population per second
 MAPE_WF_SPAWN = 10               // fluid model: pooled depleted that spawns a settlement
 MAPE_WF_SPAWN_VALUE = 0.35       // fluid model: min settlement location value to spawn
 MAPE_CO2_INIT = 0.4              // ambient CO2 per land cell at start
@@ -221,11 +224,12 @@ State:
 - `demand, demandNext: Float32Array(R * N)` — double-buffered pull (signed or bounded).
 - `goods, goodsNext: Float64Array(R * N)` — double-buffered physical stock / CO2.
 - `marketSignal: Float32Array(R * N)` — smoothed target per settlement and item.
-- `flowX, flowY: Float32Array(R * N)` — net accepted shipments per cell and tick;
-  outflow magnitude is divided by `flowDt` for the display rate.
+- `flowX, flowY: Float32Array(8 * N)` — net accepted shipments per cell and tick;
+  outflow magnitude is divided by `flowDt` for the display rate. Fresh and depleted slots record accepted advection; depleted also includes its diffusive outflow.
 - `workforce, workforceNext: Float32Array(N)` — diffused job pull and scratch.
 - `wfFresh, wfDepleted: Float32Array(N)` (+ `wfFreshNext, wfDepletedNext`) —
   fluid model pools: available workforce and exhausted workforce.
+- `wfMigration, wfBalance: Float32Array(N)` — smoothed and current net workforce flow for population migration.
 - `wfRestPull, wfRestPullNext: Float32Array(N)` — fluid model settlement rest
   pull; double-buffered so the diffusion pass ends in `wfRestPull`.
 - `workforceMode`: `FLUID` (default) or `RESIDENTS`; independent of `engine`.
@@ -292,10 +296,12 @@ satisfaction is `sat = 0.75 * satG + 0.25 * satC` (clamped `0…1`).
 
 Growth per tick:
 `pop += pop * (MAPE_GROWTH * sat - MAPE_DEATH * (1 - sat)) * s`, capped at
-`MAPE_POP_CAP * landProductivity(i)`. A supplied settlement doubles in ~90 s on
+`MAPE_POP_CAP * landProductivity(i)` in Residents mode; in Fluid field,
+settlement growth additionally respects landscape capacity without abruptly
+clamping an existing over-cap town. A supplied settlement doubles in ~90 s on
 1×; a completely unsupplied settlement halves in ~46 s.
 
-Migration per tick: positive edge flux across walkable 4-neighbours,
+Residents-model migration per tick: positive edge flux across walkable 4-neighbours,
 `MAPE_MIGRATE * (pop[i] - pop[j]) * 0.5 + MAPE_MIGRATE_BIAS * pop[i] * (attract[j] - attract[i])`,
 where `attract` combines satisfaction and unmet `workforce`. Water never receives
 migrants.
@@ -306,13 +312,15 @@ closing `factory → jobs → migration → production`. Diffusion is the refere
 population lifecycle: it applies growth, decline and attraction-biased migration.
 Catchment A and Queue B record household intake and apply its waste/emissions, but
 hold demographic growth and satisfaction-led migration for stable routing comparisons;
-shared job staffing remains active.
+shared job staffing remains active. In Fluid field mode, smoothed net workforce
+movement drives settlement population in all engines, including test scenes; it
+replaces the separate edge-migration rule. Diffusion growth and decline still apply.
 
 ## Workforce models
 
 `mape.workforceMode` selects how jobs are staffed. Everything else — the
-`workforce` pull field, goods routing, satisfaction, growth, metabolism and
-waste — is shared. An HUD **workforce** segment switches the model at any time
+`workforce` pull field, goods routing, satisfaction, metabolism and
+waste — is shared. Migration differs by model. An HUD **workforce** segment switches the model at any time
 without touching stocks, population or clock; the pull field keeps diffusing in
 both models.
 
@@ -343,17 +351,27 @@ Per-cell pools `wfFresh` and `wfDepleted`; no residents ever walk to work:
    workers leave tired. Output staffing reads pooled fresh workforce at the
    site, so production ramps as workers arrive instead of on demand alone.
 5. Settlement cells relax `wfRestPull` toward their free capacity
-   (`1 − pop / (MAPE_POP_CAP × landProductivity)`, `MAPE_WF_REST_SIGNAL`) and
+   (`max(0, MAPE_POP_CAP × world.settleValue × landProductivity − pop) / MAPE_POP_CAP`, `MAPE_WF_REST_SIGNAL`) and
    the signal diffuses over walkable cells with `MAPE_WF_REST_DECAY`, so each
-   town advertises a compact gradient a couple of cells wide. Depleted advects up this pull at
-   `MAPE_WF_RETURN`, slower than fresh, so tired workers walk home.
+   town advertises a longer-range gradient. Depleted advects up this pull at
+   `MAPE_WF_RETURN`, with a rest gradient reference of 0.005, so tired workers can walk home from distant jobs.
 6. Settlements absorb `wfDepleted` at `MAPE_WF_REST` per free person
-   (`MAPE_POP_CAP × landProductivity − pop`) and return it as `wfFresh` —
+   (`max(0, MAPE_POP_CAP × world.settleValue × landProductivity − pop)`) and return it as `wfFresh` —
    workers rest at home. A settlement at its cap absorbs nothing and
    advertises no rest pull, so nothing drains into it. Depleted also spreads
    between cells at `MAPE_WF_DIFFUSE`, slower than goods, so tired workers
    linger at the job that spent them until the rest pull wins.
-7. If no settlement drains a cell, depleted pooling crosses `MAPE_WF_SPAWN`:
+7. Each settlement exponentially averages its net workforce rate (depleted
+   incoming minus outgoing fresh and depleted workforce crossing its cell boundary) over `MAPE_WF_MIGRATION_TIME`. Population changes
+   by `MAPE_WF_MIGRATION_SHARE` of that average per second: a persistent net
+   outward movement gradually shrinks a town and reduces subsequent generation; a net
+   inward movement grows it up to its landscape capacity. This is an approximate flow
+   signal, not a one-person-per-unit conservation rule. Local generation, tiring and rest do not count as crossings. Existing towns above
+   capacity are not abruptly deleted or allowed to grow further; settlement
+   counts and the population ledger update after each change. Model switches
+   clear the average. The test scenes start fluid towns at 60 residents on
+   meadow so they have room, while Residents scenes retain 100.
+8. If no settlement drains a cell, depleted pooling crosses `MAPE_WF_SPAWN`:
    the cell becomes a new settlement (pop `MAPE_POP_SEED_MIN`, market funds and
    starter stock as if seeded), the pool is debited by `MAPE_WF_SPAWN`, and the
    spawn event is logged. Spawn requires empty land (`pop = 0`),
@@ -370,8 +388,8 @@ found themselves.
 
 `world.settleValue[i]` (0…1) ranks how much room a cell offers a settlement.
 Computed from terrain and the four neighbours once per world generation or
-scene setup, shown in the inspector (`settle 0.80`) and used by the Fluid
-field spawn gate (`MAPE_WF_SPAWN_VALUE`):
+scene setup, shown in the inspector (`settle 0.80`) and used for fluid
+settlement capacity, rest pull and the spawn gate (`MAPE_WF_SPAWN_VALUE`):
 
 | value | cells |
 |---|---|
@@ -391,8 +409,8 @@ draft's design intent (a tree line is the best non-waterfront site); the
 spawn gate works without it. Map-border cells do not inherit water credit;
 adjacency requires an actual water cell.
 
-Initial ~2% settlement seeding is unchanged; the values shape where fluid-field
-spawning (and later, planned placement) puts new settlements.
+Initial ~2% settlement seeding is unchanged. In Fluid field mode these values
+set settlement room and govern spawning; placement remains a later subject.
 
 ## Job-site inspection
 
@@ -671,7 +689,7 @@ Deliverable: measured goods + coal satisfaction, Diffusion-engine growth/decline
 productivity-scaled cap, satisfaction/workforce-biased migration, settlement
 goods→waste and coal→CO2, and `experiments/mape_population.js` over `120 s`.
 Catchment A and Queue B record intake and emissions while holding demographic
-growth and satisfaction-led migration; shared job staffing remains active.
+growth and satisfaction-led migration; fluid workforce-boundary migration and shared job staffing remain active.
 
 Gate: supplied Diffusion settlements grow, unsupplied decline, no cell exceeds
 `MAPE_POP_CAP * productivity`, no NaN, small-village disturbance stays below
@@ -727,7 +745,7 @@ Gate: runtime switches preserve the stock ledger, all engines pass `smoke` and
   Switching to Residents replays the walking-workers model on the same seed.
 - Settlement dots read at ~2% density across walkable land, never on water; around
   list shows nearest settlement distance and population. In Diffusion, stocked
-  settlements grow and isolated ones shrink; A/B hold demographic growth and migration.
+  settlements grow and isolated ones shrink; A/B hold demographic growth and Residents migration, while Fluid settlement migration follows workforce flow.
 - Switching views `1`…`8` (click, fine-pointer hover, keys) updates the canvas;
   `0` or Amount + demand shows paired fields in the survey as well as the scenes.
   Each side has its own item picker; changing an item updates that side's map and

@@ -123,7 +123,7 @@ function mapePopulationStep(dt) {
 	if (mapePopulationClamp()) mapeRebuildSettlements();
 	if (mape.fixedResidents || mape.engine !== MAPE_ENGINE.DIFFUSION) return;
 	mapePopulationGrowth(dt);
-	mapePopulationMigration(dt);
+	if (mape.workforceMode === MAPE_WORKFORCE_MODE.RESIDENTS) mapePopulationMigration(dt);
 	mapeRebuildSettlements();
 }
 
@@ -136,7 +136,8 @@ function mapePopulationGrowth(dt) {
 		if (before <= 0 || terrain[i] === TERRAIN.WATER) continue;
 		const sat = 0.75 * mape.satGoods[i] + 0.25 * mape.satCoal[i];
 		const change = before * (MAPE_GROWTH * sat - MAPE_DEATH * (1 - sat)) * dt;
-		const cap = MAPE_POP_CAP * (1 - disturbed[i]);
+		let cap = MAPE_POP_CAP * (1 - disturbed[i]);
+		if (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID && mapeIsSettlement(i)) cap = Math.max(before, mapeFluidCapacity(i));
 		pop[i] = Math.max(0, Math.min(cap, before + change));
 		mape.popDelta += pop[i] - before;
 	}

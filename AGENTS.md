@@ -77,7 +77,7 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	hud-scenes.js — scene controls, readouts and actor tools.
 	actions.js — player verbs spanning features (move, work, sell, hire, restore, declare).
 	experiments/ — smoke (sim), dom_smoke + dom_fixture (boot/UI), map_views (display),
-	mape_compare (engines), mape_scenes (scenes), mape_population (settlements), mape_fluid (workforce); never loaded by the page.
+	mape_compare (engines), mape_scenes (scenes), mape_population (settlements), mape_fluid (workforce), mape_fluid_migration (capacity and migration); never loaded by the page.
 - new code goes to its owner, never appended "because the file is already there". no owner exists -> new file + header + map entry.
 - file > ~500 lines = defect. split by feature within the same plan.
 - moves are pure moves: contiguous ranges, snap to enclosing declarations, no behavior change.

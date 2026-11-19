@@ -247,7 +247,7 @@ function mapeDiffuseFields(dt, marketsOnly) {
 }
 
 // Normalized gradient g_k / (gSum + ref) keeps steady speed across 20 cells and around water.
-function mapePushUpGradient(x, y, i, p, size, terrain, field, next, budget, gradRef, cap, disturbed, flowX, flowY) {
+function mapePushUpGradient(x, y, i, p, size, terrain, field, next, budget, gradRef, cap, disturbed, flowX, flowY, workforceBalance) {
 	const water = TERRAIN.WATER;
 	const end = size - 1;
 	const cur = field[p];
@@ -262,6 +262,12 @@ function mapePushUpGradient(x, y, i, p, size, terrain, field, next, budget, grad
 	const right = gR > 0 ? mapeApplyTransfer(next, p, p + 1, gR * scale, cap > 0 ? cap * (1 - disturbed[i + 1]) : 0) : 0;
 	const up = gU > 0 ? mapeApplyTransfer(next, p, p - size, gU * scale, cap > 0 ? cap * (1 - disturbed[i - size]) : 0) : 0;
 	const down = gD > 0 ? mapeApplyTransfer(next, p, p + size, gD * scale, cap > 0 ? cap * (1 - disturbed[i + size]) : 0) : 0;
+	if (workforceBalance) {
+		mapeFluidRecordMove(i, i - 1, left);
+		mapeFluidRecordMove(i, i + 1, right);
+		mapeFluidRecordMove(i, i - size, up);
+		mapeFluidRecordMove(i, i + size, down);
+	}
 	if (flowX) {
 		flowX[p] = right - left;
 		flowY[p] = down - up;

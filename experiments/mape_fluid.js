@@ -42,15 +42,15 @@ function check(name, value) {
 	console.log('check_' + name + '=' + (value ? 'pass' : 'fail'));
 }
 
-// --- Section 1: fluid staffing in scene A (CATCHMENT holds demographics, isolating job pull)
+// --- Section 1: fluid staffing and workforce-linked migration in scene A
 main.setup(START_SEED, 'a', 0, MAPE_ENGINE.CATCHMENT);
 activateFluid();
 const seededFresh = poolSums().fresh; // day-one pool seeded from pop at setup
 const minedBefore = mape.minedTotal;
 let genAcc = 0;
 for (let k = 0, steps = Math.round(150 / SIM_STEP_SEC); k < steps; k++) {
-	main.step(SIM_STEP_SEC);
 	genAcc += popSum() * MAPE_WF_GEN * SIM_STEP_SEC;
+	main.step(SIM_STEP_SEC);
 }
 const pools = poolSums();
 const poolResidual = pools.fresh + pools.depleted + MAPE_WF_SPAWN * mape.fluidSpawned - genAcc - seededFresh;
@@ -64,6 +64,54 @@ check('settlements_rest_depleted', mape.fluidRested > 0);
 check('pool_conserved', Math.abs(poolResidual) < 0.5);
 check('goods_ledger_balanced', Math.abs(mapeLedgerResidual()) < 1e-3);
 check('population_ledger_balanced', Math.abs(mapePopResidual()) < 1e-3);
+
+// Return from a distant job on open land, and stop resting when the town is full.
+{
+	main.setup(START_SEED, 'a', 0, MAPE_ENGINE.CATCHMENT);
+	world.terrain.fill(TERRAIN.MEADOW);
+	mape.pop.fill(0);
+	const town = 32 * world.size + 32;
+	const job = town + 8;
+	mape.pop[town] = 1;
+	mape.settleCells[0] = town;
+	mape.settleCount = 1;
+	mape.wfRestPull.fill(0);
+	mape.wfDepleted.fill(0);
+	mape.wfFresh.fill(0);
+	for (let k = 0; k < 2000; k++) mapeFluidRestPull(0.05, world.size, world.terrain);
+	mape.wfDepleted[job] = 10;
+	let directional = false;
+	const before = mape.fluidRested;
+	for (let k = 0; k < 2000; k++) {
+		mape.wfFlowX[1].fill(0);
+		mape.wfFlowY[1].fill(0);
+		mapeFluidAdvectDepleted(0.05, world.size, world.terrain, mape.wfDepleted, mape.wfDepletedNext);
+		if (mape.wfFlowX[1][job] < 0) directional = true;
+		mapeFluidDiffuse(0.05, world.size, world.terrain, mape.wfDepleted, mape.wfDepletedNext);
+		mapeFluidRest(0.05, mape.wfDepleted, mape.wfFresh);
+	}
+	console.log('return_log=distance_cells 8 rested ' + (mape.fluidRested - before).toFixed(3));
+	check('distant_depleted_returns_and_rests', mape.fluidRested - before > 1);
+	check('return_flow_points_home', directional);
+	mape.pop[town] = mapeFluidCapacity(town);
+	mape.wfDepleted[town] = 2;
+	mapeFluidRest(1, mape.wfDepleted, mape.wfFresh);
+	check('full_town_does_not_rest', mape.wfDepleted[town] === 2);
+	mape.workforce.fill(0);
+	mape.workforce[town + 1] = 1;
+	mape.wfFresh.fill(0);
+	mape.wfFresh[town] = 10;
+	mape.wfFlowX[0].fill(0);
+	mapeFluidAdvect(0.05, world.size, world.terrain, mape.workforce, mape.wfFresh, mape.wfFreshNext);
+	check('fresh_flow_records_accepted_transfer', mape.wfFlowX[0][town] > 0 && Math.abs(mape.wfFlowX[0][town] - mape.wfFresh[town + 1]) < 1e-6);
+	mape.wfDepleted.fill(0);
+	mape.wfDepleted[town] = 10;
+	mape.wfFlowX[1].fill(0);
+	mape.wfFlowY[1].fill(0);
+	mapeFluidDiffuse(0.05, world.size, world.terrain, mape.wfDepleted, mape.wfDepletedNext);
+	check('diffusion_flow_records_outward_transfer', mape.wfFlowX[1][town + 1] > 0 && mape.wfFlowX[1][town - 1] < 0);
+
+}
 
 // --- Section 2: factory runtime — active production, construction, starvation
 {

@@ -8,12 +8,24 @@ const MAPE_WF_FLOW = 1.8;
 const MAPE_WF_GRAD_REF = 0.03;
 const MAPE_WF_SPEND = 1.0;
 const MAPE_WF_REST = 0.05;
-const MAPE_WF_RETURN = 0.8;
+const MAPE_WF_RETURN = 1.8;
+const MAPE_WF_REST_GRAD_REF = 0.005;
 const MAPE_WF_REST_SIGNAL = 0.9;
-const MAPE_WF_REST_DECAY = 0.20;
+const MAPE_WF_REST_DECAY = 0.02;
 const MAPE_WF_SPAWN = 10;
 const MAPE_WF_SPAWN_VALUE = 0.35;
 const MAPE_WF_EPS = 1e-6;
+const MAPE_WF_MIGRATION_TIME = 10;
+const MAPE_WF_MIGRATION_SHARE = 0.1;
+
+function mapeFluidCapacity(i) {
+	return MAPE_POP_CAP * world.settleValue[i] * landProductivity(i);
+}
+
+function mapeFluidFreeSpace(i) {
+	const free = mapeFluidCapacity(i) - mape.pop[i];
+	return free > 1e-5 ? free : 0;
+}
 
 function mapeFluidGenerate(dt, terrain, pop, fresh) {
 	const n = world.n;
@@ -36,7 +48,7 @@ function mapeFluidAdvect(dt, size, terrain, pull, fresh, freshNext) {
 		for (let x = 0; x < size; x++) {
 			const i = row + x;
 			if (terrain[i] === water || freshNext[i] <= MAPE_WF_EPS) continue;
-			mapePushUpGradient(x, y, i, i, size, terrain, pull, freshNext, fresh[i] * frac, MAPE_WF_GRAD_REF, 0, null);
+			mapePushUpGradient(x, y, i, i, size, terrain, pull, freshNext, fresh[i] * frac, MAPE_WF_GRAD_REF, 0, null, mape.wfFlowX[0], mape.wfFlowY[0], true);
 		}
 	}
 	fresh.set(freshNext);
@@ -106,6 +118,16 @@ function mapeDepletedPass(src, dst, size, terrain, mix) {
 				if (y < end && terrain[i + size] !== water) delta += src[i + size] - cur;
 			}
 			dst[i] = cur + mix * delta;
+			const left = x > 0 && terrain[i - 1] !== water ? Math.max(0, cur - src[i - 1]) * mix : 0;
+			const right = x < end && terrain[i + 1] !== water ? Math.max(0, cur - src[i + 1]) * mix : 0;
+			const up = y > 0 && terrain[i - size] !== water ? Math.max(0, cur - src[i - size]) * mix : 0;
+			const down = y < end && terrain[i + size] !== water ? Math.max(0, cur - src[i + size]) * mix : 0;
+			mape.wfFlowX[1][i] += right - left;
+			mape.wfFlowY[1][i] += down - up;
+			mapeFluidRecordMove(i, i - 1, left);
+			mapeFluidRecordMove(i, i + 1, right);
+			mapeFluidRecordMove(i, i - size, up);
+			mapeFluidRecordMove(i, i + size, down);
 		}
 	}
 }
@@ -122,15 +144,13 @@ function mapeFluidDiffuse(dt, size, terrain, depleted, depletedNext) {
 // Rest pull: settlements with room advertise it; depleted follows this gradient home.
 function mapeFluidRestPull(dt, size, terrain) {
 	const pull = mape.wfRestPull;
-	const pop = mape.pop;
 	const response = 1 - Math.exp(-MAPE_WF_REST_SIGNAL * dt);
 	for (let k = 0; k < mape.settleCount; k++) {
 		const i = mape.settleCells[k];
-		const cap = MAPE_POP_CAP * landProductivity(i);
-		const target = cap > 0 ? Math.max(0, 1 - pop[i] / cap) : 0;
+		const target = mapeFluidFreeSpace(i) / MAPE_POP_CAP;
 		pull[i] += (target - pull[i]) * response;
 	}
-	mapeDiffuseSlice(pull, mape.wfRestPullNext, 0, size, terrain, true, MAPE_WF_DIFFUSE, MAPE_WF_REST_DECAY, dt);
+	mapeDiffuseSlice(pull, mape.wfRestPullNext, 0, size, terrain, true, MAPE_DIFFUSE, MAPE_WF_REST_DECAY, dt);
 }
 
 function mapeFluidAdvectDepleted(dt, size, terrain, depleted, depletedNext) {
@@ -142,18 +162,17 @@ function mapeFluidAdvectDepleted(dt, size, terrain, depleted, depletedNext) {
 		for (let x = 0; x < size; x++) {
 			const i = row + x;
 			if (terrain[i] === TERRAIN.WATER || depletedNext[i] <= MAPE_WF_EPS) continue;
-			mapePushUpGradient(x, y, i, i, size, terrain, mape.wfRestPull, depletedNext, depleted[i] * frac, MAPE_WF_GRAD_REF, 0, null);
+			mapePushUpGradient(x, y, i, i, size, terrain, mape.wfRestPull, depletedNext, depleted[i] * frac, MAPE_WF_REST_GRAD_REF, 0, null, mape.wfFlowX[1], mape.wfFlowY[1], true);
 		}
 	}
 	depleted.set(depletedNext);
 }
 
 function mapeFluidRest(dt, depleted, fresh) {
-	const pop = mape.pop;
 	let rested = 0;
 	for (let k = 0; k < mape.settleCount; k++) {
 		const i = mape.settleCells[k];
-		const free = MAPE_POP_CAP * landProductivity(i) - pop[i];
+		const free = mapeFluidFreeSpace(i);
 		if (free <= 0) continue;
 		const take = Math.min(depleted[i], MAPE_WF_REST * free * dt);
 		if (take <= 0) continue;
@@ -162,6 +181,27 @@ function mapeFluidRest(dt, depleted, fresh) {
 		rested += take;
 	}
 	mape.fluidRested += rested;
+}
+
+function mapeFluidRecordMove(src, dst, amount) {
+	if (amount <= 0) return;
+	if (mapeIsSettlement(src)) mape.wfBalance[src] -= amount;
+	if (mapeIsSettlement(dst)) mape.wfBalance[dst] += amount;
+}
+
+function mapeFluidMigrate(dt) {
+	const blend = 1 - Math.exp(-dt / MAPE_WF_MIGRATION_TIME);
+	for (let k = 0; k < mape.settleCount; k++) {
+		const i = mape.settleCells[k];
+		const rate = mape.wfMigration[i] + (mape.wfBalance[i] / dt - mape.wfMigration[i]) * blend;
+		mape.wfMigration[i] = rate;
+		const before = mape.pop[i];
+		const change = rate * MAPE_WF_MIGRATION_SHARE * dt;
+		mape.pop[i] = Math.max(0, Math.min(Math.max(before, mapeFluidCapacity(i)), before + change));
+		mape.popDelta += mape.pop[i] - before;
+		if (mape.pop[i] < MAPE_SETTLE_MIN) mape.wfMigration[i] = 0;
+	}
+	mapeRebuildSettlements();
 }
 
 // One hamlet per tick, at the deepest pool on settlement-worthy land.
@@ -196,6 +236,7 @@ function mapeFluidStep(dt) {
 	const terrain = world.terrain;
 	const fresh = mape.wfFresh;
 	const depleted = mape.wfDepleted;
+	mape.wfBalance.fill(0);
 	mapeFluidGenerate(dt, terrain, mape.pop, fresh);
 	mapeFluidAdvect(dt, size, terrain, mape.workforce, fresh, mape.wfFreshNext);
 	mapeFluidTire(dt, fresh, depleted);
@@ -204,6 +245,7 @@ function mapeFluidStep(dt) {
 	mapeFluidAdvectDepleted(dt, size, terrain, depleted, mape.wfDepletedNext);
 	mapeFluidDiffuse(dt, size, terrain, depleted, mape.wfDepletedNext);
 	mapeFluidRest(dt, depleted, fresh);
+	mapeFluidMigrate(dt);
 	mapeFluidSpawn(depleted, terrain);
 }
 

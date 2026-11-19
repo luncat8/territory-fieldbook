@@ -50,7 +50,7 @@ function hudSetLook(style) {
 
 function hudDisplayEnabled(scope) {
 	const field = renderIsFieldView(render.view);
-	const amount = renderHasAmount() && mape.viewItem < MAPE_RES.CO2;
+	const amount = renderHasAmount() && renderHasFlowItem(mape.viewItem);
 	if (scope === 'amount') return amount;
 	if (scope === 'flow') return amount && render.showFlow;
 	if (scope === 'demand') return (render.view === VIEW.DEMAND || renderIsPaired()) && mape.viewItemDemand <= MAPE_RES.CO2;

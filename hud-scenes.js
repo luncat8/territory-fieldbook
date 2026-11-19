@@ -75,6 +75,9 @@ function hudSceneInspect(el) {
 	const p = MAPE_RES.COAL * world.n + idx;
 	text += '\nCell ' + x + ',' + y + ' · settle ' + world.settleValue[idx].toFixed(2) + ' · stock ' + mape.goods[p].toFixed(2) + ' · pull ' + mape.demand[p].toFixed(3) +
 		'\nNet flow ' + hudFlowRate(p).toFixed(2) + '/s';
+	if (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID && mapeIsSettlement(idx)) {
+		text += '\nPopulation ' + mape.pop[idx].toFixed(1) + ' · room ' + mapeFluidFreeSpace(idx).toFixed(1) + ' / ' + mapeFluidCapacity(idx).toFixed(1) + ' · migration signal ' + hudSigned(mape.wfMigration[idx] * MAPE_WF_MIGRATION_SHARE) + '/s';
+	}
 	if (mape.engine !== MAPE_ENGINE.DIFFUSION && mapeIsSettlement(idx)) {
 		text += ' · target ' + Math.round(100 * mapeMarketPull(MAPE_RES.COAL, idx)) + '% of hungry pull';
 	}

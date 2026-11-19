@@ -9,7 +9,7 @@ const HUD_ENGINE_NOTE = [
 
 const MAPE_WORKFORCE_NOTE = [
 	'Residents walk to jobs up the pull.',
-	'Fresh workforce flows to jobs and returns exhausted; full settlements stop draining it, so it pools into new hamlets.'
+	'Fresh workforce travels to jobs and returns exhausted. Towns gain or lose population gradually with the balance; full towns stop accepting it.'
 ];
 
 const hudEconomy = { radios: [], workforceRadios: [], noteEl: null, workforceNoteEl: null, inspectEl: null, pressureEl: null, primary: null, secondary: null, statsEl: null, jobsiteEl: null };
@@ -68,6 +68,7 @@ function hudSetEngine(mode) {
 function hudSetWorkforce(mode) {
 	actionsSetWorkforceMode(mode);
 	hudSyncWorkforce();
+	hudDisplaySync();
 }
 
 function hudSyncWorkforce() {
@@ -175,6 +176,7 @@ function hudUpdateInspect() {
 	}
 	if (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID) {
 		text += '\nfresh ' + mape.wfFresh[idx].toFixed(1) + ' · depleted ' + mape.wfDepleted[idx].toFixed(1);
+		if (mapeIsSettlement(idx)) text += '\nSettlement room ' + mapeFluidFreeSpace(idx).toFixed(1) + ' / ' + mapeFluidCapacity(idx).toFixed(1) + ' · migration signal ' + hudSigned(mape.wfMigration[idx] * MAPE_WF_MIGRATION_SHARE) + '/s';
 	}
 	if (mape.engine !== MAPE_ENGINE.DIFFUSION && mapeIsSettlement(idx)) {
 		text += '\nImport pull · coal ' + Math.round(100 * mapeMarketPull(MAPE_RES.COAL, idx)) +
@@ -182,7 +184,7 @@ function hudUpdateInspect() {
 	}
 	const lock = mapeDepositState(x, y);
 	if (lock >= 0) text += '\nDeposit ' + hudMineText(lock, idx);
-	if (renderHasAmount() && mape.viewItem < MAPE_RES.CO2) {
+	if (renderHasAmount() && renderHasFlowItem(mape.viewItem)) {
 		text += '\nNet flow ' + hudFlowRate(mape.viewItem * n + idx).toFixed(2) + '/s';
 	}
 	hudEconomy.inspectEl.textContent = text;

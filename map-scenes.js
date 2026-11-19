@@ -17,6 +17,7 @@ const MAPE_SCENE_LAYOUTS = {
 };
 const MAPE_SCENE_TOOLS = ['Inspect', 'Mine', 'Settlement', 'Erase', 'Factory'];
 const MAPE_SCENE_POP = 100;
+const MAPE_SCENE_FLUID_POP = 60;
 
 const mapScene = { id: '', tool: 0 };
 
@@ -43,7 +44,7 @@ function mapSceneWorld(seed) {
 function mapSceneSeed() {
 	const layout = MAPE_SCENE_LAYOUTS[mapScene.id];
 	for (const [x, y] of layout.mines) mapSceneAddMine(y * world.size + x);
-	for (const [x, y] of layout.towns) mapePlaceSettlement(y * world.size + x, MAPE_SCENE_POP, false);
+	for (const [x, y] of layout.towns) mapePlaceSettlement(y * world.size + x, (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID ? MAPE_SCENE_FLUID_POP : MAPE_SCENE_POP), false);
 	eventsReset();
 }
 
@@ -81,7 +82,7 @@ function mapSceneEdit(x, y) {
 	} else {
 		if (town || mine >= 0 || mapeFactoryAt(x, y) >= 0) return eventsStatus('This cell already has an actor.');
 		if (mapScene.tool === 1 && !mapSceneAddMine(idx)) return eventsStatus('No room for another mine.');
-		if (mapScene.tool === 2) mapePlaceSettlement(idx, MAPE_SCENE_POP, false);
+		if (mapScene.tool === 2) mapePlaceSettlement(idx, (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID ? MAPE_SCENE_FLUID_POP : MAPE_SCENE_POP), false);
 		if (mapScene.tool === 4 && !mapSceneAddFactory(idx)) return eventsStatus('No room for another factory.');
 		eventsStatus(MAPE_SCENE_TOOLS[mapScene.tool] + ' placed at ' + x + ',' + y + '.');
 	}

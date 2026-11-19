@@ -263,6 +263,11 @@ Easier path to a working full loop: one 4-connected cell pass handles coal, iron
 Direct foundation for sites: the pop/demand/goods/workforce/money arrays, factory/mine/storage pools, settlement markets, deposit unlock rules, construction timer, waste, ledger, views, HUD inspector, scenario scripts, and atmospheric CO2 diffusion all carry straight into P4; sites swaps only goods routing and factory placement scoring.
 Solves shared pitfalls early: catches town-to-settlement market balance, water-isolated regions, cold-start supply, duplicate builds during the 20 s build lag, settlement waste vs land.js recovery, conservation residuals, and tick budget without confounding every pass with two half-built engines.
 
+#### CO2
+
+CO2 O2 gas diffusion dont blocked by water
+
+
 #### time units
 
 i dislike "construction 24h".
@@ -297,18 +302,26 @@ previous task was
 both supply and demand should have both workforce fresh and depleted. and better rename 'supply' to amount or value. if i understand properly all these arrays belongs to 'supply' is factual amount of items in cells, but 'demand' is just gradients for movement. this will be clear and understandable.
 
 current visual observation at commit 33f2b2ac370c3103a41c2d41b7277075b829c594
-
-now 
 on amount tab:
 	fresh and depleted looks good
-	population - i expect population of settlement as color but map looks black or i dont see it.
+	population - i expect population of settlement as color but map looks black or i dont see it good, probably settlment ico should not drawn on this view mode, but only population color.
 
 on demand  tab:
-workforce - what is it for? looks like leftover or agent something not properly implement
 fresh depleted - i am not sure it is proper work or proper colored. i expect big demand of fresh if factory and big demand of depleted in settlements. in case they are not full.
 
+i think demand of depleted workforce should be proportional to settlement free space that is depends to map landscape as we told near water and meadow give biggest room for settlement.
+improve this behavior.
+this is how population migrate and some settlement growth.
+think should we preserve population == workforce, or do some average. i think average is better so gradually if settlement dispatch more workforce then receive it loose population. less population - less send workforce on map.
 
-small improvement above canvas caption 'Amount · depleted' add 'workforce' because user doubt what is depleted or fresh.
+#### waste
+waste area landfills should decrease settlement capacity. 100% waste - 0 population.
+factories, mines and settlement place waste around it.
+factories, mines - no settlement (0 population) in their cells.
+
+#### GUI
+
+above canvas caption like 'Amount · workforce depleted' with info
 
 ### 4.2 Layers
 

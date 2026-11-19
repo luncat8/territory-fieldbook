@@ -59,6 +59,13 @@ run('hud.itemRadios[5].click()');
 check('amount_fresh_legend', elements.get('ui-map-layer').textContent === 'Amount · workforce · fresh' && elements.get('ui-map-unit').textContent === 'Workforce pool / cell' && elements.get('ui-map-range').textContent === 'log 0 → 20');
 run('hud.itemRadios[6].click()');
 check('amount_depleted_legend', elements.get('ui-map-layer').textContent === 'Amount · workforce · depleted' && elements.get('ui-map-range').textContent === 'log 0 → 20');
+check('depleted_flow_controls_enabled', !elements.get('ui-flow').disabled && !elements.get('ui-flow-motion').disabled);
+run('hud.itemRadios[5].click()');
+check('fresh_flow_controls_enabled', !elements.get('ui-flow').disabled);
+run('hudEconomy.workforceRadios[0].click()');
+check('resident_pools_have_no_flow_controls', elements.get('ui-flow').disabled);
+run('hudEconomy.workforceRadios[1].click()');
+check('fluid_flow_controls_restore', !elements.get('ui-flow').disabled);
 check('amount_worker_fields', run('renderItemField(MAPE_VIEW_ITEM.FRESH, false) === mape.wfFresh && renderItemField(MAPE_VIEW_ITEM.DEPLETED, false) === mape.wfDepleted && renderItemField(MAPE_VIEW_ITEM.POPULATION, false) === mape.pop'));
 run('hud.itemRadios[0].click()');
 run('hud.demandItemRadios[4].click()');
@@ -164,6 +171,11 @@ run('clock.speed = 0; render.ctx.trace.length = 0; renderGoodsFlow(render.ctx)')
 check('paused_flow_freezes', pausedTrace === run('render.ctx.trace.join()'));
 run('mape.flowX.fill(0); render.ctx.trace.length = 0; renderGoodsFlow(render.ctx)');
 check('arrows_require_accepted_transfers', run('render.ctx.trace.length === 0'));
+
+run('mape.viewItem = MAPE_VIEW_ITEM.FRESH; mape.flowX[MAPE_VIEW_ITEM.FRESH * world.n] = 0.1; render.ctx.trace.length = 0; renderGoodsFlow(render.ctx)');
+check('fresh_flow_draws', run('render.ctx.trace.length > 0'));
+run('mape.viewItem = MAPE_VIEW_ITEM.DEPLETED; mape.flowX[MAPE_VIEW_ITEM.DEPLETED * world.n] = 0.1; render.ctx.trace.length = 0; renderGoodsFlow(render.ctx)');
+check('depleted_flow_draws', run('render.ctx.trace.length > 0'));
 
 for (const scene of ['a', 'b']) {
 	boot('?scene=' + scene);
