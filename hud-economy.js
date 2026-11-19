@@ -99,7 +99,11 @@ function hudPaintFieldLegend(refs, demand) {
 	const style = render.fieldStyle;
 	const scale = 'ui-scale look-' + style;
 	refs.layer.textContent = (demand ? 'Demand · ' : 'Amount · ') + MAPE_VIEW_ITEM_LABEL[item];
-	if (item >= MAPE_VIEW_ITEM.WASTE) {
+	if (item === MAPE_VIEW_ITEM.WATER || item === MAPE_VIEW_ITEM.HUMIDITY) {
+		refs.unit.textContent = item === MAPE_VIEW_ITEM.WATER ? 'Water depth / cell' : 'Air moisture / cell';
+		refs.scale.className = scale;
+		refs.range.textContent = item === MAPE_VIEW_ITEM.WATER ? 'Land: 0 → 1+ · linear' : '0 → 0.4+ · linear';
+	} else if (item >= MAPE_VIEW_ITEM.WASTE) {
 		refs.unit.textContent = 'Cell coverage / fraction';
 		refs.scale.className = scale;
 		refs.range.textContent = '0 → 100% · linear';
@@ -270,7 +274,9 @@ function hudUpdateWorkforce() {
 }
 
 function hudForestReadout(idx) {
-	return '\nHumidity ' + Math.round(world.humidity[idx] * 100) + '% · forest ' +
+	const model = hydrology.model;
+	return '\nWater ' + model.water[idx].toFixed(2) + ' · air ' + model.humidity[idx].toFixed(3) +
+		'\nSoil moisture ' + Math.round(hydrology.soil[idx] * 100) + '% · forest ' +
 		(economy.biomass[idx] * 100).toFixed(1) + '% · growth ' +
 		hudSigned(economyForestRate(idx, mape.goodsView[MAPE_RES.CO2][idx]) * 100) + '%/s';
 }

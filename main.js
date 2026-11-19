@@ -28,6 +28,7 @@ function mainSetup(seed = START_SEED, scene = '', fill = 0, mode = mapSceneEngin
 	mapScene.id = scene;
 	if (scene) mapSceneWorld(seed);
 	else worldGenerate(seed);
+	hydrologyInit();
 	landInit();
 	economyInit();
 	eventsReset();
@@ -53,6 +54,7 @@ function mainSetup(seed = START_SEED, scene = '', fill = 0, mode = mapSceneEngin
 function mainStep(seconds) {
 	clock.seconds += seconds;
 	if (!mapScene.id) {
+		hydrologyStep(seconds);
 		partyStep(seconds);
 		investigationStep(seconds);
 		sitesStep(seconds);

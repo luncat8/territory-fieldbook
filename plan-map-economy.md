@@ -78,7 +78,14 @@ fields (`territory.js`), disturbed fraction (`land.js`), biomass and oxygen
   cap, mine rate and forest growth, so a fully wasted cell has no carrying
   capacity, while natural recovery scales with `(1 − d)`.
 - Forest cover (`economy.biomass`) is a property of every non-water cell, not
-  a generated terrain class. `world.humidity` is a fixed 0–1 moisture field.
+  a generated terrain class. Root-zone moisture starts at the seeded climate/elevation
+  baseline. Survey hydrology advances one fixed 0.05 s water-lab step per 0.2 sim-seconds:
+  springs feed downhill channels, the sea and land evaporate into moving air, and
+  moisture condenses over persistent flow. Surface water never replaces terrain.
+  Soil is a 0–1 suitability input, not another conserved water stock. It relaxes 2.5%
+  toward a local target each weather step: baseline plus bounded recharge from air,
+  standing water and bank seepage. Hills retain less recharge than meadows. Flat
+  reference scenes hold soil at 0.5 and do not advance weather.
   Each shared economy substep runs the forest cycle in every engine, including scenes.
   Coal burning emits CO2; forest growth removes it and dieback returns it.
   Oxygen production/use follows the signed carbon exchange.
@@ -122,7 +129,7 @@ fields (`territory.js`), disturbed fraction (`land.js`), biomass and oxygen
   draws workers across walkable cells, extracts into local storage scaled by
   worker staffing (`workers / MAPE_MINE_WORKERS`, active at `≥ 0.1` workers), and
   drops a spoil ring beside the shaft.
-- **Forest**: continuous cell cover responding to humidity, CO2 and waste (section 3.1).
+- **Forest**: continuous cell cover responding to soil moisture, CO2 and waste (section 3.1).
 - **Job slots `jobNeed[i]`**: the factual workforce a cell asks for — unlocked
   mines, building and active factories. It never diffuses and drives the
   `jobs` display layer.
@@ -299,7 +306,7 @@ moving stocks or people:
    and iron, emit goods and CO2, and leave waste around them. Settlements consume
    goods (`MAPE_SETTLE_DISTURB` waste, spread around the cell) and coal (emitting
    CO2). Wasted capacity then feeds back through step 7.
-6. **Forest carbon cycle (3.1).** For local stock `c`, humidity `h`, cover `b`
+6. **Forest carbon cycle (3.1).** For local stock `c`, soil moisture `h`, cover `b`
    and waste `d`, width `w = 0.055 + 0.38c/(c+0.25)` and target cover
    `max(0, 1−abs(h−0.5)/w) × c/(c+0.025) × (1−d)`.
    Signed growth is `0.08 × (target−b)` per sim-second. Positive growth is
@@ -308,7 +315,7 @@ moving stocks or people:
    both directions. Bare cells can establish trees without an existing seed cell.
    Initial cover is 65% of the target at CO2=0.4. Thus change is visible within
    10–30 sim-seconds; high CO2 expands the humidity niche, low CO2 narrows it.
-   Amount selectors include waste, forest and humidity with fixed linear 0–100%
+   Amount selectors include waste, forest and soil moisture with fixed linear 0–100%
    legends; these layers have no transport flow. Inspectors show cover and signed
    growth in percentage points/s. Terrain shading follows live cover.
 7. **Population growth, migration and workforce update.**
@@ -819,8 +826,10 @@ Gate: runtime switches preserve the stock ledger, all engines pass `smoke` and
 ### 3.1 Manual forest/waste pass
 
 - On Amount, select waste: towns and factories leave visible patches; water stays empty.
-- Pair forest amount with CO2 demand, then compare forest with humidity: cover
+- Pair forest amount with CO2 demand, then compare forest with soil moisture: cover
   should change within a few real seconds at 4× and favour intermediate moisture.
+- Switch between surface water, air humidity and soil moisture. Compare a channel
+  bank with a hilltop; wet ground should not change the coastline or block travel.
 - Hover cells: signed forest growth should include both positive and negative rates.
 - Pause: forest, CO2 and flow stop together; resume and switch engines without reset.
 - In scenes A/B, select forest or waste from the amount controls; replay resets cover.

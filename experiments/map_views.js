@@ -51,14 +51,18 @@ run('hud.viewRadios[VIEW.PAIRED].click()');
 check('paired_radio_draws_both', run('renderIsPaired() && drawViews.join(":") === [VIEW.AMOUNT, VIEW.DEMAND].join(":")') && !elements.get('ui-demand-map').hidden && /ui-paired/.test(elements.get('ui-app').className));
 run('hud.itemRadios[MAPE_RES.COAL].click(); hud.demandItemRadios[0].click()');
 check('paired_item_legends', elements.get('ui-map-layer').textContent === 'Amount · coal' && elements.get('ui-demand-layer').textContent === 'Demand · coal');
-check('amount_chips', run('MAPE_VIEW_AMOUNT_IDS.join() === "0,1,2,3,4,5,7,8,9,10" && hud.itemRadios.length === 10'));
+check('amount_chips', run('MAPE_VIEW_AMOUNT_IDS.join() === "0,1,2,3,4,5,7,8,9,10,11,12" && hud.itemRadios.length === 12'));
 check('demand_chips', run('MAPE_VIEW_DEMAND_IDS.join() === "0,1,2,3,6,5,7" && hud.demandItemRadios.length === 7'));
-for (const item of ['WASTE', 'FOREST', 'HUMIDITY']) {
+for (const item of ['WASTE', 'FOREST', 'SOIL']) {
 	run('hudSetAmountItem(MAPE_VIEW_ITEM.' + item + ')');
 	check('environment_' + item.toLowerCase() + '_legend', elements.get('ui-map-range').textContent === '0 → 100% · linear');
 	check('environment_' + item.toLowerCase() + '_no_flow', elements.get('ui-flow').disabled);
 }
 
+for (const [item, range] of [['HUMIDITY', '0 → 0.4+ · linear'], ['WATER', 'Land: 0 → 1+ · linear']]) {
+	run('hudSetAmountItem(MAPE_VIEW_ITEM.' + item + '); renderDraw()');
+	check('weather_' + item.toLowerCase(), elements.get('ui-map-range').textContent === range && elements.get('ui-flow').disabled);
+}
 run('hud.itemRadios[4].click()');
 check('amount_population_legend', elements.get('ui-map-layer').textContent === 'Amount · population' && elements.get('ui-map-unit').textContent === 'Persons / cell' && elements.get('ui-map-range').textContent === '0 → 40 · sqrt');
 run('hud.itemRadios[5].click()');

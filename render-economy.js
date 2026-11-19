@@ -107,7 +107,9 @@ function renderViewItem(view) {
 function renderItemField(item, demand) {
 	if (item === MAPE_VIEW_ITEM.WASTE) return land.disturbed;
 	if (item === MAPE_VIEW_ITEM.FOREST) return economy.biomass;
-	if (item === MAPE_VIEW_ITEM.HUMIDITY) return world.humidity;
+	if (item === MAPE_VIEW_ITEM.SOIL) return hydrology.soil;
+	if (item === MAPE_VIEW_ITEM.HUMIDITY) return hydrology.model.humidity;
+	if (item === MAPE_VIEW_ITEM.WATER) return hydrology.model.water;
 	if (item === MAPE_VIEW_ITEM.POPULATION) return mape.pop;
 	if (item === MAPE_VIEW_ITEM.JOBS) return demand ? mape.workforce : mape.jobNeed;
 	if (item === MAPE_VIEW_ITEM.FRESH) return demand ? mape.workforce : mape.wfFresh;
@@ -117,6 +119,7 @@ function renderItemField(item, demand) {
 
 function renderItemNorm(item, value, demand) {
 	const v = value <= 0 ? 0 : value;
+	if (item === MAPE_VIEW_ITEM.HUMIDITY) return Math.min(1, v / 0.4);
 	if (item >= MAPE_VIEW_ITEM.WASTE) return Math.min(1, v);
 	if (item === MAPE_VIEW_ITEM.POPULATION) return Math.sqrt(Math.min(1, v / MAPE_VIEW_POP_MAX));
 	if (item === MAPE_VIEW_ITEM.JOBS) return Math.sqrt(Math.min(1, v / MAPE_VIEW_JOB_MAX));
@@ -141,7 +144,7 @@ function renderEconomyCells(view) {
 	for (let i = 0, p = 0; i < world.n; i++, p += 4) {
 		const value = field[i];
 		const norm = renderItemNorm(item, value, demand);
-		if (item !== MAPE_RES.CO2 && terrain[i] === TERRAIN.WATER) {
+		if (item !== MAPE_RES.CO2 && item !== MAPE_VIEW_ITEM.HUMIDITY && terrain[i] === TERRAIN.WATER) {
 			pixels[p] = 21;
 			pixels[p + 1] = 34;
 			pixels[p + 2] = 53;

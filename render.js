@@ -181,6 +181,10 @@ function renderPaintCells(view) {
 					g += (100 - g) * d * 0.75;
 					b += (72 - b) * d * 0.75;
 				}
+				const wet = t === TERRAIN.WATER ? 0 : Math.min(0.9, hydrology.model.water[i] * 2);
+				r += (46 - r) * wet;
+				g += (132 - g) * wet;
+				b += (172 - b) * wet;
 				const dx = x - originX;
 				const seen = progress[i];
 				let fog = 0.4;

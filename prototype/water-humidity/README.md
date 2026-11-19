@@ -113,9 +113,3 @@ Default reference at 160 s, coast, seed 20261119: `landWater ≈ 156.2`, `wet �
 | `preview.cjs` | headless PNG renderer (no dependencies, own CRC/zlib writer) |
 | `simulation.test.js` | 16 model invariants |
 | `ui.test.cjs` | 3 stub-DOM page boot/control tests |
-
-### Next step before game integration
-
-This lab is deliberately isolated. Porting it to the root game means adding a dynamic water
-layer to `world.js`, advancing it from `main.js`, updating `index.html` load order and
-`AGENTS.md`'s file map, then running the full L2 suite — a separate change.

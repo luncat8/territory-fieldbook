@@ -52,6 +52,7 @@ class WaterLab {
 		this.width = opts.width || WATER_WIDTH;
 		this.rows = opts.height || WATER_HEIGHT;
 		this.n = this.width * this.rows;
+		this.buildTerrain = opts.buildTerrain || waterBuild;
 		this.params = Object.assign({}, WATER_PARAMS, opts.params);
 		this.scenario = opts.scenario || 'coast';
 		this.seed = opts.seed === undefined ? WATER_SEED : opts.seed;
@@ -106,7 +107,7 @@ class WaterLab {
 		this.fluxRate.fill(0);
 		this.fluxX.fill(0);
 		this.fluxY.fill(0);
-		waterBuild(this, this.scenario, this.seed);
+		this.buildTerrain(this, this.scenario, this.seed);
 		this.initialMass = this.sumWater() + this.sumHumidity();
 	}
 

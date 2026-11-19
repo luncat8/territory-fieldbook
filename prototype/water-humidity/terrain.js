@@ -55,12 +55,6 @@ var waterBuild = function waterBuild(lab, scenario, seed) {
 	const elev = lab.elev;
 	const sea = lab.sea;
 	sea.fill(0);
-	lab.springCount = 0;
-	let rnd = (seed ^ 0x9e3779b9) >>> 0;
-	const rand = () => {
-		rnd = (Math.imul(rnd, 1664525) + 1013904223) >>> 0;
-		return rnd / 4294967296;
-	};
 	for (let y = 0; y < h; y++) {
 		for (let x = 0; x < w; x++) {
 			const i = y * w + x;
@@ -82,6 +76,17 @@ var waterBuild = function waterBuild(lab, scenario, seed) {
 			elev[i] = isSea ? SEA_HEIGHT : Math.max(value, SEA_LEVEL + 0.02);
 		}
 	}
+	waterPrepare(lab, scenario, seed);
+};
+
+var waterPrepare = function waterPrepare(lab, scenario, seed) {
+	const w = lab.width, h = lab.rows, sea = lab.sea, elev = lab.elev;
+	lab.springCount = 0;
+	let rnd = (seed ^ 0x9e3779b9) >>> 0;
+	const rand = () => {
+		rnd = (Math.imul(rnd, 1664525) + 1013904223) >>> 0;
+		return rnd / 4294967296;
+	};
 	waterFill(lab);
 	for (let i = 0; i < lab.n; i++) {
 		lab.water[i] = sea[i] ? SEA_DEPTH : 0;
@@ -147,5 +152,5 @@ var waterFill = function waterFill(lab) {
 };
 
 if (typeof module !== 'undefined') {
-	module.exports = { SEA_LEVEL, SEA_DEPTH, SEA_HEIGHT, SPRING_COUNT, SPRING_GAP, waterIndex, waterHash, waterNoise, waterFbm, waterBuild, waterFill };
+	module.exports = { SEA_LEVEL, SEA_DEPTH, SEA_HEIGHT, SPRING_COUNT, SPRING_GAP, waterIndex, waterHash, waterNoise, waterFbm, waterBuild, waterPrepare, waterFill };
 };

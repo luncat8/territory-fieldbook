@@ -49,7 +49,8 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 - keep this map updated when ownership changes:
 	main.js — boot, shared clock, tick order, speeds.
 	random.js — seeded LCG streams for generation, sites, rivals.
-	world.js — 64x64 terrain grid, seeded generation, map queries.
+	world.js — 64x64 terrain grid, seeded generation, soil baseline and map queries.
+	hydrology.js — survey water cycle, terrain adapter and root-zone moisture. Shares prototype/water-humidity/{terrain,simulation}.js with the lab.
 	events.js — event feed and status line.
 	land.js — disturbed fraction, productivity, waste spreading, recovery, restoration.
 	economy.js — resources, recipes, biosphere, conservation ledger.

@@ -239,8 +239,8 @@ One recipe is the product layer, defined as data (inputs, outputs, oxygen, energ
 price with a higher value than their inputs.
 
 Biosphere: per-cell forest cover `Float32Array`, independent of terrain except
-water exclusion. Humidity and local CO2 set a target; cover approaches it at
-0.08/s with positive or negative growth. High CO2 widens the humidity niche
+water exclusion. Terrain-sensitive soil moisture and local CO2 set a target; cover approaches it at
+0.08/s with positive or negative growth. High CO2 widens the soil moisture niche
 around 0.5. Growth stores 0.7 CO2 per cover unit; decay returns it locally.
 The shared economy substep owns this cycle in survey and scenes, never twice
 per tick. Half the signed carbon exchange updates oxygen production/use.

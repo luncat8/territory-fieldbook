@@ -13,12 +13,12 @@ for (const mode of [MAPE_ENGINE.DIFFUSION, MAPE_ENGINE.CATCHMENT, MAPE_ENGINE.QU
 	main.setup(START_SEED, '', 0, mode);
 	assert.ok(!world.terrain.includes(TERRAIN.FOREST));
 	const i = world.terrain.findIndex(t => t === TERRAIN.HILLS);
-	world.humidity[i] = 0.5;
+	hydrology.soil[i] = 0.5;
 	const optimal = economyForestTarget(i, 0.1);
-	world.humidity[i] = 0.7;
+	hydrology.soil[i] = 0.7;
 	assert.ok(economyForestTarget(i, 0.1) < optimal);
 	assert.ok(economyForestTarget(i, 2) > economyForestTarget(i, 0.1));
-	world.humidity[i] = 0.5;
+	hydrology.soil[i] = 0.5;
 	economy.biomass.fill(0);
 	mape.goodsView[MAPE_RES.CO2].fill(0.4);
 	mape.initialGoods = mapeGoodsTotal();
@@ -28,7 +28,7 @@ for (const mode of [MAPE_ENGINE.DIFFUSION, MAPE_ENGINE.CATCHMENT, MAPE_ENGINE.QU
 	const cover = economy.biomass[i];
 	assert.ok(cover > 0.35, 'bare hills visibly reforest in 10 sim seconds');
 	assert.ok(Math.abs(mape.goodsView[MAPE_RES.CO2][i] + cover * BIO_CARBON_PER_COVER - initialCarbon) < 1e-6);
-	world.humidity[i] = 1;
+	hydrology.soil[i] = 1;
 	const before = mape.goodsView[MAPE_RES.CO2][i];
 	for (let k = 0; k < 200; k++) economyStep(0.05);
 	assert.ok(economy.biomass[i] < cover * 0.5, 'unsuitable forest dies back visibly');

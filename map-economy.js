@@ -4,10 +4,10 @@
 const MAPE_R = 4;
 const MAPE_RES = { COAL: 0, IRON: 1, GOODS: 2, CO2: 3 };
 const MAPE_RES_NAME = ['coal', 'iron', 'goods', 'co2'];
-const MAPE_VIEW_ITEM = { POPULATION: 4, FRESH: 5, JOBS: 6, DEPLETED: 7, WASTE: 8, FOREST: 9, HUMIDITY: 10 };
-const MAPE_VIEW_ITEM_NAME = ['coal', 'iron', 'goods', 'co2', 'population', 'fresh', 'jobs', 'depleted', 'waste', 'forest', 'humidity'];
-const MAPE_VIEW_ITEM_LABEL = ['coal', 'iron', 'goods', 'co2', 'population', 'workforce · fresh', 'jobs', 'workforce · depleted', 'waste', 'forest cover', 'humidity'];
-const MAPE_VIEW_AMOUNT_IDS = [0, 1, 2, 3, 4, 5, 7, 8, 9, 10];
+const MAPE_VIEW_ITEM = { POPULATION: 4, FRESH: 5, JOBS: 6, DEPLETED: 7, WASTE: 8, FOREST: 9, SOIL: 10, HUMIDITY: 11, WATER: 12 };
+const MAPE_VIEW_ITEM_NAME = ['coal', 'iron', 'goods', 'co2', 'population', 'fresh', 'jobs', 'depleted', 'waste', 'forest', 'soil moisture', 'air humidity', 'surface water'];
+const MAPE_VIEW_ITEM_LABEL = ['coal', 'iron', 'goods', 'co2', 'population', 'workforce · fresh', 'jobs', 'workforce · depleted', 'waste', 'forest cover', 'soil moisture', 'air humidity', 'surface water'];
+const MAPE_VIEW_AMOUNT_IDS = [0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12];
 const MAPE_VIEW_DEMAND_IDS = [0, 1, 2, 3, 6, 5, 7];
 const MAPE_VIEW_AMOUNT_NAMES = MAPE_VIEW_AMOUNT_IDS.map(id => MAPE_VIEW_ITEM_NAME[id]);
 const MAPE_VIEW_DEMAND_NAMES = MAPE_VIEW_DEMAND_IDS.map(id => MAPE_VIEW_ITEM_NAME[id]);

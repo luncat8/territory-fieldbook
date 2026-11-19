@@ -26,7 +26,7 @@ const world = {
 	seed: 0,
 	terrain: new Uint8Array(MAP_N),
 	height: new Float32Array(MAP_N),
-	humidity: new Float32Array(MAP_N),
+	soilBaseline: new Float32Array(MAP_N),
 	settleValue: new Float32Array(MAP_N),
 	startX: MAP_SIZE >> 1,
 	startY: MAP_SIZE >> 1
@@ -42,7 +42,7 @@ function worldGenerate(seed) {
 			const m = worldFbm(x, y, seed + 131, 3, 0.07);
 			const i = row + x;
 			world.height[i] = h;
-			world.humidity[i] = Math.max(0, Math.min(1, m + (0.55 - h) * 0.8));
+			world.soilBaseline[i] = Math.max(0, Math.min(1, m + (0.55 - h) * 0.8));
 			world.terrain[i] = worldTerrainOf(h, m);
 		}
 	}

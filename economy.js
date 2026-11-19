@@ -14,7 +14,7 @@ const ITEM_VALUE = 14;
 
 const BIO_RESPONSE = 0.08;
 const BIO_CARBON_PER_COVER = 0.7;
-const BIO_HUMIDITY_OPTIMUM = 0.5;
+const BIO_SOIL_OPTIMUM = 0.5;
 
 const BIO_OXYGEN_SHARE = 0.5;
 const BIO_SUN_VALUE = 8;
@@ -127,7 +127,7 @@ function economyBurnFuel(amount) {
 
 function economyForestTarget(i, co2) {
 	const width = 0.055 + 0.38 * co2 / (co2 + 0.25);
-	const suitability = Math.max(0, 1 - Math.abs(world.humidity[i] - BIO_HUMIDITY_OPTIMUM) / width);
+	const suitability = Math.max(0, 1 - Math.abs(hydrology.soil[i] - BIO_SOIL_OPTIMUM) / width);
 	return suitability * co2 / (co2 + 0.025) * (1 - land.disturbed[i]);
 }
 
