@@ -2,8 +2,8 @@
 // edit for: catchment pressure, signal speed and queue service
 
 const MAPE_MARKET_STEP = 0.05;
-const MAPE_MARKET_COAL_USE = 0.03;
-const MAPE_MARKET_GOODS_USE = 0.024;
+const MAPE_MARKET_COAL_USE = 0.045;
+const MAPE_MARKET_GOODS_USE = 0.036;
 const MAPE_MARKET_RESERVE = 1.5;
 const MAPE_CATCHMENT_STOCK_SECONDS = 9;
 const MAPE_CATCHMENT_RESPONSE = 0.9;

@@ -139,3 +139,10 @@ is larger than the share each ring cell receives: the ring decays to zero every 
 the source cell ever looks disturbed. Check the ring cell's rate, not the source's — a
 factory at `0.0006`/s gave each neighbour `1e-4`/s and left no trace. Mine spoil is emitted as
 a ring-only halo so the shaft keeps the productivity its yield multiplies by.
+
+## sample locations when scarcity should cost search time
+
+Reservoir-sampling only eligible forest cells guarantees a cut whenever any forest is nearby;
+it hides the effort of finding a sparse patch. For search friction, sample one cell from the
+fixed patch and let an ineligible result consume the attempt. This keeps per-tick work constant
+and makes output probability track forest coverage.

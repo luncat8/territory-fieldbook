@@ -171,10 +171,10 @@ MAPE_HIRE_MIN_POP = 4            // min settlement pop to recruit a party member
 MAPE_POP_CAP = 120               // per-cell carrying cap at d = 0 (d = 1 holds nobody)
 MAPE_POP_SEED_MIN = 8            // seeded settlement persons, low
 MAPE_POP_SEED_MAX = 20           // seeded settlement persons, high
-MAPE_NEED_GOODS = 0.02           // signed reference goods need/person/s
-MAPE_NEED_COAL = 0.005           // signed reference coal need/person/s
-MAPE_MARKET_GOODS_USE = 0.024    // A/B household goods use/person/s
-MAPE_MARKET_COAL_USE = 0.03      // A/B household coal use/person/s
+MAPE_NEED_GOODS = 0.03           // signed reference goods need/person/s
+MAPE_NEED_COAL = 0.02            // signed reference coal need/person/s
+MAPE_MARKET_GOODS_USE = 0.036    // A/B household goods use/person/s
+MAPE_MARKET_COAL_USE = 0.045    // A/B household coal use/person/s
 MAPE_SETTLE_DISTURB = 0.003      // disturbance per unit goods consumed, spread around the cell
 MAPE_SAT_SCALE = 4                // satisfaction response timescale in seconds
 MAPE_DEMAND_GAIN = 8.0           // demand signal scale for unmet need rates
@@ -216,7 +216,7 @@ LAND_WASTE_SOURCE_SHARE = 0.55   // share of a source's waste kept on its own ce
 LAND_WASTE_SPREAD = 0.0012       // landfill leachate mix per second over walkable land
 MAPE_MINE_RATE = 2.4             // resource extracted/s at full staff and productivity
 MAPE_SAWMILL_RATE = 1.1          // logs cut/s at full staff when demand is saturated
-MAPE_SAWMILL_RADIUS = 6          // random forest-cell search radius
+MAPE_SAWMILL_SEARCH_RADIUS = 2   // half-width of the one-sample 5×5 patch
 MAPE_SAWMILL_MIN_FOREST = 0.08   // minimum forest cover to cut
 MAPE_SAWMILL_MIN_PULL = 0.015    // no harvest below this log-demand floor
 MAPE_SAWMILL_FOREST_PER_LOG = 0.025 // forest cover consumed per log
@@ -507,7 +507,7 @@ forest gate remain Phase 3.
 ## Catchment A and Queue B
 
 Both modes use a bounded 0–1 import field for coal and goods, reflecting at
-water and the map edge. A/B use rates of `0.03` coal and `0.024` goods per
+water and the map edge. A/B use rates of `0.045` coal and `0.036` goods per
 resident per simulated second. A settlement's hungry target grows with its
 population. Household use debits the shared stock ledger, and the last 1.5
 units of settlement goods are reserved for player supply purchases. Iron, CO2
@@ -752,15 +752,16 @@ total population stays bounded.
 ### Forestry supply chain
 
 Sawmills, charcoal works, and wood works are active staffed job sites sharing the
-same factory pool, demand field, storage, and workforce models. A sawmill makes
-one reservoir-random cut choice from forest cells within six cells; candidates
-must be walkable, have forest cover, and have positive log pull. Harvest rate
-scales with staffing, local productivity, and demand pull, and pauses below the
-pull floor. Logs are stocked at the cut cell, then transported by the existing
-log demand gradient. Charcoal works consume logs for coal plus CO2; wood works
-consume logs for goods. Per-cell log stock cools the signed demand field, so a
-supply pile decreases the sawmill's incentive to cut. The amount and demand maps
-include logs, and the factory inspector reports staffing and recipe rates.
+same factory pool, demand field, storage, and workforce models. Each sawmill
+samples exactly one uniformly random cell in its centered 5×5 patch per
+production step. Water, insufficient forest cover, or log pull below the floor
+ends that attempt without resampling, so sparse forest lowers effective output.
+Harvest rate scales with staffing, local productivity, and demand pull. Logs are
+stocked at the sampled cut cell, then transported by the existing log demand
+gradient. Charcoal works consume logs for coal plus CO2; wood works consume logs
+for goods. Per-cell log stock cools the signed demand field, so a supply pile
+decreases the sawmill's incentive to cut. The amount and demand maps include
+logs, and the factory inspector reports staffing and recipe rates.
 
 ### Phase 3 — Factories, mines and forest CO2 loop (diffusion)
 
@@ -806,9 +807,9 @@ Gate: runtime switches preserve the stock ledger, all engines pass `smoke` and
 - Pause, open a scene and pick the Factory tool; click a cell to place a factory.
   Click it (Inspect tool) — the workforce block shows state, staffing and rates;
   the global row shows staffed/open slots. Esc clears the selection.
-- In a scene, place a sawmill near forest plus charcoal and wood works down-gradient.
-  Logs should appear on harvested cells, move to the converters, and accumulate
-  into coal/goods; without converter demand the sawmill should stop cutting.
+- In a scene, place a sawmill near sparse forest plus charcoal and wood works down-gradient.
+  One cell in the surrounding 5×5 patch is tried per step; misses should pause
+  cutting, while sampled forest with converter demand yields routed logs and products.
 - The workforce segment opens on **Fluid field**: fresh workforce gathers at the
   mine, depleted pool returns to settlements, and a hamlet founds itself
   where depleted piles on high-value land (meadow or water-adjacent, never swamp).

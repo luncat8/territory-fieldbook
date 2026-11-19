@@ -88,3 +88,23 @@ mapePopulationStep(SIM_STEP_SEC);
 assert.ok(mape.pop[destination] > 0, 'unmet jobs attract population across a walkable edge');
 assert.ok(Math.abs(mapePopResidual()) < 1e-4);
 console.log(`population_checks=pass migration=${mape.pop[destination].toFixed(3)}`);
+
+function verifySettlementDemand() {
+	mape.surplusFeedback = true;
+	mape.localPressure = false;
+	main.setup(START_SEED, '', 0, MAPE_ENGINE.DIFFUSION);
+	const diffusionTown = mape.settleCells[0];
+	const diffusionGoods = mape.demandView[MAPE_RES.GOODS][diffusionTown];
+	const diffusionCoal = mape.demandView[MAPE_RES.COAL][diffusionTown];
+	assert.ok(diffusionGoods > 0.5 && diffusionCoal > 0.4, 'households create visible signed goods and coal pull');
+	assert.equal(mape.massOut, 0, 'warming the demand view does not consume stock');
+	main.setup(START_SEED, '', 0, MAPE_ENGINE.CATCHMENT);
+	const marketTown = mape.settleCells[0];
+	const marketGoods = mape.demandView[MAPE_RES.GOODS][marketTown];
+	const marketCoal = mape.demandView[MAPE_RES.COAL][marketTown];
+	assert.ok(marketGoods > 0.25 && marketCoal > 0.35, 'market settlements advertise stronger import pull');
+	assert.equal(mape.massOut, 0, 'warming the market pull does not consume stock');
+	console.log(`settlement_demand=diffusion ${diffusionGoods.toFixed(2)}/${diffusionCoal.toFixed(2)} market ${marketGoods.toFixed(2)}/${marketCoal.toFixed(2)}`);
+}
+
+verifySettlementDemand();

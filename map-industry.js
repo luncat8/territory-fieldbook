@@ -7,7 +7,7 @@ const MAPE_MINE_WASTE = 0.0016;
 const MAPE_WORKSHOP_RATE = 1.8;
 const MAPE_WORKSHOP_STOCK = 8;
 const MAPE_SAWMILL_RATE = 1.1;
-const MAPE_SAWMILL_RADIUS = 6;
+const MAPE_SAWMILL_SEARCH_RADIUS = 2;
 const MAPE_SAWMILL_MIN_FOREST = 0.08;
 const MAPE_SAWMILL_MIN_PULL = 0.015;
 const MAPE_SAWMILL_FOREST_PER_LOG = 0.025;
@@ -232,27 +232,19 @@ function mapeStepFactories(dt) {
 	}
 }
 
-function mapeSelectForestCutCell(x, y) {
+function mapeSampleForestCutCell(x, y) {
+	// A miss costs this tick, so sparse forest lowers effective sawmill output.
 	const size = world.size;
-	const radius = MAPE_SAWMILL_RADIUS;
-	const logsDemand = mape.demandView[MAPE_RES.LOGS];
-	const biomass = economy.biomass;
-	let selected = -1;
-	let candidates = 0;
-	for (let dy = -radius; dy <= radius; dy++) {
-		const cy = y + dy;
-		if (cy < 0 || cy >= size) continue;
-		for (let dx = -radius; dx <= radius; dx++) {
-			if (dx * dx + dy * dy > radius * radius) continue;
-			const cx = x + dx;
-			if (cx < 0 || cx >= size) continue;
-			const idx = cy * size + cx;
-			if (world.terrain[idx] === TERRAIN.WATER || biomass[idx] < MAPE_SAWMILL_MIN_FOREST || logsDemand[idx] < MAPE_SAWMILL_MIN_PULL) continue;
-			candidates++;
-			if (randomInt(candidates) === 0) selected = idx;
-		}
-	}
-	return selected;
+	const radius = MAPE_SAWMILL_SEARCH_RADIUS;
+	const width = radius * 2 + 1;
+	const sample = randomInt(width * width);
+	const cx = x + sample % width - radius;
+	const cy = y + (sample / width | 0) - radius;
+	if (cx < 0 || cy < 0 || cx >= size || cy >= size) return -1;
+	const idx = cy * size + cx;
+	if (world.terrain[idx] === TERRAIN.WATER || economy.biomass[idx] < MAPE_SAWMILL_MIN_FOREST ||
+		mape.demandView[MAPE_RES.LOGS][idx] < MAPE_SAWMILL_MIN_PULL) return -1;
+	return idx;
 }
 
 function mapeStepForestryFactory(f, idx, dt, staff) {
@@ -260,7 +252,7 @@ function mapeStepForestryFactory(f, idx, dt, staff) {
 	if (staff <= 0) return;
 	const kind = mape.factoryKind[f];
 	if (kind === MAPE_FACTORY_KIND.SAWMILL) {
-		const cell = mapeSelectForestCutCell(mape.factoryX[f], mape.factoryY[f]);
+		const cell = mapeSampleForestCutCell(mape.factoryX[f], mape.factoryY[f]);
 		if (cell < 0) return;
 		const pull = mape.demandView[MAPE_RES.LOGS][cell];
 		const demandScale = Math.min(1, pull / (MAPE_SAWMILL_MIN_PULL * 2));

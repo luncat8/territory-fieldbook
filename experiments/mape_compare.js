@@ -79,7 +79,7 @@ function readPressure() {
 	lab(MAPE_ENGINE.QUEUE, stock => { for (const i of donors) stock[i] = 2; });
 	const stock = mape.goodsView[r];
 	const ringPull = mapeMarketPull(r, center);
-	assert.ok(ringPull < 0.6 && ringPull > 0.4, 'stock outside the intake already cools B');
+	assert.ok(ringPull < 0.7 && ringPull > 0.6, 'stock outside the intake already cools B');
 	advance(1);
 	const limit = mapeQueueCapacity(r, center);
 	close(stock[center], limit);

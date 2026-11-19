@@ -32,6 +32,32 @@ function place(kind, x, y) {
 	return idx;
 }
 
+function verifySingleSampleSearch() {
+	main.setup(START_SEED, 'a');
+	world.terrain.fill(TERRAIN.MEADOW);
+	economy.biomass.fill(0);
+	const saw = place(MAPE_FACTORY_KIND.SAWMILL, 20, 20);
+	mape.demandView[MAPE_RES.LOGS].fill(1);
+	const seed = 7319;
+	const width = MAPE_SAWMILL_SEARCH_RADIUS * 2 + 1;
+	randomSeed(seed);
+	const pick = randomInt(width * width);
+	const decoy = (pick + 1) % (width * width);
+	const sampleIdx = (20 + (pick / width | 0) - MAPE_SAWMILL_SEARCH_RADIUS) * world.size +
+		20 + pick % width - MAPE_SAWMILL_SEARCH_RADIUS;
+	const decoyIdx = (20 + (decoy / width | 0) - MAPE_SAWMILL_SEARCH_RADIUS) * world.size +
+		20 + decoy % width - MAPE_SAWMILL_SEARCH_RADIUS;
+	economy.biomass[decoyIdx] = 1;
+	randomSeed(seed);
+	mapeStepForestryFactory(0, saw, 0.2, 1);
+	assert.equal(totalStock(MAPE_RES.LOGS), 0, 'a missed sample does not search another forest cell');
+	economy.biomass[sampleIdx] = 1;
+	randomSeed(seed);
+	mapeStepForestryFactory(0, saw, 0.2, 1);
+	assert.ok(localStock(MAPE_RES.LOGS, sampleIdx) > 0, 'the sampled forest cell receives the logs');
+	assert.equal(localStock(MAPE_RES.LOGS, decoyIdx), 0, 'the unselected forest cell is left alone');
+}
+
 function runChain(engine, workforceMode) {
 	main.setup(START_SEED, 'a', 0, engine);
 	mapeSetWorkforceMode(workforceMode);
@@ -57,14 +83,13 @@ function runChain(engine, workforceMode) {
 	const beforeLogs = totalStock(MAPE_RES.LOGS);
 	mapeStepForestryFactory(0, saw, 0.2, 1);
 	const cutCells = [];
-	for (let dy = -6; dy <= 6; dy++) {
-		for (let dx = -6; dx <= 6; dx++) {
-			if (dx * dx + dy * dy > 36) continue;
+	for (let dy = -MAPE_SAWMILL_SEARCH_RADIUS; dy <= MAPE_SAWMILL_SEARCH_RADIUS; dy++) {
+		for (let dx = -MAPE_SAWMILL_SEARCH_RADIUS; dx <= MAPE_SAWMILL_SEARCH_RADIUS; dx++) {
 			const idx = (20 + dy) * world.size + 20 + dx;
 			if (localStock(MAPE_RES.LOGS, idx) > 0) cutCells.push(idx);
 		}
 	}
-	assert.ok(cutCells.length > 0, 'logs are stocked on the forest cell cut');
+	assert.equal(cutCells.length, 1, 'one random 5×5 cell receives the logs');
 	assert.ok(economy.biomass.reduce((sum, value) => sum + value, 0) < beforeForest, 'harvesting removes forest cover');
 	assert.ok(totalStock(MAPE_RES.LOGS) > beforeLogs, 'sawmill creates log stock');
 	for (let step = 0; step < Math.round(6 / SIM_STEP_SEC); step++) main.step(SIM_STEP_SEC);
@@ -78,6 +103,7 @@ function runChain(engine, workforceMode) {
 		' ledger=' + mapeLedgerResidual().toExponential(1));
 }
 
+verifySingleSampleSearch();
 runChain(MAPE_ENGINE.DIFFUSION, MAPE_WORKFORCE_MODE.FLUID);
 runChain(MAPE_ENGINE.CATCHMENT, MAPE_WORKFORCE_MODE.RESIDENTS);
 
