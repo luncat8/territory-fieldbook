@@ -99,7 +99,11 @@ function hudPaintFieldLegend(refs, demand) {
 	const style = render.fieldStyle;
 	const scale = 'ui-scale look-' + style;
 	refs.layer.textContent = (demand ? 'Demand · ' : 'Amount · ') + MAPE_VIEW_ITEM_LABEL[item];
-	if (item > MAPE_RES.CO2) hudPaintWorkerLegend(refs, item, demand, scale);
+	if (item >= MAPE_VIEW_ITEM.WASTE) {
+		refs.unit.textContent = 'Cell coverage / fraction';
+		refs.scale.className = scale;
+		refs.range.textContent = '0 → 100% · linear';
+	} else if (item > MAPE_RES.CO2) hudPaintWorkerLegend(refs, item, demand, scale);
 	else if (demand) hudPaintPullLegend(refs, item, scale);
 	else hudPaintStockLegend(refs, style, scale);
 	hudPaintLegendKey(refs, item, demand, style);
@@ -170,6 +174,7 @@ function hudUpdateInspect() {
 		' · pop ' + mape.pop[idx].toFixed(1) + ' · jobs ' + mape.jobNeed[idx].toFixed(0) +
 		' · pull ' + mape.workforce[idx].toFixed(2) + (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID ? ' · rest ' + mape.wfRestPull[idx].toFixed(2) : '') +
 		' · settle ' + world.settleValue[idx].toFixed(2) + ' · waste ' + Math.round(100 * land.disturbed[idx]) + '%';
+	text += hudForestReadout(idx);
 	for (let r = 0; r < MAPE_R; r++) {
 		const slot = r * n + idx;
 		text += (r % 2 === 0 ? '\n' : ' · ') + MAPE_RES_NAME[r] +
@@ -262,4 +267,10 @@ function hudUpdateWorkforce() {
 		text += '\nrested ' + mape.fluidRested.toFixed(1) + ' · spawned ' + mape.fluidSpawned;
 	}
 	el.textContent = text;
+}
+
+function hudForestReadout(idx) {
+	return '\nHumidity ' + Math.round(world.humidity[idx] * 100) + '% · forest ' +
+		(economy.biomass[idx] * 100).toFixed(1) + '% · growth ' +
+		hudSigned(economyForestRate(idx, mape.goodsView[MAPE_RES.CO2][idx]) * 100) + '%/s';
 }

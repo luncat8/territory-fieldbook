@@ -57,10 +57,10 @@ function verifyReroute() {
 	const source = 32 * world.size + 26;
 	edit(1, 26, 32);
 	advance(2);
-	assert.equal(mapeGoodsTotal(), mape.goodsView[MAPE_RES.COAL][source]);
+	assert.equal(mape.goodsView[MAPE_RES.COAL].reduce((a, b) => a + b, 0), mape.goodsView[MAPE_RES.COAL][source]);
 	mape.localPressure = true;
 	advance(1);
-	assert.ok(mapeGoodsTotal() - mape.goodsView[MAPE_RES.COAL][source] > 0.1, 'local pressure spreads stock without a town');
+	assert.ok(mape.goodsView[MAPE_RES.COAL].reduce((a, b) => a + b, 0) - mape.goodsView[MAPE_RES.COAL][source] > 0.1, 'local pressure spreads stock without a town');
 	mape.localPressure = false;
 	edit(2, 42, 32);
 	advance(8);

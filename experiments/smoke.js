@@ -292,7 +292,7 @@ console.log('oxygen_produced=' + result.oxygenProduced.toFixed(2) + ' used=' + r
 console.log('share_player=' + result.sharePlayer.toFixed(4) + ' share_sum=' + result.shareSum.toFixed(4));
 console.log('party_alive=' + (result.partyAlive ? 1 : 0) + ' condition=' + result.condition.toFixed(1) + ' supplies=' + result.supplies.toFixed(1));
 
-check('terrain_all_present', result.terrain.every(value => value > 0));
+check('terrain_all_present', result.terrain.every((value, id) => id === 1 ? value === 0 : value > 0));
 check('settlements_seeded', result.settlePct >= 1.8 && result.settlePct <= 2.2 && result.settleWater === 0 && result.settlePopOut === 0);
 check('mape_fields_seeded',
 	[0, 2, 3].every(r => result.itemSpreads[r].stock > 0 && (result.itemSpreads[r].pos > 0 || result.itemSpreads[r].neg > 0)) &&

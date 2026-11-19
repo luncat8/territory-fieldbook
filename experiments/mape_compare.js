@@ -27,6 +27,7 @@ function close(actual, expected, epsilon = 1e-6) {
 function lab(mode, setup, feedback = true) {
 	world.terrain.fill(TERRAIN.MEADOW);
 	economy.biomass.fill(0);
+	world.humidity.fill(0);
 	land.disturbed.fill(0);
 	mapeInit(mode, true);
 	mape.surplusFeedback = feedback;

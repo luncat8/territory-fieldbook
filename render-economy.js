@@ -105,6 +105,9 @@ function renderViewItem(view) {
 }
 
 function renderItemField(item, demand) {
+	if (item === MAPE_VIEW_ITEM.WASTE) return land.disturbed;
+	if (item === MAPE_VIEW_ITEM.FOREST) return economy.biomass;
+	if (item === MAPE_VIEW_ITEM.HUMIDITY) return world.humidity;
 	if (item === MAPE_VIEW_ITEM.POPULATION) return mape.pop;
 	if (item === MAPE_VIEW_ITEM.JOBS) return demand ? mape.workforce : mape.jobNeed;
 	if (item === MAPE_VIEW_ITEM.FRESH) return demand ? mape.workforce : mape.wfFresh;
@@ -114,6 +117,7 @@ function renderItemField(item, demand) {
 
 function renderItemNorm(item, value, demand) {
 	const v = value <= 0 ? 0 : value;
+	if (item >= MAPE_VIEW_ITEM.WASTE) return Math.min(1, v);
 	if (item === MAPE_VIEW_ITEM.POPULATION) return Math.sqrt(Math.min(1, v / MAPE_VIEW_POP_MAX));
 	if (item === MAPE_VIEW_ITEM.JOBS) return Math.sqrt(Math.min(1, v / MAPE_VIEW_JOB_MAX));
 	if (item === MAPE_VIEW_ITEM.FRESH || item === MAPE_VIEW_ITEM.DEPLETED) {

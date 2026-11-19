@@ -37,6 +37,7 @@ function mapSceneWorld(seed) {
 	randomSeed(seed);
 	world.terrain.fill(TERRAIN.MEADOW);
 	world.height.fill(0.5);
+	world.humidity.fill(0.5);
 	world.startX = world.startY = world.size >> 1;
 	worldSettleValues();
 }

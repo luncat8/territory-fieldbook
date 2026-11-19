@@ -90,7 +90,7 @@ function sitesRemoveDeposit(slot) {
 	sites.version++;
 }
 
-function sitesFindCellNear(cx, cy, radius, terrainWanted) {
+function sitesFindCellNear(cx, cy, radius, terrainWanted, minForest = 0) {
 	for (let r = 0; r <= radius; r++) {
 		for (let dy = -r; dy <= r; dy++) {
 			for (let dx = -r; dx <= r; dx++) {
@@ -100,6 +100,7 @@ function sitesFindCellNear(cx, cy, radius, terrainWanted) {
 				if (!worldWalkableAt(x, y)) continue;
 				const idx = y * MAP_SIZE + x;
 				if (terrainWanted >= 0 && world.terrain[idx] !== terrainWanted) continue;
+				if (economy.biomass[idx] < minForest) continue;
 				if (sitesAt(x, y) >= 0) continue;
 				return idx;
 			}
@@ -120,7 +121,7 @@ function sitesPlaceStarter() {
 	const sy = world.startY;
 	const food = sitesFindCellNear(sx, sy, 6, TERRAIN.MEADOW);
 	if (food >= 0) sitesPlace(SITE.GATHER, food, RES.FOOD, randomRange(10, 18), SITE_STATE.VISIBLE, 0, 0);
-	const timber = sitesFindCellNear(sx, sy, 8, TERRAIN.FOREST);
+	const timber = sitesFindCellNear(sx, sy, 8, -1, 0.25);
 	if (timber >= 0) sitesPlaceDeposit(timber, RES.TIMBER, SITE_STATE.VISIBLE);
 	const task = sitesFindCellNear(sx, sy, 5, -1);
 	if (task >= 0) sitesPlace(SITE.TASK, task, randomInt(SKILL_COUNT), randomRange(28, 45), SITE_STATE.VISIBLE, 0, 0);
@@ -130,13 +131,13 @@ function sitesPlaceStarter() {
 
 function sitesPlaceDeposits() {
 	const order = [RES.FOOD, RES.TIMBER, RES.FUEL, RES.CRYSTAL, RES.FUEL];
-	const wanted = [TERRAIN.MEADOW, TERRAIN.FOREST, TERRAIN.SWAMP, TERRAIN.HILLS, TERRAIN.SWAMP];
+	const wanted = [TERRAIN.MEADOW, -1, TERRAIN.SWAMP, TERRAIN.HILLS, TERRAIN.SWAMP];
 	for (let k = 0; k < 12; k++) {
 		const res = order[k % order.length];
 		const anchor = worldRandomWalkable();
 		const ax = anchor % MAP_SIZE;
 		const ay = (anchor / MAP_SIZE) | 0;
-		let idx = sitesFindCellNear(ax, ay, 6, wanted[k % wanted.length]);
+		let idx = sitesFindCellNear(ax, ay, 6, wanted[k % wanted.length], res === RES.TIMBER ? 0.25 : 0);
 		if (idx < 0) idx = sitesFindCellNear(ax, ay, 8, -1);
 		if (idx < 0) continue;
 		sitesPlaceDeposit(idx, res, sitesVisibility(), randomRange(0.05, 0.10));

@@ -12,7 +12,7 @@ const VIEW = {
 	PAIRED: 7
 };
 const VIEW_NAME = [
-	'terrain', 'investigation', 'influence', 'disturbance', 'biosphere',
+	'terrain', 'investigation', 'influence', 'waste', 'forest',
 	'demand', 'amount', 'amount + demand'
 ];
 const CELL_PX = 12;
@@ -154,7 +154,7 @@ function renderPaintCells(view) {
 	const here = terrain[originY * size + originX];
 	let vision = 3 + (party.unlocks.route ? 2 : 0);
 	if (here === TERRAIN.HILLS) vision += 1;
-	if (here === TERRAIN.FOREST) vision -= 1;
+	vision -= biomass[originY * size + originX];
 	const vision2 = vision * vision;
 	let o = 0;
 	for (let y = 0; y < size; y++) {
@@ -168,6 +168,12 @@ function renderPaintCells(view) {
 			let r = rgb[0] * relief;
 			let g = rgb[1] * relief;
 			let b = rgb[2] * relief;
+			if (t !== TERRAIN.WATER) {
+				const cover = biomass[i];
+				r += (32 - r) * cover;
+				g += (98 - g) * cover;
+				b += (48 - b) * cover;
+			}
 			if (view === VIEW.TERRAIN) {
 				const d = disturbed[i];
 				if (d > 0) {

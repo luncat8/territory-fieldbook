@@ -39,7 +39,7 @@ function investigationReach() {
 	const here = world.terrain[party.y * MAP_SIZE + party.x];
 	let reach = INV_RADIUS;
 	if (here === TERRAIN.HILLS) reach += 1;
-	if (here === TERRAIN.FOREST) reach -= 1;
+	reach -= economy.biomass[party.y * MAP_SIZE + party.x];
 	return reach < 2 ? 2 : reach;
 }
 

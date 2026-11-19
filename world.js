@@ -18,7 +18,6 @@ const TERRAIN_RGB = [
 const MAP_WATER = 0.38;
 const MAP_HILLS = 0.66;
 const MAP_DESERT = 0.38;
-const MAP_FOREST = 0.62;
 const MAP_SWAMP = 0.52;
 
 const world = {
@@ -27,6 +26,7 @@ const world = {
 	seed: 0,
 	terrain: new Uint8Array(MAP_N),
 	height: new Float32Array(MAP_N),
+	humidity: new Float32Array(MAP_N),
 	settleValue: new Float32Array(MAP_N),
 	startX: MAP_SIZE >> 1,
 	startY: MAP_SIZE >> 1
@@ -42,6 +42,7 @@ function worldGenerate(seed) {
 			const m = worldFbm(x, y, seed + 131, 3, 0.07);
 			const i = row + x;
 			world.height[i] = h;
+			world.humidity[i] = Math.max(0, Math.min(1, m + (0.55 - h) * 0.8));
 			world.terrain[i] = worldTerrainOf(h, m);
 		}
 	}
@@ -92,7 +93,6 @@ function worldTerrainOf(h, m) {
 	if (h < MAP_WATER) return TERRAIN.WATER;
 	if (h > MAP_HILLS) return TERRAIN.HILLS;
 	if (m < MAP_DESERT) return TERRAIN.DESERT;
-	if (m > MAP_FOREST) return TERRAIN.FOREST;
 	if (m > MAP_SWAMP) return TERRAIN.SWAMP;
 	return TERRAIN.MEADOW;
 }

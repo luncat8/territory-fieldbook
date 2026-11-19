@@ -25,6 +25,7 @@ const metrics = vm.runInThisContext(`
 		world.terrain.fill(TERRAIN.MEADOW);
 		land.disturbed.fill(0);
 		economy.biomass.fill(0);
+		world.humidity.fill(0);
 		sites.state.fill(SITE_STATE.GONE);
 		sites.stock.fill(0);
 		sites.claim.fill(0);

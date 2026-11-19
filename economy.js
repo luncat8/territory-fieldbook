@@ -12,9 +12,10 @@ const EXTRACT_SHARE = 0.6;
 const SUPPLY_PRICE = 5;
 const ITEM_VALUE = 14;
 
-const BIO_START = [0.35, 0.85, 0, 0.55, 0, 0];
-const BIO_FIX = [0.000020, 0.000030, 0, 0.000022, 0.000002, 0.000001];
-const BIO_GROWTH = [0.0004, 0.0010, 0, 0.0007, 0.00005, 0.00002];
+const BIO_RESPONSE = 0.08;
+const BIO_CARBON_PER_COVER = 0.7;
+const BIO_HUMIDITY_OPTIMUM = 0.5;
+
 const BIO_OXYGEN_SHARE = 0.5;
 const BIO_SUN_VALUE = 8;
 
@@ -65,7 +66,7 @@ function economyReset() {
 	economy.miningOre = 0;
 	economy.miningLeft = 0;
 	const biomass = economy.biomass;
-	for (let i = 0; i < world.n; i++) biomass[i] = BIO_START[world.terrain[i]];
+	for (let i = 0; i < world.n; i++) biomass[i] = world.terrain[i] === TERRAIN.WATER ? 0 : 0.65 * economyForestTarget(i, 0.4);
 }
 
 function economyAddResource(res, amount) {
@@ -124,27 +125,37 @@ function economyBurnFuel(amount) {
 	economy.energyFuel += amount * 4;
 }
 
+function economyForestTarget(i, co2) {
+	const width = 0.055 + 0.38 * co2 / (co2 + 0.25);
+	const suitability = Math.max(0, 1 - Math.abs(world.humidity[i] - BIO_HUMIDITY_OPTIMUM) / width);
+	return suitability * co2 / (co2 + 0.025) * (1 - land.disturbed[i]);
+}
+
+function economyForestRate(i, co2) {
+	if (world.terrain[i] === TERRAIN.WATER) return 0;
+	return BIO_RESPONSE * (economyForestTarget(i, co2) - economy.biomass[i]);
+}
+
 function economyBiosphere(seconds) {
 	const biomass = economy.biomass;
-	const disturbed = land.disturbed;
-	let fixedTotal = 0;
+	const co2 = mape.goodsView[MAPE_RES.CO2];
 	for (let i = 0; i < world.n; i++) {
-		const terrain = world.terrain[i];
-		const fix = BIO_FIX[terrain];
-		const b = biomass[i];
-		if (fix > 0 && b > 0) fixedTotal += b * fix * (1 - disturbed[i]) * seconds;
-		const growth = BIO_GROWTH[terrain];
-		if (growth <= 0) continue;
-		const next = b + growth * (1 - disturbed[i]) * seconds;
-		biomass[i] = next > 1 ? 1 : next;
+		if (world.terrain[i] === TERRAIN.WATER) continue;
+		const before = biomass[i];
+		const change = Math.max(-before, Math.min(1 - before, economyForestRate(i, co2[i]) * seconds, co2[i] / BIO_CARBON_PER_COVER));
+		biomass[i] = before + change;
+		const carbon = (biomass[i] - before) * BIO_CARBON_PER_COVER;
+		const stockBefore = co2[i];
+		co2[i] = Math.max(0, stockBefore - carbon);
+		const fixed = stockBefore - co2[i];
+		if (fixed >= 0) mape.massOut += fixed;
+		else mape.massIn -= fixed;
+		const oxygen = fixed * BIO_OXYGEN_SHARE;
+		economy.oxygen = Math.max(0, economy.oxygen + oxygen);
+		if (oxygen > 0) economy.oxygenProduced += oxygen;
+		else economy.oxygenUsed -= oxygen;
+		if (fixed > 0) economy.energySun += fixed * BIO_SUN_VALUE;
 	}
-	if (fixedTotal <= 0) return;
-	const oxygen = fixedTotal * BIO_OXYGEN_SHARE;
-	economy.oxygen += oxygen;
-	economy.oxygenProduced += oxygen;
-	economy.carbon -= fixedTotal;
-	if (economy.carbon < 0) economy.carbon = 0;
-	economy.energySun += fixedTotal * BIO_SUN_VALUE;
 }
 
 function economyStep(seconds) {

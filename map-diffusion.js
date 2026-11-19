@@ -53,17 +53,14 @@ function mapeInjectDemand(dt, marketsOnly) {
 	const size = world.size;
 	const water = TERRAIN.WATER;
 	const terrain = world.terrain;
-	const disturbed = land.disturbed;
 	const pop = mape.pop;
 	const demand = mape.demand;
 	const goods = mape.goods;
-	const biomass = economy.biomass;
 	const gain = MAPE_DEMAND_GAIN * dt;
 	const coalOff = MAPE_RES.COAL * n;
 	const ironOff = MAPE_RES.IRON * n;
 	const goodsOff = MAPE_RES.GOODS * n;
 	const co2Off = MAPE_RES.CO2 * n;
-	const co2Scale = MAPE_FOREST_CO2 / BIO_FIX[TERRAIN.FOREST] * gain;
 	for (let i = 0; i < n; i++) {
 		const t = terrain[i];
 		if (t === water) continue;
@@ -74,8 +71,8 @@ function mapeInjectDemand(dt, marketsOnly) {
 		}
 		if (marketsOnly) continue;
 		if (p > 0) demand[co2Off + i] -= p * MAPE_NEED_COAL * gain;
-		const fix = BIO_FIX[t];
-		if (fix > 0 && biomass[i] > 0) demand[co2Off + i] += biomass[i] * fix * (1 - disturbed[i]) * co2Scale;
+		const uptake = economyForestRate(i, goods[co2Off + i]) * BIO_CARBON_PER_COVER;
+		demand[co2Off + i] += uptake * gain;
 	}
 	for (let f = 0; f < mape.factoryCount; f++) {
 		const st = mape.factoryState[f];
@@ -399,6 +396,7 @@ function mapeDiffusionSubstep(dt) {
 	mapeStepMines(dt);
 	mapeStepFactories(dt);
 	mapeStepWorkshops(dt);
+	economyStep(dt);
 	mapeRecoverMoney(dt);
 }
 

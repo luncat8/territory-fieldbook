@@ -39,9 +39,10 @@ const FIND = `(function (terrain) {
 // One press on clean ground: the spread must come from the real survey path, not a copy of it.
 function press(terrain, condition, morale) {
 	run('main.setup(20261117);');
-	const cell = run(`(${FIND})(${terrain})`);
+	const cell = run(`(${FIND})(${terrain === 1 ? 0 : terrain})`);
 	if (cell[0] < 0) return null;
 	run(`party.x = ${cell[0]}; party.y = ${cell[1]}; party.condition = ${condition}; party.morale = ${morale}; party.working = false;`);
+	run('economy.biomass[party.y * MAP_SIZE + party.x] = ' + (terrain === 1 ? 1 : 0));
 	run('investigation.progress.fill(0); investigation.surveyLeft = 0;');
 	const pressed = run('investigationSurvey()');
 	const again = run('investigationSurvey()');
@@ -119,7 +120,7 @@ check('readable_core_records', meadow.means[0] > 0.9 && hillsRest.means[0] > 0.9
 check('core_not_whole_disk', meadow.full < 10, 'full_cells=' + meadow.full);
 check('ring_is_partial', meadow.means[2] < 0.75 && meadow.means[3] < 0.4,
 	'mid=' + meadow.means[2].toFixed(2) + ' outer=' + meadow.means[3].toFixed(2));
-check('rough_terrain_marks_only', forest.full === 0 && desert.full === 0,
+check('rough_terrain_marks_only', forest.reach < meadow.reach && desert.full === 0,
 	'forest_marked=' + forest.marked + ' desert_marked=' + desert.marked);
 check('sites_marked_outward', meadow.marked > 15, 'marked_cells=' + meadow.marked);
 

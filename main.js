@@ -60,7 +60,6 @@ function mainStep(seconds) {
 		territoryStep(seconds);
 	}
 	landStep(seconds);
-	if (!mapScene.id) economyStep(seconds);
 	mapeStep(seconds);
 	eventsStep(seconds);
 }

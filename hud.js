@@ -148,7 +148,7 @@ function hudSyncItemVisibility() {
 	if (!hud.itemGroup) return;
 	const field = renderIsFieldView(render.view);
 	const scene = !!mapScene.id;
-	hud.itemGroup.hidden = scene || !field || render.view === VIEW.DEMAND;
+	hud.itemGroup.hidden = !field || render.view === VIEW.DEMAND;
 	hud.itemGroupDemand.hidden = scene || !field || render.view === VIEW.AMOUNT;
 }
 

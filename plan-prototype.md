@@ -79,7 +79,7 @@ deposit lock checks and settlement markets see current control and biomass.
 - Deterministic from seed: value-noise fbm, 4 octaves at frequency 0.05 for height and 3
   octaves at 0.07 for moisture, integer hash per lattice point.
 - Terrain rule, first match wins: water `height < water`; hills `height > hills`; desert
-  `moisture < desert`; forest `moisture > forest`; swamp `moisture > swamp`; else meadow.
+  `moisture < desert`; swamp `moisture > swamp`; else meadow. Forest is continuous cell cover, independent of terrain.
   Thresholds are tuned so all six types occupy a visible share of the map.
 - Water is impassable to the party and to rivals.
 - Party spawns at the walkable cell nearest the centre, preferring meadow.
@@ -238,11 +238,13 @@ One recipe is the product layer, defined as data (inputs, outputs, oxygen, energ
 `1 ore + 1 fuel + 1 oxygen → 2 goods + 1 carbon`, available anywhere. Goods sell at the base
 price with a higher value than their inputs.
 
-Biosphere: per-cell biomass `Float32Array` initialised from terrain (forest 0.85, swamp 0.55,
-meadow 0.35, hills/desert 0, water 0), growing with productivity `(1 − d)` toward 1. Mature
-biomass fixes carbon at `biomass × rate[terrain] × productivity × seconds`; half becomes
-oxygen, half stays as biomass. Recipes consume one oxygen per craft and release carbon. Sun
-energy and fuel energy are recorded for display.
+Biosphere: per-cell forest cover `Float32Array`, independent of terrain except
+water exclusion. Humidity and local CO2 set a target; cover approaches it at
+0.08/s with positive or negative growth. High CO2 widens the humidity niche
+around 0.5. Growth stores 0.7 CO2 per cover unit; decay returns it locally.
+The shared economy substep owns this cycle in survey and scenes, never twice
+per tick. Half the signed carbon exchange updates oxygen production/use.
+See section 3.1 in `plan-map-economy.md` for formulas and display scales.
 
 Conservation ledger, checked on every transformation: mining records removed mass in and
 `ore + left behind` out; processing records `ore + fuel + oxygen` in and `goods + carbon` out;

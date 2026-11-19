@@ -77,10 +77,11 @@ fields (`territory.js`), disturbed fraction (`land.js`), biomass and oxygen
   `LAND_WASTE_SPREAD` over land only. Productivity `(1 − d)` scales population
   cap, mine rate and forest growth, so a fully wasted cell has no carrying
   capacity, while natural recovery scales with `(1 − d)`.
-- Biomass (`economy.js`) stays unconditional in Phase 0 and gains its CO2 growth
-  gate in Phase 3: coal burning in settlements and factories adds CO2, forests
-  consume CO2 to grow. Global oxygen tracking remains as in `plan-prototype.md`
-  until the post-4.1a O2 throttle plan.
+- Forest cover (`economy.biomass`) is a property of every non-water cell, not
+  a generated terrain class. `world.humidity` is a fixed 0–1 moisture field.
+  Each shared economy substep runs the forest cycle in every engine, including scenes.
+  Coal burning emits CO2; forest growth removes it and dieback returns it.
+  Oxygen production/use follows the signed carbon exchange.
 
 ## Core concepts
 
@@ -121,7 +122,7 @@ fields (`territory.js`), disturbed fraction (`land.js`), biomass and oxygen
   draws workers across walkable cells, extracts into local storage scaled by
   worker staffing (`workers / MAPE_MINE_WORKERS`, active at `≥ 0.1` workers), and
   drops a spoil ring beside the shaft.
-- **Forest**: biomass cell demanding and consuming local CO2 to grow (Phase 3).
+- **Forest**: continuous cell cover responding to humidity, CO2 and waste (section 3.1).
 - **Job slots `jobNeed[i]`**: the factual workforce a cell asks for — unlocked
   mines, building and active factories. It never diffuses and drives the
   `jobs` display layer.
@@ -220,7 +221,8 @@ MAPE_WF_MIGRATION_SHARE = 0.1    // fraction of net flow reflected in population
 MAPE_WF_SPAWN = 10               // fluid model: pooled depleted that spawns a settlement
 MAPE_WF_SPAWN_VALUE = 0.35       // fluid model: min settlement location value to spawn
 MAPE_CO2_INIT = 0.4              // ambient CO2 per land cell at start
-MAPE_FOREST_CO2 = 0.004          // CO2 consumed /s per full-growth forest cell
+BIO_RESPONSE = 0.08             // forest adjustment /s
+BIO_CARBON_PER_COVER = 0.7       // CO2 stored per unit cover
 MAPE_MONEY_PER_POP = 25          // market funds target per resident
 MAPE_MONEY_REGEN = 0.04          // market funds recovery /s toward target
 MAPE_SUPPLY_GOODS = 0.2          // settlement goods used per party supply unit
@@ -297,8 +299,18 @@ moving stocks or people:
    and iron, emit goods and CO2, and leave waste around them. Settlements consume
    goods (`MAPE_SETTLE_DISTURB` waste, spread around the cell) and coal (emitting
    CO2). Wasted capacity then feeds back through step 7.
-6. **Forest CO2 uptake.** Growing biomass cells scale growth by
-   `clamp(goods[CO2][i] / MAPE_FOREST_CO2_SCALE, 0, 1)` and deduct consumed CO2.
+6. **Forest carbon cycle (3.1).** For local stock `c`, humidity `h`, cover `b`
+   and waste `d`, width `w = 0.055 + 0.38c/(c+0.25)` and target cover
+   `max(0, 1−abs(h−0.5)/w) × c/(c+0.025) × (1−d)`.
+   Signed growth is `0.08 × (target−b)` per sim-second. Positive growth is
+   bounded by available local CO2; cover stays in 0–1. A unit of cover stores
+   0.7 CO2; dieback releases exactly that carbon locally. Map mass ledgers record
+   both directions. Bare cells can establish trees without an existing seed cell.
+   Initial cover is 65% of the target at CO2=0.4. Thus change is visible within
+   10–30 sim-seconds; high CO2 expands the humidity niche, low CO2 narrows it.
+   Amount selectors include waste, forest and humidity with fixed linear 0–100%
+   legends; these layers have no transport flow. Inspectors show cover and signed
+   growth in percentage points/s. Terrain shading follows live cover.
 7. **Population growth, migration and workforce update.**
 
 ## Population dynamics
@@ -725,7 +737,8 @@ unlocked mine extraction, CO2-gated forest growth, `MAPE_GATE_ON_GOODS` on vs of
 comparison in `experiments/mape_factory.js` over `300 s`. The construction and
 production runtime (iron draw, recipe, CO2, disturbance, worker-staffed output
 under both workforce models, scene Factory tool) is implemented; the placement
-scan, idle rule, forest CO2 gate comparison and the experiment remain.
+scan, idle rule and the factory experiment remain. Humidity/CO2 forest response
+is validated across engines by `experiments/mape_forest.js`.
 
 Gate: factories site between goods need and coal/iron surplus (never on water or
 high disturbance, no duplicate stack during construction), builds finish in
@@ -802,3 +815,12 @@ Gate: runtime switches preserve the stock ledger, all engines pass `smoke` and
   verify a 0.05 s advance; place a town closer to a mine and watch the real route
   bend. Erase a source and confirm the coal already shipped remains. Repeat in B
   under queue service and change engines without erasing the scene.
+
+### 3.1 Manual forest/waste pass
+
+- On Amount, select waste: towns and factories leave visible patches; water stays empty.
+- Pair forest amount with CO2 demand, then compare forest with humidity: cover
+  should change within a few real seconds at 4× and favour intermediate moisture.
+- Hover cells: signed forest growth should include both positive and negative rates.
+- Pause: forest, CO2 and flow stop together; resume and switch engines without reset.
+- In scenes A/B, select forest or waste from the amount controls; replay resets cover.
