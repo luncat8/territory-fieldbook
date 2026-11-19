@@ -95,40 +95,49 @@ function hudSyncMapLegend() {
 
 function hudPaintFieldLegend(refs, demand) {
 	const item = demand ? mape.viewItemDemand : mape.viewItem;
-	const name = MAPE_VIEW_ITEM_NAME[item];
 	const style = render.fieldStyle;
-	const stockScale = 'ui-scale look-' + style;
-	refs.layer.textContent = (demand ? 'Demand · ' : 'Amount · ') + name;
-	const resource = item <= MAPE_RES.CO2;
-	const stockMax = style === RENDER_STYLE.A ? RENDER_A_STOCK_MAX : RENDER_STOCK_MAX;
-	if (demand) {
-		if (resource) {
-			const bounded = renderDemandMax(item) === 1;
-			refs.unit.textContent = bounded ? 'Pull / 0–1' : 'Signed pull / ±6';
-			refs.scale.className = stockScale + (bounded ? ' demand' : ' demand signed');
-			refs.range.textContent = bounded ? '0 → 1 pull' : '−6 surplus → +6 pull';
-		} else if (item === MAPE_VIEW_ITEM.WORKFORCE) {
-			refs.unit.textContent = 'Job pull / 0–4';
-			refs.scale.className = stockScale + ' demand';
-			refs.range.textContent = '0 → 4 pull';
-		} else {
-			refs.unit.textContent = (item === MAPE_VIEW_ITEM.FRESH ? 'Fresh' : 'Depleted') + ' pool / cell';
-			refs.scale.className = stockScale + ' demand';
-			refs.range.textContent = 'log 0 → 100';
-		}
-	} else if (resource) {
-		refs.unit.textContent = 'Amount per cell';
-		refs.scale.className = stockScale;
-		refs.range.textContent = '0 → ' + stockMax + '/cell' + (style === RENDER_STYLE.FIELDBOOK ? '' : ' · log');
-	} else if (item === MAPE_VIEW_ITEM.POPULATION) {
-		refs.unit.textContent = 'Persons / cell';
-		refs.scale.className = stockScale;
-		refs.range.textContent = '0 → 120 · sqrt';
-	} else {
-		refs.unit.textContent = (item === MAPE_VIEW_ITEM.FRESH ? 'Fresh' : 'Depleted') + ' pool / cell';
-		refs.scale.className = stockScale;
-		refs.range.textContent = 'log 0 → 100';
+	const scale = 'ui-scale look-' + style;
+	refs.layer.textContent = (demand ? 'Demand · ' : 'Amount · ') + MAPE_VIEW_ITEM_LABEL[item];
+	if (item > MAPE_RES.CO2) hudPaintWorkerLegend(refs, item, demand, scale);
+	else if (demand) hudPaintPullLegend(refs, item, scale);
+	else hudPaintStockLegend(refs, style, scale);
+	hudPaintLegendKey(refs, item, demand, style);
+}
+
+// People and pools are quantities, not resource stock: each has its own fixed scale.
+function hudPaintWorkerLegend(refs, item, demand, scale) {
+	if (!demand) {
+		refs.unit.textContent = item === MAPE_VIEW_ITEM.POPULATION ? 'Persons / cell' : 'Workforce pool / cell';
+		refs.scale.className = scale;
+		refs.range.textContent = item === MAPE_VIEW_ITEM.POPULATION ? '0 → ' + MAPE_VIEW_POP_MAX + ' · sqrt' : 'log 0 → ' + MAPE_VIEW_POOL_MAX;
+		return;
 	}
+	refs.scale.className = scale + ' demand';
+	if (item === MAPE_VIEW_ITEM.JOBS) {
+		refs.unit.textContent = 'Job slots / cell';
+		refs.range.textContent = '0 → ' + MAPE_VIEW_JOB_MAX + ' · sqrt';
+		return;
+	}
+	refs.unit.textContent = item === MAPE_VIEW_ITEM.FRESH ? 'Fresh pull / cell' : 'Rest pull / cell';
+	refs.range.textContent = '0 → 1 pull';
+}
+
+function hudPaintPullLegend(refs, item, scale) {
+	const bounded = renderDemandMax(item) === 1;
+	refs.unit.textContent = bounded ? 'Pull / 0–1' : 'Signed pull / ±6';
+	refs.scale.className = scale + (bounded ? ' demand' : ' demand signed');
+	refs.range.textContent = bounded ? '0 → 1 pull' : '−6 surplus → +6 pull';
+}
+
+function hudPaintStockLegend(refs, style, scale) {
+	const stockMax = style === RENDER_STYLE.A ? RENDER_A_STOCK_MAX : RENDER_STOCK_MAX;
+	refs.unit.textContent = 'Amount per cell';
+	refs.scale.className = scale;
+	refs.range.textContent = '0 → ' + stockMax + '/cell' + (style === RENDER_STYLE.FIELDBOOK ? '' : ' · log');
+}
+
+function hudPaintLegendKey(refs, item, demand, style) {
+	const resource = item <= MAPE_RES.CO2;
 	let key = render.showSettlements ? '○ Settlement' : '';
 	const showSource = render.showSources && resource && (item === MAPE_RES.GOODS || !demand || style !== RENDER_STYLE.A);
 	if (showSource && item !== MAPE_RES.CO2) {
@@ -156,7 +165,9 @@ function hudUpdateInspect() {
 	const pct = (mape.settleCount / n * 100).toFixed(1);
 	let text = 'Settlements ' + mape.settleCount + ' (' + pct + '%) · pop ' + Math.round(mape.totalPop) +
 		'\nCell ' + x + ',' + y + ' · ' + TERRAIN_NAME[world.terrain[idx]] +
-		' · pop ' + mape.pop[idx].toFixed(1) + ' · work ' + mape.workforce[idx].toFixed(1) + ' · settle ' + world.settleValue[idx].toFixed(2);
+		' · pop ' + mape.pop[idx].toFixed(1) + ' · jobs ' + mape.jobNeed[idx].toFixed(0) +
+		' · pull ' + mape.workforce[idx].toFixed(2) + (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID ? ' · rest ' + mape.wfRestPull[idx].toFixed(2) : '') +
+		' · settle ' + world.settleValue[idx].toFixed(2);
 	for (let r = 0; r < MAPE_R; r++) {
 		const slot = r * n + idx;
 		text += (r % 2 === 0 ? '\n' : ' · ') + MAPE_RES_NAME[r] +

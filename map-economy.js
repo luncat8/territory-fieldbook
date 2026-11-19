@@ -4,8 +4,9 @@
 const MAPE_R = 4;
 const MAPE_RES = { COAL: 0, IRON: 1, GOODS: 2, CO2: 3 };
 const MAPE_RES_NAME = ['coal', 'iron', 'goods', 'co2'];
-const MAPE_VIEW_ITEM = { POPULATION: 4, FRESH: 5, WORKFORCE: 6, DEPLETED: 7 };
-const MAPE_VIEW_ITEM_NAME = ['coal', 'iron', 'goods', 'co2', 'population', 'fresh', 'workforce', 'depleted'];
+const MAPE_VIEW_ITEM = { POPULATION: 4, FRESH: 5, JOBS: 6, DEPLETED: 7 };
+const MAPE_VIEW_ITEM_NAME = ['coal', 'iron', 'goods', 'co2', 'population', 'fresh', 'jobs', 'depleted'];
+const MAPE_VIEW_ITEM_LABEL = ['coal', 'iron', 'goods', 'co2', 'population', 'workforce · fresh', 'jobs', 'workforce · depleted'];
 const MAPE_VIEW_AMOUNT_IDS = [0, 1, 2, 3, 4, 5, 7];
 const MAPE_VIEW_DEMAND_IDS = [0, 1, 2, 3, 6, 5, 7];
 const MAPE_VIEW_AMOUNT_NAMES = MAPE_VIEW_AMOUNT_IDS.map(id => MAPE_VIEW_ITEM_NAME[id]);
@@ -55,8 +56,10 @@ const MAPE_FOREST_CO2 = 0.004;
 const MAPE_MONEY_PER_POP = 25;
 const MAPE_MONEY_REGEN = 0.04;
 const MAPE_SUPPLY_GOODS = 0.2;
-const MAPE_VIEW_WORK_MAX = 4;
-const MAPE_VIEW_POOL_MAX = 100;
+const MAPE_VIEW_POP_MAX = 40;
+const MAPE_VIEW_JOB_MAX = 8;
+const MAPE_VIEW_PULL_REF = 0.25;
+const MAPE_VIEW_POOL_MAX = 20;
 
 const mape = {
 	engine: MAPE_ENGINE.CATCHMENT,
@@ -85,6 +88,8 @@ const mape = {
 	wfFreshNext: null,
 	wfDepleted: null,
 	wfDepletedNext: null,
+	wfRestPull: null,
+	wfRestPullNext: null,
 	fluidRested: 0,
 	fluidTired: 0,
 	fluidSpent: 0,
@@ -149,6 +154,8 @@ function mapeInit(mode, fixedResidents = false) {
 		mape.wfFreshNext = new Float32Array(n);
 		mape.wfDepleted = new Float32Array(n);
 		mape.wfDepletedNext = new Float32Array(n);
+		mape.wfRestPull = new Float32Array(n);
+		mape.wfRestPullNext = new Float32Array(n);
 		mape.usedGoods = new Float64Array(n);
 		mape.usedCoal = new Float64Array(n);
 		mape.satGoods = new Float32Array(n);
@@ -183,24 +190,11 @@ function mapeReset() {
 	mape.flowDt = 0;
 	mape.workforce.fill(0);
 	mape.workforceNext.fill(0);
-	for (const field of ['wfFresh', 'wfFreshNext', 'wfDepleted', 'wfDepletedNext']) mape[field].fill(0);
+	for (const field of ['wfFresh', 'wfFreshNext', 'wfDepleted', 'wfDepletedNext', 'wfRestPull', 'wfRestPullNext']) mape[field].fill(0);
 	for (const field of ['fluidRested', 'fluidTired', 'fluidSpent', 'fluidSpawned']) mape[field] = 0;
-	mape.usedGoods.fill(0);
-	mape.usedCoal.fill(0);
-	mape.satGoods.fill(0);
-	mape.satCoal.fill(0);
-	mape.jobNeed.fill(0);
-	mape.cellExport.fill(0);
-	mape.money.fill(0);
-	mape.factoryState.fill(MAPE_FACTORY_STATE.GONE);
-	mape.factoryProgress.fill(0);
-	mape.factoryStarved.fill(0);
-	mape.factoryCoal.fill(0);
-	mape.factoryIron.fill(0);
-	mape.factoryGoods.fill(0);
-	mape.factoryCo2.fill(0);
+	for (const field of ['usedGoods', 'usedCoal', 'satGoods', 'satCoal', 'jobNeed', 'cellExport', 'money',
+		'factoryState', 'factoryProgress', 'factoryStarved', 'factoryCoal', 'factoryIron', 'factoryGoods', 'factoryCo2', 'mineUnlocked']) mape[field].fill(0);
 	mape.factoryCount = 0;
-	mape.mineUnlocked.fill(0);
 	mape.mineCount = 0;
 	mape.storageCount = 0;
 	mape.workshopCount = 0;
@@ -253,8 +247,9 @@ function mapeSetEngine(mode) {
 
 function mapeSetWorkforceMode(mode) {
 	if (mode === mape.workforceMode || (mode !== MAPE_WORKFORCE_MODE.RESIDENTS && mode !== MAPE_WORKFORCE_MODE.FLUID)) return false;
-	// Pools start empty; jobs pull fresh fluid, residents model resumes walking immediately.
+	// Residents ignore the pools, so their rest pull must not linger on the demand side.
 	mape.workforceMode = mode;
+	if (mode === MAPE_WORKFORCE_MODE.RESIDENTS) mape.wfRestPull.fill(0);
 	return true;
 }
 
@@ -491,6 +486,7 @@ if (typeof module !== 'undefined') {
 	module.exports = {
 		mape, mapeInit, mapeStep, mapeField, mapeSetEngine, mapeEngineAvailable, mapeSetWorkforceMode, mapeWorkPresent,
 		mapeFinishSetup, mapeSeedSurvey, mapeLedgerResidual, mapePopResidual, MAPE_R, MAPE_RES, MAPE_RES_NAME, MAPE_ENGINE, MAPE_ENGINE_NAME, MAPE_FIELD, MAPE_FACTORY_STATE, MAPE_FACTORY_STATE_NAME, MAPE_WORKFORCE_MODE, MAPE_WORKFORCE_MODE_NAME, MAPE_FACTORY_WORKERS, MAPE_FACTORY_BUILD_WORKERS, MAPE_FACTORY_BUILD_SEC,
-		MAPE_VIEW_ITEM, MAPE_VIEW_ITEM_NAME, MAPE_VIEW_AMOUNT_IDS, MAPE_VIEW_DEMAND_IDS, MAPE_VIEW_AMOUNT_NAMES, MAPE_VIEW_DEMAND_NAMES, MAPE_VIEW_POOL_MAX
+		MAPE_VIEW_ITEM, MAPE_VIEW_ITEM_NAME, MAPE_VIEW_ITEM_LABEL, MAPE_VIEW_AMOUNT_IDS, MAPE_VIEW_DEMAND_IDS, MAPE_VIEW_AMOUNT_NAMES, MAPE_VIEW_DEMAND_NAMES,
+		MAPE_VIEW_POP_MAX, MAPE_VIEW_JOB_MAX, MAPE_VIEW_PULL_REF, MAPE_VIEW_POOL_MAX
 	};
 }

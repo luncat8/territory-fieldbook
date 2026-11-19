@@ -299,21 +299,21 @@ function mapeTransportSlice(r, size, terrain, demand, goods, next, pop, work, wo
 	return workTotal;
 }
 
-// Injects unmet mine/factory jobs plus transport effort; only site jobs retain permanent residents.
+// Job slots stay factual in jobNeed; only the pull field carries walking work, and only for residents.
 function mapeStepWorkforce(dt, transportBuffer) {
 	const n = world.n;
 	const pop = mape.pop;
 	const job = mape.jobNeed;
 	const work = mape.workforce;
+	const hauling = mape.workforceMode === MAPE_WORKFORCE_MODE.RESIDENTS;
 	const invDt = 1 / dt;
 	const signal = MAPE_WORK_SIGNAL * dt;
 	for (let i = 0; i < n; i++) {
 		const siteNeed = job[i];
-		const haulNeed = transportBuffer[i] * invDt;
-		const totalNeed = siteNeed + haulNeed;
+		const haulNeed = hauling ? transportBuffer[i] * invDt : 0;
 		if (siteNeed > 0) {
-			job[i] = totalNeed;
-			if (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID || totalNeed > pop[i]) work[i] += totalNeed * signal;
+			if (hauling && siteNeed + haulNeed <= pop[i]) continue;
+			work[i] += (siteNeed + haulNeed) * signal;
 		} else if (haulNeed > pop[i]) {
 			work[i] += (haulNeed - pop[i]) * 0.25 * dt;
 		}

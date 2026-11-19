@@ -75,6 +75,6 @@ function hudDisplaySync() {
 		control.checked = render[config[1]];
 		control.disabled = !hudDisplayEnabled(config[2]);
 	}
-	$('ui-canvas').setAttribute('aria-label', renderIsFieldView(render.view) ? (render.view === VIEW.DEMAND ? 'Demand · ' : 'Amount · ') + MAPE_VIEW_ITEM_NAME[renderViewItem(render.view)] : VIEW_NAME[render.view] + ' map');
-	$('ui-demand-canvas').setAttribute('aria-label', 'Demand · ' + MAPE_VIEW_ITEM_NAME[mape.viewItemDemand]);
+	$('ui-canvas').setAttribute('aria-label', renderIsFieldView(render.view) ? (render.view === VIEW.DEMAND ? 'Demand · ' : 'Amount · ') + MAPE_VIEW_ITEM_LABEL[renderViewItem(render.view)] : VIEW_NAME[render.view] + ' map');
+	$('ui-demand-canvas').setAttribute('aria-label', 'Demand · ' + MAPE_VIEW_ITEM_LABEL[mape.viewItemDemand]);
 }

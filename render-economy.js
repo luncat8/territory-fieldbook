@@ -11,6 +11,7 @@ const RENDER_B_LOG = Math.log1p(RENDER_B_EXPOSURE);
 const RENDER_A_LOG = Math.log1p(RENDER_A_STOCK_MAX);
 const RENDER_B_STOCK = [[0, 25, 24, 27], [0.12, 53, 39, 42], [0.26, 109, 58, 38], [0.41, 169, 86, 39], [0.55, 225, 138, 54], [0.7, 255, 202, 112], [1, 255, 241, 198]];
 const RENDER_B_NEED = [[0, 23, 21, 31], [0.16, 39, 31, 52], [0.3, 59, 42, 82], [0.48, 99, 65, 135], [0.69, 147, 100, 192], [0.88, 192, 148, 229], [1, 237, 207, 255]];
+const RENDER_POP_RAMP = [[0, 30, 26, 30], [0.12, 110, 74, 78], [0.3, 190, 126, 96], [0.55, 240, 186, 112], [1, 255, 246, 214]];
 const RENDER_ISO_EDGES = [[], [3, 0], [0, 1], [3, 1], [1, 2], [3, 0, 1, 2], [0, 2], [3, 2], [2, 3], [0, 2], [0, 1, 2, 3], [1, 2], [1, 3], [0, 1], [0, 3], []];
 const RENDER_FLOW_SOFT = ['rgba(151, 225, 255, 0.46)', 'rgba(151, 225, 255, 0.46)', 'rgba(255, 225, 173, 0.46)'];
 const RENDER_FLOW_BRIGHT = ['rgba(222, 249, 255, 0.86)', 'rgba(222, 249, 255, 0.86)', 'rgba(255, 240, 202, 0.90)'];
@@ -18,6 +19,7 @@ const RENDER_FLOW_BRIGHT = ['rgba(222, 249, 255, 0.86)', 'rgba(222, 249, 255, 0.
 const renderEconomy = {
 	stockPalette: null,
 	needPalette: null,
+	popPalette: null,
 	grid: null,
 	isoX: new Float64Array(4),
 	isoY: new Float64Array(4)
@@ -26,6 +28,7 @@ const renderEconomy = {
 function renderEconomyInit() {
 	renderEconomy.stockPalette = renderFieldPalette(RENDER_B_STOCK);
 	renderEconomy.needPalette = renderFieldPalette(RENDER_B_NEED);
+	renderEconomy.popPalette = renderFieldPalette(RENDER_POP_RAMP);
 	renderEconomy.grid = document.createElement('canvas');
 	renderEconomy.grid.width = renderEconomy.grid.height = render.size;
 	const ctx = renderEconomy.grid.getContext('2d');
@@ -80,7 +83,7 @@ function renderDemandMax(item) {
 	return mape.engine !== MAPE_ENGINE.DIFFUSION && item <= MAPE_RES.CO2 && mapeIsMarketItem(item) ? 1 : RENDER_DEMAND_MAX;
 }
 
-// New field items: people and pools. Norm gives a 0..1 read for the stock/need presets.
+// Amount reads stocks, demand reads the pull each stock follows: fresh to jobs, depleted home to rest.
 const RENDER_POOL_LOG = Math.log1p(MAPE_VIEW_POOL_MAX);
 
 function renderViewItem(view) {
@@ -89,17 +92,20 @@ function renderViewItem(view) {
 
 function renderItemField(item, demand) {
 	if (item === MAPE_VIEW_ITEM.POPULATION) return mape.pop;
-	if (item === MAPE_VIEW_ITEM.FRESH) return mape.wfFresh;
-	if (item === MAPE_VIEW_ITEM.WORKFORCE) return mape.workforce;
-	if (item === MAPE_VIEW_ITEM.DEPLETED) return mape.wfDepleted;
+	if (item === MAPE_VIEW_ITEM.JOBS) return demand ? mape.workforce : mape.jobNeed;
+	if (item === MAPE_VIEW_ITEM.FRESH) return demand ? mape.workforce : mape.wfFresh;
+	if (item === MAPE_VIEW_ITEM.DEPLETED) return demand ? mape.wfRestPull : mape.wfDepleted;
 	return demand ? mape.demandView[item] : mape.goodsView[item];
 }
 
-function renderItemNorm(item, value) {
+function renderItemNorm(item, value, demand) {
 	const v = value <= 0 ? 0 : value;
-	if (item === MAPE_VIEW_ITEM.POPULATION) return Math.sqrt(Math.min(1, v / MAPE_POP_CAP));
-	if (item === MAPE_VIEW_ITEM.WORKFORCE) return Math.sqrt(Math.min(1, v / MAPE_VIEW_WORK_MAX));
-	if (item === MAPE_VIEW_ITEM.FRESH || item === MAPE_VIEW_ITEM.DEPLETED) return Math.min(1, Math.log1p(v) / RENDER_POOL_LOG);
+	if (item === MAPE_VIEW_ITEM.POPULATION) return Math.sqrt(Math.min(1, v / MAPE_VIEW_POP_MAX));
+	if (item === MAPE_VIEW_ITEM.JOBS) return Math.sqrt(Math.min(1, v / MAPE_VIEW_JOB_MAX));
+	if (item === MAPE_VIEW_ITEM.FRESH || item === MAPE_VIEW_ITEM.DEPLETED) {
+		if (demand) return v / (v + MAPE_VIEW_PULL_REF);
+		return Math.min(1, Math.log1p(v) / RENDER_POOL_LOG);
+	}
 	return -1;
 }
 
@@ -107,13 +113,14 @@ function renderEconomyCells(view) {
 	const pixels = render.pixels;
 	const item = renderViewItem(view);
 	const demand = view === VIEW.DEMAND;
+	const civic = item === MAPE_VIEW_ITEM.POPULATION;
 	const field = renderItemField(item, demand);
 	const demandMax = renderDemandMax(item);
 	const style = render.fieldStyle;
-	const palette = demand ? renderEconomy.needPalette : renderEconomy.stockPalette;
+	const palette = civic ? renderEconomy.popPalette : demand ? renderEconomy.needPalette : renderEconomy.stockPalette;
 	for (let i = 0, p = 0; i < world.n; i++, p += 4) {
 		const value = field[i];
-		const norm = renderItemNorm(item, value);
+		const norm = renderItemNorm(item, value, demand);
 		if (item !== MAPE_RES.CO2 && world.terrain[i] === TERRAIN.WATER) {
 			pixels[p] = 21;
 			pixels[p + 1] = 34;
@@ -125,7 +132,7 @@ function renderEconomyCells(view) {
 			pixels[p + 2] = 23 + 137 * k;
 		} else if (norm >= 0) {
 			const k = norm;
-			if (style === RENDER_STYLE.B) {
+			if (civic || style === RENDER_STYLE.B) {
 				const at = Math.round(k * 1024) * 3;
 				pixels[p] = palette[at];
 				pixels[p + 1] = palette[at + 1];

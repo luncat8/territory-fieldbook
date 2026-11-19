@@ -104,3 +104,21 @@ Migration flux is computed in double precision but applied to Float32 population
 Record the actual source-plus-destination change after each pair write in `popDelta`; the
 proposed flux alone accumulates measurable residual over long runs. Compare populations in
 small controlled scenes before widening the entire population field to Float64.
+
+## signals that gain per second need a bounded display, not a bounded field
+
+An additive demand signal (`field += need * gain * dt`, decay per second) settles at
+`gain * need / decay`, so its peak grows with the need at the source and its halo spans
+orders of magnitude. A fixed linear or `sqrt` display scale then paints either a few white
+pixels or a faint haze. Draw it with `v / (v + ref)` (Michaelis-Menten) so one scale shows
+both the halo and the saturated source; keep a separate `sqrt` scale for factual amounts
+like job slots. Never clamp the field itself to make the picture readable — the advection
+kernel is gradient-normalized and only cares about direction.
+
+## spawn scans must exclude occupied cells
+
+A pool threshold spawn that overwrites `pop[idx]` on a cell that already has residents
+silently destroys population while adding the seed to `popDelta`, and only shows up as a
+large negative `pop_residual`. Any "place a new settlement" scan has to reject `pop > 0`:
+concentrating a pool (advection toward rest) makes a settlement's own cell exceed the
+threshold far more often than scattered diffusion did.

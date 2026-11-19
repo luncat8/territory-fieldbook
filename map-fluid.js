@@ -8,6 +8,9 @@ const MAPE_WF_FLOW = 1.8;
 const MAPE_WF_GRAD_REF = 0.03;
 const MAPE_WF_SPEND = 1.0;
 const MAPE_WF_REST = 0.05;
+const MAPE_WF_RETURN = 0.8;
+const MAPE_WF_REST_SIGNAL = 0.9;
+const MAPE_WF_REST_DECAY = 0.20;
 const MAPE_WF_SPAWN = 10;
 const MAPE_WF_SPAWN_VALUE = 0.35;
 const MAPE_WF_EPS = 1e-6;
@@ -116,6 +119,35 @@ function mapeFluidDiffuse(dt, size, terrain, depleted, depletedNext) {
 	}
 }
 
+// Rest pull: settlements with room advertise it; depleted follows this gradient home.
+function mapeFluidRestPull(dt, size, terrain) {
+	const pull = mape.wfRestPull;
+	const pop = mape.pop;
+	const response = 1 - Math.exp(-MAPE_WF_REST_SIGNAL * dt);
+	for (let k = 0; k < mape.settleCount; k++) {
+		const i = mape.settleCells[k];
+		const cap = MAPE_POP_CAP * landProductivity(i);
+		const target = cap > 0 ? Math.max(0, 1 - pop[i] / cap) : 0;
+		pull[i] += (target - pull[i]) * response;
+	}
+	mapeDiffuseSlice(pull, mape.wfRestPullNext, 0, size, terrain, true, MAPE_WF_DIFFUSE, MAPE_WF_REST_DECAY, dt);
+}
+
+function mapeFluidAdvectDepleted(dt, size, terrain, depleted, depletedNext) {
+	let frac = MAPE_WF_RETURN * dt;
+	if (frac > MAPE_STEP_FRAC_MAX) frac = MAPE_STEP_FRAC_MAX;
+	depletedNext.set(depleted);
+	for (let y = 0; y < size; y++) {
+		const row = y * size;
+		for (let x = 0; x < size; x++) {
+			const i = row + x;
+			if (terrain[i] === TERRAIN.WATER || depletedNext[i] <= MAPE_WF_EPS) continue;
+			mapePushUpGradient(x, y, i, i, size, terrain, mape.wfRestPull, depletedNext, depleted[i] * frac, MAPE_WF_GRAD_REF, 0, null);
+		}
+	}
+	depleted.set(depletedNext);
+}
+
 function mapeFluidRest(dt, depleted, fresh) {
 	const pop = mape.pop;
 	let rested = 0;
@@ -141,7 +173,7 @@ function mapeFluidSpawn(depleted, terrain) {
 	for (let i = 0; i < n; i++) {
 		const pool = depleted[i];
 		if (pool <= bestPool) continue;
-		if (terrain[i] === TERRAIN.WATER || (exp[i] & MAPE_CELL_INDUSTRY) !== 0) continue;
+		if (mape.pop[i] > 0 || terrain[i] === TERRAIN.WATER || (exp[i] & MAPE_CELL_INDUSTRY) !== 0) continue;
 		if (world.settleValue[i] < MAPE_WF_SPAWN_VALUE) continue;
 		best = i;
 		bestPool = pool;
@@ -168,11 +200,13 @@ function mapeFluidStep(dt) {
 	mapeFluidAdvect(dt, size, terrain, mape.workforce, fresh, mape.wfFreshNext);
 	mapeFluidTire(dt, fresh, depleted);
 	mapeFluidSpendJobs(dt, fresh, depleted);
+	mapeFluidRestPull(dt, size, terrain);
+	mapeFluidAdvectDepleted(dt, size, terrain, depleted, mape.wfDepletedNext);
 	mapeFluidDiffuse(dt, size, terrain, depleted, mape.wfDepletedNext);
 	mapeFluidRest(dt, depleted, fresh);
 	mapeFluidSpawn(depleted, terrain);
 }
 
 if (typeof module !== 'undefined') {
-	module.exports = { mapeFluidStep, MAPE_WF_GEN, MAPE_WF_TIRE, MAPE_WF_REST, MAPE_WF_SPAWN, MAPE_WF_SPAWN_VALUE };
+	module.exports = { mapeFluidStep, MAPE_WF_GEN, MAPE_WF_TIRE, MAPE_WF_REST, MAPE_WF_RETURN, MAPE_WF_SPAWN, MAPE_WF_SPAWN_VALUE };
 }
