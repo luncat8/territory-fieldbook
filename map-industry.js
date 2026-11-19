@@ -6,6 +6,15 @@ const MAPE_MINE_MIN_WORKERS = 0.1;
 const MAPE_MINE_WASTE = 0.0016;
 const MAPE_WORKSHOP_RATE = 1.8;
 const MAPE_WORKSHOP_STOCK = 8;
+const MAPE_SAWMILL_RATE = 1.1;
+const MAPE_SAWMILL_RADIUS = 6;
+const MAPE_SAWMILL_MIN_FOREST = 0.08;
+const MAPE_SAWMILL_MIN_PULL = 0.015;
+const MAPE_SAWMILL_FOREST_PER_LOG = 0.025;
+const MAPE_FORESTRY_INPUT = 0.55;
+const MAPE_CHARCOAL_YIELD = 0.8;
+const MAPE_CHARCOAL_CO2 = 0.2;
+const MAPE_WOOD_YIELD = 1.0;
 
 function mapeAddStorage(x, y, site) {
 	for (let k = 0; k < mape.storageCount; k++) {
@@ -20,12 +29,13 @@ function mapeAddStorage(x, y, site) {
 	return slot;
 }
 
-function mapeAddFactory(x, y, state) {
+function mapeAddFactory(x, y, state, kind = MAPE_FACTORY_KIND.GENERAL) {
 	if (mape.factoryCount >= MAPE_FACTORY_CAP) return -1;
 	const f = mape.factoryCount;
 	mape.factoryX[f] = x;
 	mape.factoryY[f] = y;
 	mape.factoryState[f] = state;
+	mape.factoryKind[f] = kind;
 	mape.factoryProgress[f] = state === MAPE_FACTORY_STATE.ACTIVE ? 1 : 0;
 	mape.factoryStarved[f] = 0;
 	mape.factoryCoal[f] = 0;
@@ -166,6 +176,11 @@ function mapeStepFactories(dt) {
 		const idx = mape.factoryY[f] * size + mape.factoryX[f];
 		const need = mapeFactoryWorkers(st);
 		const staff = need > 0 ? Math.min(1, mapeWorkPresent(idx) / need) : 0;
+		const kind = mape.factoryKind[f];
+		if (kind !== MAPE_FACTORY_KIND.GENERAL) {
+			mapeStepForestryFactory(f, idx, dt, staff);
+			continue;
+		}
 		if (st !== MAPE_FACTORY_STATE.BUILDING && staff <= 0) {
 			mape.factoryCoal[f] = mape.factoryIron[f] = mape.factoryGoods[f] = mape.factoryCo2[f] = 0;
 			continue;
@@ -215,6 +230,73 @@ function mapeStepFactories(dt) {
 		mape.factoryGoods[f] = MAPE_FACTORY_YIELD * staff * k;
 		mape.factoryCo2[f] = MAPE_FACTORY_CO2 * staff * k;
 	}
+}
+
+function mapeSelectForestCutCell(x, y) {
+	const size = world.size;
+	const radius = MAPE_SAWMILL_RADIUS;
+	const logsDemand = mape.demandView[MAPE_RES.LOGS];
+	const biomass = economy.biomass;
+	let selected = -1;
+	let candidates = 0;
+	for (let dy = -radius; dy <= radius; dy++) {
+		const cy = y + dy;
+		if (cy < 0 || cy >= size) continue;
+		for (let dx = -radius; dx <= radius; dx++) {
+			if (dx * dx + dy * dy > radius * radius) continue;
+			const cx = x + dx;
+			if (cx < 0 || cx >= size) continue;
+			const idx = cy * size + cx;
+			if (world.terrain[idx] === TERRAIN.WATER || biomass[idx] < MAPE_SAWMILL_MIN_FOREST || logsDemand[idx] < MAPE_SAWMILL_MIN_PULL) continue;
+			candidates++;
+			if (randomInt(candidates) === 0) selected = idx;
+		}
+	}
+	return selected;
+}
+
+function mapeStepForestryFactory(f, idx, dt, staff) {
+	mape.factoryCoal[f] = mape.factoryIron[f] = mape.factoryGoods[f] = mape.factoryCo2[f] = 0;
+	if (staff <= 0) return;
+	const kind = mape.factoryKind[f];
+	if (kind === MAPE_FACTORY_KIND.SAWMILL) {
+		const cell = mapeSelectForestCutCell(mape.factoryX[f], mape.factoryY[f]);
+		if (cell < 0) return;
+		const pull = mape.demandView[MAPE_RES.LOGS][cell];
+		const demandScale = Math.min(1, pull / (MAPE_SAWMILL_MIN_PULL * 2));
+		const units = Math.min(MAPE_SAWMILL_RATE * staff * landProductivity(idx) * demandScale * dt,
+			economy.biomass[cell] / MAPE_SAWMILL_FOREST_PER_LOG);
+		if (units <= 0) return;
+		economy.biomass[cell] -= units * MAPE_SAWMILL_FOREST_PER_LOG;
+		mape.factoryGoods[f] = units / dt;
+		mapeProduceStock(MAPE_RES.LOGS, cell, units);
+		landDisturbRing(cell, 0.00015 * units);
+		return;
+	}
+	const slot = MAPE_RES.LOGS * world.n + idx;
+	const wanted = MAPE_FORESTRY_INPUT * staff * dt;
+	const used = Math.min(mape.goods[slot], wanted);
+	if (used <= 0) {
+		mape.factoryStarved[f] += dt;
+		return;
+	}
+	mape.factoryIron[f] = used / dt;
+	mape.goods[slot] -= used;
+	mape.massOut += used;
+	if (kind === MAPE_FACTORY_KIND.CHARCOAL) {
+		const coal = used * MAPE_CHARCOAL_YIELD;
+		const co2 = used * MAPE_CHARCOAL_CO2;
+		mape.factoryCoal[f] = coal / dt;
+		mape.factoryCo2[f] = co2 / dt;
+		mapeProduceStock(MAPE_RES.COAL, idx, coal);
+		mapeProduceStock(MAPE_RES.CO2, idx, co2);
+		landDisturbAround(idx, MAPE_FACTORY_DISTURB * staff * dt);
+		return;
+	}
+	const goods = used * MAPE_WOOD_YIELD;
+	mape.factoryGoods[f] = goods / dt;
+	mapeProduceStock(MAPE_RES.GOODS, idx, goods);
+	landDisturbAround(idx, MAPE_FACTORY_DISTURB * staff * dt);
 }
 
 function mapeRemoveFactory(f) {

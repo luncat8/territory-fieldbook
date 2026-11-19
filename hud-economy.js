@@ -151,7 +151,7 @@ function hudPaintLegendKey(refs, item, demand, style) {
 	let key = towns ? '○ Settlement' : '';
 	const showSource = render.showSources && resource && (item === MAPE_RES.GOODS || !demand || style !== RENDER_STYLE.A);
 	if (showSource && item !== MAPE_RES.CO2) {
-		const source = item === MAPE_RES.GOODS ? '◇ Workshop' : style === RENDER_STYLE.A ? '■ Mine' : style === RENDER_STYLE.B ? '◆ Mine' : '▲ Mine';
+		const source = item === MAPE_RES.GOODS ? '◇ Workshop' : item === MAPE_RES.LOGS ? '▣ Sawmill' : style === RENDER_STYLE.A ? '■ Mine' : style === RENDER_STYLE.B ? '◆ Mine' : '▲ Mine';
 		key += (key ? ' · ' : '') + source;
 	}
 	refs.key.textContent = key;
@@ -205,10 +205,22 @@ function hudFactorySiteText(f, idx) {
 	const need = mapeFactoryWorkers(st);
 	const present = mapeWorkPresent(idx);
 	const staff = need > 0 ? Math.min(1, present / need) : 0;
-	let text = 'Factory F' + (f + 1) + ' · ' + MAPE_FACTORY_STATE_NAME[st];
+	let text = MAPE_FACTORY_KIND_NAME[mape.factoryKind[f]] + ' F' + (f + 1) + ' · ' + MAPE_FACTORY_STATE_NAME[st];
 	if (st === MAPE_FACTORY_STATE.BUILDING) text += ' · ' + Math.floor(mape.factoryProgress[f] * 100) + '%';
 	text += '\nCell ' + mape.factoryX[f] + ',' + mape.factoryY[f] + ' · productivity ' + Math.round(100 * landProductivity(idx)) + '% · disturbed ' + Math.round(100 * land.disturbed[idx]) + '%';
 	text += '\nWorkers ' + present.toFixed(1) + '/' + need + ' · ' + Math.round(100 * staff) + '% staffed';
+	const kind = mape.factoryKind[f];
+	if (kind === MAPE_FACTORY_KIND.SAWMILL) {
+		text += '\nLogs +' + mape.factoryGoods[f].toFixed(2) + '/s · cuts only along log demand';
+		return text;
+	}
+	if (kind === MAPE_FACTORY_KIND.CHARCOAL || kind === MAPE_FACTORY_KIND.WOOD) {
+		text += '\nLogs −' + mape.factoryIron[f].toFixed(2) + '/s';
+		text += kind === MAPE_FACTORY_KIND.CHARCOAL
+			? '\nCoal +' + mape.factoryCoal[f].toFixed(2) + '/s · CO2 +' + mape.factoryCo2[f].toFixed(2) + '/s'
+			: '\nGoods +' + mape.factoryGoods[f].toFixed(2) + '/s';
+		return text;
+	}
 	if (st === MAPE_FACTORY_STATE.BUILDING) {
 		text += '\niron −' + mape.factoryIron[f].toFixed(2) + '/s · starved ' + Math.floor(mape.factoryStarved[f]) + 's';
 		text += '\niron stock ' + mape.goods[MAPE_RES.IRON * world.n + idx].toFixed(2);

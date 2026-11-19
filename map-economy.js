@@ -1,14 +1,14 @@
 // owns: settlements, settlement markets, map-economy fields, mine/factory/storage pools and ledger
 // edit for: map-economy data tables, seeding, deposit unlock rules, settlement market actions
 
-const MAPE_R = 4;
-const MAPE_RES = { COAL: 0, IRON: 1, GOODS: 2, CO2: 3 };
-const MAPE_RES_NAME = ['coal', 'iron', 'goods', 'co2'];
-const MAPE_VIEW_ITEM = { POPULATION: 4, FRESH: 5, JOBS: 6, DEPLETED: 7, WASTE: 8, FOREST: 9, SOIL: 10, HUMIDITY: 11, WATER: 12 };
-const MAPE_VIEW_ITEM_NAME = ['coal', 'iron', 'goods', 'co2', 'population', 'fresh', 'jobs', 'depleted', 'waste', 'forest', 'soil moisture', 'air humidity', 'surface water'];
-const MAPE_VIEW_ITEM_LABEL = ['coal', 'iron', 'goods', 'co2', 'population', 'workforce · fresh', 'jobs', 'workforce · depleted', 'waste', 'forest cover', 'soil moisture', 'air humidity', 'surface water'];
-const MAPE_VIEW_AMOUNT_IDS = [0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12];
-const MAPE_VIEW_DEMAND_IDS = [0, 1, 2, 3, 6, 5, 7];
+const MAPE_R = 5;
+const MAPE_RES = { COAL: 0, IRON: 1, GOODS: 2, LOGS: 3, CO2: 4 };
+const MAPE_RES_NAME = ['coal', 'iron', 'goods', 'logs', 'co2'];
+const MAPE_VIEW_ITEM = { POPULATION: 5, FRESH: 6, JOBS: 7, DEPLETED: 8, WASTE: 9, FOREST: 10, SOIL: 11, HUMIDITY: 12, WATER: 13 };
+const MAPE_VIEW_ITEM_NAME = ['coal', 'iron', 'goods', 'logs', 'co2', 'population', 'fresh', 'jobs', 'depleted', 'waste', 'forest', 'soil moisture', 'air humidity', 'surface water'];
+const MAPE_VIEW_ITEM_LABEL = ['coal', 'iron', 'goods', 'logs', 'co2', 'population', 'workforce · fresh', 'jobs', 'workforce · depleted', 'waste', 'forest cover', 'soil moisture', 'air humidity', 'surface water'];
+const MAPE_VIEW_AMOUNT_IDS = [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13];
+const MAPE_VIEW_DEMAND_IDS = [0, 1, 2, 3, 4, 7, 6, 8];
 const MAPE_VIEW_AMOUNT_NAMES = MAPE_VIEW_AMOUNT_IDS.map(id => MAPE_VIEW_ITEM_NAME[id]);
 const MAPE_VIEW_DEMAND_NAMES = MAPE_VIEW_DEMAND_IDS.map(id => MAPE_VIEW_ITEM_NAME[id]);
 const MAPE_ENGINE = { DIFFUSION: 0, CATCHMENT: 1, QUEUE: 2, SITES: 3 };
@@ -18,6 +18,8 @@ const MAPE_WORKFORCE_MODE_NAME = ['Residents', 'Fluid field'];
 const MAPE_FIELD = { DEMAND: 0, GOODS: 1, POP: 2, WORKFORCE: 3 };
 const MAPE_FACTORY_STATE = { GONE: 0, BUILDING: 1, ACTIVE: 2, IDLE: 3 };
 const MAPE_FACTORY_STATE_NAME = ['gone', 'building', 'active', 'idle'];
+const MAPE_FACTORY_KIND = { GENERAL: 0, SAWMILL: 1, CHARCOAL: 2, WOOD: 3 };
+const MAPE_FACTORY_KIND_NAME = ['Factory', 'Sawmill', 'Charcoal works', 'Wood works'];
 const MAPE_CELL_INDUSTRY = 128;
 
 // All rates are per sim-second; on 1x speed, 1 s = 1 real second = 1 storyline day.
@@ -112,6 +114,7 @@ const mape = {
 	factoryX: new Uint8Array(MAPE_FACTORY_CAP),
 	factoryY: new Uint8Array(MAPE_FACTORY_CAP),
 	factoryState: new Uint8Array(MAPE_FACTORY_CAP),
+	factoryKind: new Uint8Array(MAPE_FACTORY_CAP),
 	factoryProgress: new Float32Array(MAPE_FACTORY_CAP),
 	factoryStarved: new Float32Array(MAPE_FACTORY_CAP),
 	factoryCoal: new Float32Array(MAPE_FACTORY_CAP),
@@ -200,7 +203,7 @@ function mapeReset() {
 	for (const field of ['wfFresh', 'wfFreshNext', 'wfDepleted', 'wfDepletedNext', 'wfRestPull', 'wfRestPullNext', 'wfMigration', 'wfBalance']) mape[field].fill(0);
 	for (const field of ['fluidRested', 'fluidTired', 'fluidSpent', 'fluidSpawned']) mape[field] = 0;
 	for (const field of ['usedGoods', 'usedCoal', 'satGoods', 'satCoal', 'jobNeed', 'cellExport', 'money',
-		'factoryState', 'factoryProgress', 'factoryStarved', 'factoryCoal', 'factoryIron', 'factoryGoods', 'factoryCo2', 'mineUnlocked']) mape[field].fill(0);
+		'factoryState', 'factoryKind', 'factoryProgress', 'factoryStarved', 'factoryCoal', 'factoryIron', 'factoryGoods', 'factoryCo2', 'mineUnlocked']) mape[field].fill(0);
 	mape.factoryCount = 0;
 	mape.mineCount = 0;
 	mape.storageCount = 0;
@@ -501,7 +504,7 @@ function mapePopResidual() {
 if (typeof module !== 'undefined') {
 	module.exports = {
 		mape, mapeInit, mapeStep, mapeField, mapeSetEngine, mapeEngineAvailable, mapeSetWorkforceMode, mapeWorkPresent,
-		mapeFinishSetup, mapeSeedSurvey, mapeLedgerResidual, mapePopResidual, MAPE_R, MAPE_RES, MAPE_RES_NAME, MAPE_ENGINE, MAPE_ENGINE_NAME, MAPE_FIELD, MAPE_FACTORY_STATE, MAPE_FACTORY_STATE_NAME, MAPE_WORKFORCE_MODE, MAPE_WORKFORCE_MODE_NAME, MAPE_FACTORY_WORKERS, MAPE_FACTORY_BUILD_WORKERS, MAPE_FACTORY_BUILD_SEC,
+		mapeFinishSetup, mapeSeedSurvey, mapeLedgerResidual, mapePopResidual, MAPE_R, MAPE_RES, MAPE_RES_NAME, MAPE_ENGINE, MAPE_ENGINE_NAME, MAPE_FIELD, MAPE_FACTORY_STATE, MAPE_FACTORY_STATE_NAME, MAPE_FACTORY_KIND, MAPE_FACTORY_KIND_NAME, MAPE_WORKFORCE_MODE, MAPE_WORKFORCE_MODE_NAME, MAPE_FACTORY_WORKERS, MAPE_FACTORY_BUILD_WORKERS, MAPE_FACTORY_BUILD_SEC,
 		MAPE_VIEW_ITEM, MAPE_VIEW_ITEM_NAME, MAPE_VIEW_ITEM_LABEL, MAPE_VIEW_AMOUNT_IDS, MAPE_VIEW_DEMAND_IDS, MAPE_VIEW_AMOUNT_NAMES, MAPE_VIEW_DEMAND_NAMES,
 		MAPE_VIEW_POP_MAX, MAPE_VIEW_JOB_MAX, MAPE_VIEW_PULL_REF, MAPE_VIEW_POOL_MAX
 	};

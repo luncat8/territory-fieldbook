@@ -6,7 +6,10 @@ const HUD_SCENE_TOOL_NOTE = [
 	'Click an empty cell on either map to place a staffed coal mine.',
 	'Click an empty cell on either map to add a settlement and watch the routes change.',
 	'Click a mine, settlement or factory to remove it without deleting the coal already on the map.',
-	'Click an empty cell on either map to add an active factory and watch its staffing and rates.'
+	'Click an empty cell on either map to add an active factory and watch its staffing and rates.',
+	'Place near forest; workers cut a random nearby forest cell only while log demand pulls there.',
+	'Consumes transported logs to make coal.',
+	'Consumes transported logs to make goods.'
 ];
 
 const hudScene = {

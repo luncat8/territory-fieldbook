@@ -1,6 +1,7 @@
 // owns: settlement/industry markers and cached actor labels
 // edit for: marker shapes, visibility and field label placement
 
+const FACTORY_KIND_CSS = ['#e0a458', '#60c89a', '#777f91', '#b58bd4'];
 const renderMarkers = { towns: [], mines: [], workshops: [], factories: [] };
 
 function renderMarkersInit() {
@@ -84,7 +85,7 @@ function renderIndustry(ctx, field, view) {
 			ctx.lineWidth = 2;
 			ctx.strokeRect(cx, cy, fsize, fsize);
 		} else {
-			ctx.fillStyle = FACTORY_CSS[st];
+			ctx.fillStyle = FACTORY_KIND_CSS[mape.factoryKind[f]];
 			ctx.fillRect(cx, cy, fsize, fsize);
 		}
 	}

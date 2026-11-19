@@ -1,4 +1,4 @@
-# Map-economy engine prototype plan — 4.1a
+# Map-economy engine prototype plan — 4.1b
 
 Standalone design for the map-economy engine prototype from draft 4.1a. It covers
 settlements with populations, demand as a distance field, gradient goods flow,
@@ -23,8 +23,13 @@ elapsed seconds.
 
 Prototype loop: ~2% of map cells start as settlements with small random
 populations; population demands goods and coal; nearby stock cools import demand.
-Demand diffuses and physical goods move up the gradient. Regional workshops
-provide goods while all deposits are still locked. In the factory phase, factories appear where goods need and coal/iron surplus overlap, build
+Demand diffuses and physical stock moves up its gradient. Regional workshops
+provide goods while all deposits are still locked. A staffed sawmill randomly
+selects a forest cell in its local radius, creates logs on that cell, and only
+cuts where log demand reaches it. Logs move toward staffed charcoal and wood
+works; charcoal turns logs into coal, while wood works turn them into goods.
+Stock feedback cools log demand, so surplus logs suppress additional cutting.
+In the factory phase, factories appear where goods need and coal/iron surplus overlap, build
 over 10–30 s while demanding iron, then consume coal and iron ore to produce
 goods plus waste plus CO2; settlements consuming goods leave waste and burning
 coal releases CO2; waste is disturbed land (`land.js`); CO2 feeds forest growth;
@@ -48,7 +53,7 @@ map-economy actions.
 Catchment A is the playable default for coal and goods. Queue B compares local
 service against regional uptake; signed Diffusion remains the comparison for
 Phases 0–3. All three share land, stock, markets, workforce, mines, atmosphere
-and the renderer. Iron and CO2 use the shared diffusion path in every mode.
+and the renderer. Logs, iron and CO2 use the shared diffusion path in every mode.
 
 The discrete Sites engine follows in Phase 4. It replaces goods routing and
 factory placement scoring on the shared economy foundation and is selectable
@@ -159,7 +164,7 @@ Fluid field workforce model (the default). `world.js` owns terrain and the
 settlement location value map. All buffers are reused per tick.
 
 ```
-MAPE_R = 4                       // coal, iron, goods, co2
+MAPE_R = 5                       // coal, iron, goods, logs, co2
 MAPE_SETTLE_TARGET = 0.02        // seeded fraction of cells with pop > 0 (~82)
 MAPE_SETTLE_MIN = 3              // min pop for active settlement market
 MAPE_HIRE_MIN_POP = 4            // min settlement pop to recruit a party member
@@ -210,6 +215,14 @@ MAPE_MINE_WASTE = 0.0016         // spoil /s on the ring of an active mine shaft
 LAND_WASTE_SOURCE_SHARE = 0.55   // share of a source's waste kept on its own cell
 LAND_WASTE_SPREAD = 0.0012       // landfill leachate mix per second over walkable land
 MAPE_MINE_RATE = 2.4             // resource extracted/s at full staff and productivity
+MAPE_SAWMILL_RATE = 1.1          // logs cut/s at full staff when demand is saturated
+MAPE_SAWMILL_RADIUS = 6          // random forest-cell search radius
+MAPE_SAWMILL_MIN_FOREST = 0.08   // minimum forest cover to cut
+MAPE_SAWMILL_MIN_PULL = 0.015    // no harvest below this log-demand floor
+MAPE_SAWMILL_FOREST_PER_LOG = 0.025 // forest cover consumed per log
+MAPE_FORESTRY_INPUT = 0.55       // logs consumed/s per staffed charcoal/wood works
+MAPE_CHARCOAL_YIELD = 0.8        // coal per log; remaining carbon returns as CO2
+MAPE_WOOD_YIELD = 1.0            // goods per log
 LAND_MINE_DISTURB_PER_UNIT = 0.00025 // disturbed fraction per extracted unit
 MAPE_WORKFORCE_PER_UNIT = 0.4    // transport effort / workforce per unit moved (diffusion)
 MAPE_WF_GEN = 0.05               // fluid model: fresh workforce per resident per second
@@ -736,6 +749,19 @@ Gate: supplied Diffusion settlements grow, unsupplied decline, no cell exceeds
 a fully wasted cell holds no population, goods/population ledgers balance, and
 total population stays bounded.
 
+### Forestry supply chain
+
+Sawmills, charcoal works, and wood works are active staffed job sites sharing the
+same factory pool, demand field, storage, and workforce models. A sawmill makes
+one reservoir-random cut choice from forest cells within six cells; candidates
+must be walkable, have forest cover, and have positive log pull. Harvest rate
+scales with staffing, local productivity, and demand pull, and pauses below the
+pull floor. Logs are stocked at the cut cell, then transported by the existing
+log demand gradient. Charcoal works consume logs for coal plus CO2; wood works
+consume logs for goods. Per-cell log stock cools the signed demand field, so a
+supply pile decreases the sawmill's incentive to cut. The amount and demand maps
+include logs, and the factory inspector reports staffing and recipe rates.
+
 ### Phase 3 — Factories, mines and forest CO2 loop (diffusion)
 
 Deliverable: `5 s` placement scan with spacing guard, `20 s` construction with
@@ -780,6 +806,9 @@ Gate: runtime switches preserve the stock ledger, all engines pass `smoke` and
 - Pause, open a scene and pick the Factory tool; click a cell to place a factory.
   Click it (Inspect tool) — the workforce block shows state, staffing and rates;
   the global row shows staffed/open slots. Esc clears the selection.
+- In a scene, place a sawmill near forest plus charcoal and wood works down-gradient.
+  Logs should appear on harvested cells, move to the converters, and accumulate
+  into coal/goods; without converter demand the sawmill should stop cutting.
 - The workforce segment opens on **Fluid field**: fresh workforce gathers at the
   mine, depleted pool returns to settlements, and a hamlet founds itself
   where depleted piles on high-value land (meadow or water-adjacent, never swamp).

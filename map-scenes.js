@@ -15,7 +15,7 @@ const MAPE_SCENE_LAYOUTS = {
 		towns: [[27, 23], [17, 38], [42, 36]]
 	}
 };
-const MAPE_SCENE_TOOLS = ['Inspect', 'Mine', 'Settlement', 'Erase', 'Factory'];
+const MAPE_SCENE_TOOLS = ['Inspect', 'Mine', 'Settlement', 'Erase', 'Factory', 'Sawmill', 'Charcoal works', 'Wood works'];
 const MAPE_SCENE_POP = 100;
 const MAPE_SCENE_FLUID_POP = 60;
 
@@ -58,10 +58,10 @@ function mapSceneAddMine(idx) {
 	return true;
 }
 
-function mapSceneAddFactory(idx) {
+function mapSceneAddFactory(idx, kind = MAPE_FACTORY_KIND.GENERAL) {
 	const x = idx % world.size;
 	const y = (idx / world.size) | 0;
-	const f = mapeAddFactory(x, y, MAPE_FACTORY_STATE.ACTIVE);
+	const f = mapeAddFactory(x, y, MAPE_FACTORY_STATE.ACTIVE, kind);
 	if (f < 0) return false;
 	mape.pop[idx] = MAPE_FACTORY_WORKERS;
 	return true;
@@ -79,12 +79,15 @@ function mapSceneEdit(x, y) {
 		if (mine >= 0) mapeRemoveMine(mine);
 		if (factory >= 0) mapeRemoveFactory(factory);
 		mape.pop[idx] = mape.money[idx] = 0;
-		eventsStatus('Actor removed. Coal already on the map stays in circulation.');
+		eventsStatus('Actor removed. Stored resources stay in circulation.');
 	} else {
 		if (town || mine >= 0 || mapeFactoryAt(x, y) >= 0) return eventsStatus('This cell already has an actor.');
 		if (mapScene.tool === 1 && !mapSceneAddMine(idx)) return eventsStatus('No room for another mine.');
 		if (mapScene.tool === 2) mapePlaceSettlement(idx, (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID ? MAPE_SCENE_FLUID_POP : MAPE_SCENE_POP), false);
-		if (mapScene.tool === 4 && !mapSceneAddFactory(idx)) return eventsStatus('No room for another factory.');
+		if (mapScene.tool >= 4) {
+			const kind = mapScene.tool === 4 ? MAPE_FACTORY_KIND.GENERAL : mapScene.tool - 4;
+			if (!mapSceneAddFactory(idx, kind)) return eventsStatus('No room for another factory.');
+		}
 		eventsStatus(MAPE_SCENE_TOOLS[mapScene.tool] + ' placed at ' + x + ',' + y + '.');
 	}
 	mape.popDelta += mape.pop[idx] - before;

@@ -77,6 +77,12 @@ function mapeInjectDemand(dt, marketsOnly) {
 	for (let f = 0; f < mape.factoryCount; f++) {
 		const st = mape.factoryState[f];
 		const idx = mape.factoryY[f] * size + mape.factoryX[f];
+		if (mape.factoryKind[f] !== MAPE_FACTORY_KIND.GENERAL) {
+			if (!marketsOnly && (mape.factoryKind[f] === MAPE_FACTORY_KIND.CHARCOAL || mape.factoryKind[f] === MAPE_FACTORY_KIND.WOOD)) {
+				demand[MAPE_RES.LOGS * n + idx] += MAPE_FORESTRY_INPUT * gain;
+			}
+			continue;
+		}
 		if (st === MAPE_FACTORY_STATE.BUILDING) {
 			if (!marketsOnly) demand[ironOff + idx] += MAPE_FACTORY_BUILD_IRON * gain;
 		} else if (st === MAPE_FACTORY_STATE.ACTIVE) {
