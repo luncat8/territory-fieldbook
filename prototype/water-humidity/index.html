@@ -1,0 +1,127 @@
+<!doctype html>
+<!-- Standalone entry point for the water/humidity experiment. No game files, no build, file:// works. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#101820">
+<title>Water / humidity lab · territory fieldbook</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar"><div class="frame topbar-inner">
+	<div class="brand">Water <span>/</span> humidity <em>lab</em></div>
+	<span class="tag">standalone prototype</span>
+	<div class="playback">
+		<span id="run-state" data-state="on" class="run-state"><i></i>Running</span>
+		<time id="sim-time">00:00</time>
+		<button id="run" type="button">Pause</button>
+		<button id="step" type="button" title="Advance one 0.05 s step">Step</button>
+		<select id="speed" aria-label="Simulation speed"></select>
+	</div>
+</div></header>
+
+<main class="frame">
+	<section class="intro">
+		<h1>Rivers that make their own rain</h1>
+		<p>Surface water drains down the heightmap and is pulled toward a fading memory of where water has been moving fast and deep. That memory decides where humidity condenses, so rain falls on rivers instead of on the sea or as a thin sheet over the hills.</p>
+	</section>
+
+	<section class="metrics" aria-label="Live measurements">
+		<div class="metric"><span>Land water</span><strong id="m-water">0</strong><small>units</small></div>
+		<div class="metric"><span>Wet land</span><strong id="m-wet">0</strong><small>of cells</small></div>
+		<div class="metric"><span>In channels</span><strong id="m-channel">0</strong><small>of water</small></div>
+		<div class="metric"><span>Rain / step</span><strong id="m-rain">0</strong><small>units</small></div>
+		<div class="metric"><span>Rain on rivers</span><strong id="m-grouped">0</strong><small>of rain</small></div>
+		<div class="metric"><span>Rain on sea</span><strong id="m-sea-rain">0</strong><small>must stay 0</small></div>
+		<div class="metric"><span>Mean humidity</span><strong id="m-humidity">0</strong><small>/ cell</small></div>
+		<div class="metric"><span>Sea discharge</span><strong id="m-sea-drain">0</strong><small>units</small></div>
+		<div class="metric"><span>Ledger error</span><strong id="m-ledger">0</strong><small>water + air</small></div>
+	</section>
+
+	<div class="layout">
+		<section class="map-panel">
+			<div class="panel-head"><h2 id="view-title">Terrain + water + grouping</h2><span id="view-hint">All layers together</span></div>
+			<div class="map-wrap">
+				<canvas id="main-map" width="64" height="64" tabindex="0" aria-label="Main field map"></canvas>
+				<canvas id="main-overlay" width="512" height="512" aria-hidden="true"></canvas>
+			</div>
+			<div class="view-tabs" id="view-tabs" aria-label="Field view"></div>
+			<div class="map-options">
+				<label><input id="show-flow" type="checkbox" checked> Flow vectors</label>
+				<label><input id="show-springs" type="checkbox" checked> Spring sources</label>
+				<label><input id="show-rain" type="checkbox" checked> Rain flashes</label>
+			</div>
+			<p id="inspect" class="inspect">Hover over any map to inspect a cell.</p>
+			<div class="charts">
+				<div><span>Land water over time</span><canvas id="spark-water" width="240" height="44"></canvas></div>
+				<div><span>Rain per step</span><canvas id="spark-rain" width="240" height="44"></canvas></div>
+			</div>
+		</section>
+
+		<aside class="side">
+			<section class="mini-panel">
+				<div class="panel-head"><h2>Field layers</h2><span>click to enlarge</span></div>
+				<div class="mini-grid">
+					<figure><canvas id="mini-height" width="64" height="64"></canvas><figcaption>Height / relief</figcaption></figure>
+					<figure><canvas id="mini-water" width="64" height="64"></canvas><figcaption>Surface water</figcaption></figure>
+					<figure><canvas id="mini-group" width="64" height="64"></canvas><figcaption>Grouping demand</figcaption></figure>
+					<figure><canvas id="mini-humidity" width="64" height="64"></canvas><figcaption>Air humidity</figcaption></figure>
+					<figure><canvas id="mini-rain" width="64" height="64"></canvas><figcaption>Rainfall</figcaption></figure>
+					<figure><canvas id="mini-flow" width="64" height="64"></canvas><figcaption>Flow direction</figcaption></figure>
+				</div>
+			</section>
+
+			<section class="controls">
+				<div class="panel-head"><h2>Experiment settings</h2><span>live</span></div>
+				<div class="setup-row">
+					<label>Terrain<select id="scenario"></select></label>
+					<label>Seed<input id="seed" type="number" min="0" step="1"></label>
+				</div>
+				<div class="buttons">
+					<button id="new-seed" type="button">New seed</button>
+					<button id="reset" type="button">Reset</button>
+					<button id="warm" type="button">+60 s</button>
+				</div>
+				<div class="switch-grid">
+					<label><input id="grouping" type="checkbox" checked> Grouping field</label>
+					<label><input id="springs" type="checkbox" checked> Springs</label>
+					<label><input id="wind" type="checkbox" checked> Prevailing wind</label>
+					<label>Rain<select id="rain-mode">
+						<option value="local">Above rivers</option>
+						<option value="uniform">Everywhere</option>
+						<option value="off">Off</option>
+					</select></label>
+				</div>
+				<div id="sliders"></div>
+			</section>
+		</aside>
+	</div>
+
+	<details class="notes">
+		<summary>Model notes</summary>
+		<div class="notes-body">
+			<h3>The four fields</h3>
+			<p><b>Water</b> is a depth per cell. Only water above the retention threshold is mobile. It moves down the depression-filled heightmap, and a second, independent flux carries it up the grouping-demand gradient so neighbouring water joins existing channels.</p>
+			<p><b>Grouping demand</b> is a bounded 0–1 field. It is emitted where water is both fast and deep (turnover speed times depth), spreads by diffusion and decays over time. A still sea and a thin film emit nothing; a river emits a lot. Water below the film threshold also resists infiltration when it is moving, which lets a river's nose advance while a stagnant puddle disappears.</p>
+			<p><b>Humidity</b> diffuses and drifts with the prevailing wind. It spawns from surface water at a rate suppressed by grouping demand (<i>water / (1 + hold × G)</i>), so a river keeps its water instead of evaporating it. It despawns as rain, gated by the square of grouping demand above a threshold.</p>
+			<p><b>Rain</b> is a transfer from air to land. Because the gate is on grouping demand, and sea cells never build it, no rain falls over the sea — the sea feeds the air, the air rains on rivers, and rivers discharge back into the sea.</p>
+			<h3>Why the model is shaped this way</h3>
+			<p>A single potential <i>height − G</i> turns a wet channel into a potential well: dry cells ahead have lower demand, so the river's nose faces an uphill barrier and stops. Splitting downhill flow and up-demand flow into two independent non-negative fluxes keeps the nose advancing while still clustering water sideways.</p>
+			<p>Depression filling gives every cell a downhill path to the sea; without it, noise pits trap all water and rain floods the map. A depth-gated, capped surface term lets deep lakes level out of those flats without letting a thin sheet spread over hills.</p>
+			<p>Rivers need seeds. A global drizzle would create exactly the thin layer this model avoids, so a few mountain springs start the channels; the grouping/rain feedback then selects and reinforces the strongest ones.</p>
+			<h3>Things to try</h3>
+			<p>Switch rain to <b>Everywhere</b> — the whole map floods with a slow-moving sheet. Turn off the grouping field — rain stops and channels weaken. Set sea evaporation to zero — the inland rivers lose their moisture supply. Try the <b>valleys</b> terrain for a gentler cross-slope, <b>islands</b> for separate basins and <b>basin</b> for a closed lake. The <b>Depression-fill weight</b> slider dials the priority-flood drainage surface from fully filled to raw terrain.</p>
+			<p>Space pauses, S steps, 1–7 switch the main view. Every change applies to the running model; Reset rebuilds with the current seed and settings.</p>
+		</div>
+	</details>
+	<p class="footer">Headless: <code>node --test</code> (model + stub-DOM page) · <code>node preview.cjs coast 160 --out preview</code></p>
+</main>
+
+	<script src="terrain.js"></script>
+	<script src="simulation.js"></script>
+	<script src="palette.js"></script>
+	<script src="fields.js"></script>
+	<script src="app.js"></script>
+</body>
+</html>
