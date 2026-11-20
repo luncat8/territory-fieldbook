@@ -265,7 +265,7 @@ Solves shared pitfalls early: catches town-to-settlement market balance, water-i
 
 ### factory
 
-charcoal factory make coal from forest
+charcoal factory make coal from forest. charcoal surname for coal, not separate item.
 wood factory make goods from forest
 
 think how to better use workforces to achieve this
@@ -425,7 +425,7 @@ Map balance is a **shared state** that every party affects. A rival who worsens 
 
 The response is territorial: the affected party extends its influence into those cells, then claims and improves them.
 
-coal: mines produce less then (settlements need + factories that produce for settlement) so charcoal has purpose.
+coal: mines produce less then (settlements need + factories that produce for settlement) so coal from trees has purpose.
 
 i think towns should have deficit and improving economy will be useful and easy to see profit. subject of balance what population should be stable (not depopulate) of initial map. without supply of resources
 
