@@ -33,8 +33,10 @@ In the factory phase, factories appear where goods need and coal/iron surplus ov
 over 10–30 s while demanding iron, then consume coal and iron ore to produce
 goods plus waste plus CO2; settlements consuming goods leave waste and burning
 coal releases CO2; waste is disturbed land (`land.js`); CO2 feeds forest growth;
-production and transport create workforce demand that attracts migration;
-population grows where needs are met and declines where they are not. The player
+production and transport create workforce demand; a town that cannot staff the
+work it owns draws residents from one that can, though the map total only moves
+on food, and population grows where needs are met and declines where they are
+not. The player
 observes the fields, inspects any cell, selects a job site to read its staffing
 and performance, trades and hires at settlements, and
 unlocks deposits by investigating to 100% and holding territory so mines can work
@@ -177,7 +179,7 @@ MAPE_MARKET_GOODS_USE = 0.036    // A/B household goods use/person/s
 MAPE_MARKET_COAL_USE = 0.045    // A/B household coal use/person/s
 MAPE_HUNGRY_POP = 8              // population half-saturation of the import target: pop/(pop+8)
 MAPE_FACTORY_YARD = 4            // half-width of the graded coal pull around an active plant
-MAPE_SETTLE_DISTURB = 0.003      // disturbance per unit goods consumed, spread around the cell
+MAPE_SETTLE_DISTURB = 0.0024     // disturbance per unit goods consumed, spread around the cell
 MAPE_SAT_SCALE = 4                // satisfaction response timescale in seconds
 MAPE_DEMAND_GAIN = 8.0           // demand signal scale for unmet need rates
 MAPE_STOCK_SIGNAL = 0.25       // negative demand per stock unit per s
@@ -196,6 +198,13 @@ MAPE_MINE_MIN_WORKERS = 0.1      // min arrived workers before mine extracts
 MAPE_FACTORY_WORKERS = 8         // target workforce for active factory
 MAPE_FACTORY_BUILD_WORKERS = 4   // target workforce while building a factory
 MAPE_GATE_ON_GOODS = true        // require physical stock, not negative demand alone
+MAPE_SUBSIST_MAX = 0.62          // own-ground food share at settleValue 1, undisturbed
+MAPE_SUBSIST_NEUTRAL = 0.82      // intake needed before a town grows
+MAPE_SUBSIST_FAMINE = 0.15       // intake below which a town starves
+MAPE_SETTLE_KEEP = 8             // migration never strips a town below this
+MAPE_WF_TOWN_REACH = 8           // cells: work closer than this to a town needs no new hamlet
+MAPE_WORKSHOP_RATE = 0.9         // goods /s from each regional workshop
+MAPE_WORKSHOP_STOCK = 4          // workshop output ceiling per cell
 MAPE_GROWTH = 0.008              // pop growth /s at full satisfaction (0.8%/day)
 MAPE_DEATH = 0.015               // pop decline /s at zero satisfaction (1.5%/day)
 MAPE_MIGRATE = 0.01              // base pop diffusion /s
@@ -339,18 +348,76 @@ moving stocks or people:
 
 Goods satisfaction `satG` and coal satisfaction `satC` compare consumed (or
 negative-demand) supply against cell need over `MAPE_SAT_SCALE` seconds; combined
-satisfaction is `sat = 0.75 * satG + 0.25 * satC` (clamped `0…1`).
+import satisfaction is `0.75 * satG + 0.25 * satC` (clamped `0…1`).
 
-Growth per tick:
-`pop += pop * (MAPE_GROWTH * sat - MAPE_DEATH * (1 - sat)) * s`, capped at
-`MAPE_POP_CAP * landProductivity(i)` in Residents mode; in Fluid field,
-settlement growth additionally respects landscape capacity without abruptly
-clamping an existing over-cap town. Landfill waste therefore caps a settlement:
-every clamp pass pulls `pop` down to the wasted carrying capacity, and `d = 1`
-empties the cell. A dense supplied town outproduces natural recovery, so its own
-landfill keeps shrinking its capacity until its population settles at the lower
-cap; a village stays below `d = 0.25` and keeps growing. A supplied settlement doubles in ~90 s on
-1×; a completely unsupplied settlement halves in ~46 s.
+### Subsistence and the neutral line
+
+Own ground feeds a town before the market does. `mapeSubsistence(i)` is
+
+```
+0.62 * sqrt(settleValue[i]) * (1 - disturbed[i])
+```
+
+The square root keeps worthless ground habitable — a swamp edge or a desert
+still feeds someone — while the ceiling stays below the neutral line, so **no
+town can grow on its own land**. Intake is
+
+```
+feed = own + (1 - own) * importSatisfaction
+```
+
+and growth is `pop += pop * GROWTH * (feed - NEUTRAL) / (1 - NEUTRAL) * room * s`
+above `NEUTRAL = 0.82`, decline `-DEATH * (FAMINE - feed) / FAMINE` below
+`FAMINE = 0.15`. Below `1.0` import satisfaction, imports are worth
+`1 - own` of the shortfall, so a town that already feeds itself gains less from
+trade than one on poor ground.
+
+The seeded map therefore runs a **deficit**: mean town `settleValue` is 0.60, so
+`own ≈ 0.48` and `feed ≈ 0.48` unsupplied — well under `NEUTRAL`. Nothing grows,
+nothing starves, and the 82 towns hold their 1165 people indefinitely. Only the
+market can lift a town over the line:
+
+| supply | feed at sv 0.10 | sv 0.30 | sv 0.60 | sv 1.00 |
+| --- | --- | --- | --- | --- |
+| own ground only | 0.20 | 0.34 | 0.48 | 0.62 |
+| + coal | 0.40 | 0.50 | 0.61 | 0.71 |
+| + goods | 0.80 | 0.83 | 0.87 | 0.91 |
+| + coal and goods | 1.00 | 1.00 | 1.00 | 1.00 |
+
+Coal alone never crosses `NEUTRAL`; goods alone cross it anywhere but the
+poorest ground; both together give full growth everywhere. Coal is the cheap
+input that keeps a town alive and goods are what make it grow.
+
+Measured on the full map over 600 s (Fluid field, Catchment): no supply
+`1165 -> 1165` (flat), regional workshops `1165 -> 1188` (six towns fed, the rest
+flat), mines unlocked `1165 -> 1186` with the three served towns gaining
+`+46 / +43 / +36` and two towns on worked-out ground losing 3. Visible profit is
+the intended result: a player who builds haulage sees specific towns grow.
+
+Growth also fades as a town nears its room, so a supplied town settles at a
+steady size instead of piling everyone onto one cell. Landfill waste lowers
+`settleValue` and therefore both the subsistence share and the carrying
+capacity; `MAPE_SETTLE_DISTURB = 0.0024` per goods unit is the pressure that
+makes a dense town stop growing and, on poor ground, begin to shrink. A village
+stays below `d = 0.25`; a dense supplied town passes it.
+
+### Migration (Fluid field)
+
+Migrating population is a **transfer between towns**, never a birth: the map
+total does not move, and only food decides whether a town grows. The signal is
+staffing, not traffic. `mapeSyncCells` tabulates, per town, `jobFilled` (slots
+staffed by the workforce field) and `jobVacant` (slots it cannot staff). Towns
+with vacancies receive residents from towns whose people are already at work and
+whose population exceeds the work they staff plus `MAPE_SETTLE_KEEP = 8`. The
+donor pool is capped, inflow is capped by `mapeFluidCapacity`, and no town is
+stripped below the keep floor.
+
+Raw workforce traffic cannot drive this: every town exports fresh effort on its
+first step and no town receives another's export, so outbound traffic is
+structurally one-sided. Migration also never removes a settlement on its own —
+only famine and waste take a town below `MAPE_SETTLE_KEEP`. A new hamlet is
+founded only where an active mine or factory sits beyond `MAPE_WF_TOWN_REACH = 8`
+of every town; pooled labour with no job near it builds nothing.
 
 Residents-model migration per tick: positive edge flux across walkable 4-neighbours,
 `MAPE_MIGRATE * (pop[i] - pop[j]) * 0.5 + MAPE_MIGRATE_BIAS * pop[i] * (attract[j] - attract[i])`,
@@ -362,10 +429,10 @@ Workforce scaling: factory and transport throughput scales by
 closing `factory → jobs → migration → production`. Diffusion is the reference
 population lifecycle: it applies growth, decline and attraction-biased migration.
 Catchment A and Queue B record household intake and apply its waste/emissions, but
-hold demographic growth and satisfaction-led migration for stable routing comparisons;
-shared job staffing remains active. In Fluid field mode, smoothed net workforce
-movement drives settlement population in all engines, including test scenes; it
-replaces the separate edge-migration rule. Diffusion growth and decline still apply.
+hold satisfaction-led migration for stable routing comparisons; growth and decline
+run in every engine, and scenes that pin residents (`fixedResidents`) opt out.
+In Fluid field mode, the staffing-driven transfer above moves settlement
+population in all engines; it replaces the separate edge-migration rule.
 
 ## Workforce models
 
@@ -625,6 +692,23 @@ actual additions or removals. Factory recipes and the atmospheric uptake cycle
 can extend those same counters. Gradient transport conserves stock; signed
 demand decay recorded in `dissipated` is not material loss. Process balance
 requires `|massIn - massOut - (goodsTotal - initialGoods)| < 1e-6`.
+
+Two rules keep that ledger honest and both were bugs once:
+
+- A town's own goods below `MAPE_MARKET_RESERVE = 1.5` are a granary the market
+  must not draw on. `mapeSpendUsable` spends only the usable part and reports
+  what it actually took; spending raw stock and reporting the full request let a
+  town satisfy need from a reserve that never fell.
+- `mape.pop` and `mape.popNext` are `Float64Array`. As `Float32Array` the
+  per-cell growth writes rounded at 6e-5 a step, and 3 000 steps left the
+  population ledger 0.032 people out.
+
+Workshops are the world's own regional producers: four per map, `0.9/s` each
+capped at `4` units per cell, placed 5–10 cells from a town. They are what keeps
+a handful of towns fed before the player builds anything, and they are why the
+no-supply map is not uniform — six of 82 towns sit above the neutral line and
+grow while the rest hold. Goods also reach only that far: haulage is the
+player's job, and the towns beyond a workshop's catchment stay on subsistence.
 
 ## Performance budget
 

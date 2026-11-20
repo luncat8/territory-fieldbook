@@ -115,9 +115,11 @@ function mapePullMarketSlice(r, dt, queue) {
 			demand[cell] += (signal - demand[cell]) * strength * weights[j];
 		}
 	}
+	// Only a general works burns coal. A charcoal works that pulled coal would cage the coal
+	// it makes inside its own yard, outranking the town halo that should carry it away.
 	if (r !== MAPE_RES.COAL) return;
 	for (let f = 0; f < mape.factoryCount; f++) {
-		if (mape.factoryState[f] !== MAPE_FACTORY_STATE.ACTIVE) continue;
+		if (mape.factoryState[f] !== MAPE_FACTORY_STATE.ACTIVE || mape.factoryKind[f] !== MAPE_FACTORY_KIND.GENERAL) continue;
 		mapePullFactoryYard(off, mape.factoryY[f] * world.size + mape.factoryX[f], strength);
 	}
 }
@@ -199,6 +201,14 @@ function mapeUseMarketStock(p, amount) {
 	return used;
 }
 
+// A town's own granary is a reserve the market must not touch, so only the usable part may be
+// spent. Drawing the raw stock and then reporting it as eaten let a town feed itself from a
+// reserve that never fell — satisfaction without a source.
+function mapeSpendUsable(r, cell, amount) {
+	const usable = Math.min(amount, mapeMarketUsable(r, cell));
+	return mapeUseMarketStock(r * world.n + cell, usable);
+}
+
 // Household need is fixed; scaling it by the demand signal let stock cool the pull and then stop its own uptake.
 function mapeUseCatchmentStock(r, i, dt) {
 	const off = r * world.n;
@@ -212,9 +222,9 @@ function mapeUseCatchmentStock(r, i, dt) {
 	let used = 0;
 	for (let k = base; k < end; k++) {
 		const cell = catchments[k];
-		used += mapeUseMarketStock(off + cell, mapeMarketUsable(r, cell) * share);
+		used += mapeSpendUsable(r, cell, mapeMarketUsable(r, cell) * share);
 	}
-	mapeRecordUse(r, i, used);
+	if (used > 0) mapeRecordUse(r, i, used);
 }
 
 function mapeUseCatchments(dt) {
@@ -228,7 +238,8 @@ function mapeUseCatchments(dt) {
 function mapeServeQueue(r, i, dt, share) {
 	const p = r * world.n + i;
 	const ready = Math.min(mapeMarketUseRate(r, i) * dt, mapeMarketUsable(r, i) * share);
-	mapeRecordUse(r, i, mapeUseMarketStock(p, ready));
+	const used = mapeSpendUsable(r, i, ready);
+	if (used > 0) mapeRecordUse(r, i, used);
 }
 
 function mapeServeQueues(dt) {

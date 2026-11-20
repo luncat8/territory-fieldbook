@@ -87,38 +87,80 @@ mape.wfDepleted[shore - 1] = 10;
 mapeFluidDiffuse(0.05, world.size, world.terrain, mape.wfDepleted, mape.wfDepletedNext);
 assert.ok(mape.wfBalance[shore] > 0, 'diffusion across the boundary is counted');
 
-function migrate(rate, seconds, dt = 0.05) {
-	for (let k = 0; k < Math.round(seconds / dt); k++) {
-		mape.wfBalance.fill(0);
-		mape.wfBalance[shore] = rate * dt;
-		mape.wfBalance[meadow] = -rate * dt;
-		mapeFluidMigrate(dt);
-	}
-}
+// Migration moves people between towns to fill work, and never changes how many people the map
+// holds. It reads staffing, not traffic: a town with vacant job slots receives residents from a
+// town whose people are already at work. Traffic itself cannot drive it — every town exports fresh
+// effort on its first step and no town receives another's export.
+mape.jobSlots = 6;
 mape.pop[shore] = mape.pop[meadow] = 30;
 mape.wfMigration.fill(0);
+mape.jobFilled.fill(0);
+mape.jobVacant.fill(0);
+mape.wfFresh.fill(0);
+mape.wfFresh[meadow] = 30;
 mapeRebuildSettlements();
 mape.initialPop = mape.totalPop;
 mape.popDelta = 0;
-migrate(2, 1);
-assert.ok(mape.pop[shore] > 30 && mape.pop[shore] < 30.02, 'one transient is smoothed');
-assert.ok(mape.pop[meadow] < 30 && mape.pop[meadow] > 29.98);
-migrate(2, 40);
-assert.ok(mape.pop[shore] > 35 && mape.pop[meadow] < 25, 'sustained net inflow grows one town and outflow shrinks the other');
-assert.ok(Math.abs(mapePopResidual()) < 1e-4);
+
+// No vacancy anywhere means nobody moves, however much traffic the fields report.
+mape.jobFilled[meadow] = 6;
+mape.wfBalance.fill(0);
+mape.wfBalance[shore] = 2 * SIM_STEP_SEC;
+mapeFluidMigrate(SIM_STEP_SEC);
+assert.equal(mape.pop[shore], 30, 'traffic alone moves nobody');
+assert.equal(mape.pop[meadow], 30);
+
+// A town that cannot staff its work receives from a town that can; the map total is unchanged.
+mape.jobVacant[shore] = 6;
+mape.jobFilled[shore] = 0;
+mape.jobFilled[meadow] = 6;
+mape.wfFresh[meadow] = 30;
+mape.wfFresh[shore] = 0;
+const before = mape.pop[shore];
+mapeFluidMigrate(1);
+assert.ok(mape.pop[shore] > before, 'a starved town draws residents in');
+assert.ok(mape.pop[meadow] < 30, 'the staffed town sends them');
+assert.ok(Math.abs(mapePopResidual()) < 1e-4, 'migration conserves the map population');
+
+// With jobs but no spare residents anywhere, nothing moves either.
+mape.pop[shore] = MAPE_SETTLE_KEEP;
+mape.pop[meadow] = MAPE_SETTLE_KEEP + 6;
+mape.jobFilled.fill(0);
+mape.jobVacant.fill(0);
+mape.jobVacant[shore] = 6;
+mape.jobFilled[meadow] = 6;
+mape.wfFresh[meadow] = mape.pop[meadow];
+const kept = mape.pop[meadow];
+mapeFluidMigrate(10);
+assert.ok(mape.pop[meadow] >= kept - 1e-6, 'a town is never stripped below the keep floor');
+
+// No job slot anywhere means no migration at all, and the traffic average is forgotten.
+mape.jobSlots = 0;
+mape.pop[shore] = mape.pop[meadow] = 30;
+const idle = mape.pop[shore];
+mape.wfMigration[shore] = 1;
+mape.wfBalance.fill(0);
+mape.wfBalance[shore] = 2 * SIM_STEP_SEC;
+mapeFluidMigrate(30);
+assert.equal(mape.pop[shore], idle, 'no job slot anywhere means no migration at all');
+assert.ok(Math.abs(mape.wfMigration[shore]) < 1e-2, 'traffic average forgets while idle');
+mape.jobSlots = 6;
+
 const earlier = mape.pop[meadow];
 mape.wfFresh.fill(0);
 mape.wfBalance.fill(0);
 mapeFluidGenerate(1, world.terrain, mape.pop, mape.wfFresh);
 assert.ok(Math.abs(mape.wfFresh[meadow] - earlier * MAPE_WF_GEN) < 1e-5, 'smaller settlement dispatches less');
-const afterFlow = mape.wfMigration[shore];
-migrate(0, 30);
-assert.ok(mape.wfMigration[shore] < afterFlow * 0.06, 'average forgets old traffic');
 mape.pop[shore] = shoreCap - 0.01;
-mape.wfMigration[shore] = 10;
-mape.wfBalance.fill(0);
-mapeFluidMigrate(1);
+mape.pop[meadow] = 60;
+mape.jobVacant[shore] = 20;
+mape.jobFilled[shore] = 0;
+mape.jobFilled[meadow] = 6;
+mape.wfFresh[meadow] = 60;
+mapeFluidMigrate(60);
 assert.ok(mape.pop[shore] <= shoreCap + 1e-5, 'inflow cannot exceed capacity');
+mape.jobVacant.fill(0);
+mape.jobFilled.fill(0);
 mape.pop[shore] = shoreCap + 10;
 mapeFluidMigrate(1);
 assert.ok(mape.pop[shore] > shoreCap, 'existing over-cap town is not instantly erased');

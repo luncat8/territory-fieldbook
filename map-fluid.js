@@ -17,6 +17,8 @@ const MAPE_WF_SPAWN_VALUE = 0.35;
 const MAPE_WF_EPS = 1e-6;
 const MAPE_WF_MIGRATION_TIME = 10;
 const MAPE_WF_MIGRATION_SHARE = 0.1;
+const MAPE_SETTLE_KEEP = 8;
+const MAPE_WF_TOWN_REACH = 8;
 
 function mapeFluidCapacity(i) {
 	return MAPE_POP_CAP * world.settleValue[i] * landProductivity(i);
@@ -33,7 +35,9 @@ function mapeFluidGenerate(dt, terrain, pop, fresh) {
 	const rate = MAPE_WF_GEN * dt;
 	for (let i = 0; i < n; i++) {
 		if (terrain[i] === water || pop[i] <= 0) continue;
-		fresh[i] += pop[i] * rate;
+		const add = pop[i] * rate;
+		fresh[i] += add;
+		mape.fluidGenerated += add;
 	}
 }
 
@@ -54,20 +58,22 @@ function mapeFluidAdvect(dt, size, terrain, pull, fresh, freshNext) {
 	fresh.set(freshNext);
 }
 
+// Idle availability is not a person walking around: unspent fresh effort fades back home.
+// Only a job that spends workforce hands the same amount back as exhausted workers,
+// so a pool system with no work cannot found towns or move population.
+// Tiring hand-off: fresh effort becomes depleted effort in place. The depleted pool is the
+// reserve the land can still put back to work, so it is a transfer, never a loss.
 function mapeFluidTire(dt, fresh, depleted) {
 	const n = world.n;
-	const keep = Math.exp(-MAPE_WF_TIRE * dt);
-	const drop = 1 - keep;
-	let tired = 0;
+	const drop = 1 - Math.exp(-MAPE_WF_TIRE * dt);
 	for (let i = 0; i < n; i++) {
 		const f = fresh[i];
 		if (f <= 0) continue;
 		const t = f * drop;
 		fresh[i] = f - t;
 		depleted[i] += t;
-		tired += t;
+		mape.fluidTired += t;
 	}
-	mape.fluidTired += tired;
 }
 
 function mapeFluidSpendJobs(dt, fresh, depleted) {
@@ -189,34 +195,68 @@ function mapeFluidRecordMove(src, dst, amount) {
 	if (mapeIsSettlement(dst)) mape.wfBalance[dst] += amount;
 }
 
+// Migration is a transfer, never a birth: towns that cannot staff the work they own (vacant
+// slots) receive from towns that are staffed up (spare residents), and the map's total population
+// does not move. Food decides whether a town grows; only famine and waste shrink it. Raw workforce
+// traffic cannot drive this — every town exports fresh effort on its first step and no town
+// receives another's export, so outbound traffic is structurally one-sided and would empty a map.
 function mapeFluidMigrate(dt) {
 	const blend = 1 - Math.exp(-dt / MAPE_WF_MIGRATION_TIME);
+	const share = mape.jobSlots > 0 ? MAPE_WF_MIGRATION_SHARE : 0;
+	const donors = mape.wfDonor;
+	const takers = mape.wfTaker;
+	donors.fill(0);
+	takers.fill(0);
+	let spare = 0;
+	let need = 0;
 	for (let k = 0; k < mape.settleCount; k++) {
 		const i = mape.settleCells[k];
-		const rate = mape.wfMigration[i] + (mape.wfBalance[i] / dt - mape.wfMigration[i]) * blend;
-		mape.wfMigration[i] = rate;
+		const vacant = mape.jobVacant[i];
+		const filled = mape.jobFilled[i];
+		const room = mapeFluidFreeSpace(i);
+		if (vacant > 0) {
+			const want = Math.min(vacant, room);
+			if (want > 0) { takers[i] = want; need += want; }
+		}
+		// Residents beyond the work they already staff, and never below the keep floor.
+		const excess = mape.pop[i] - filled - MAPE_SETTLE_KEEP;
+		if (excess > 0) { donors[i] = excess; spare += excess; }
+	}
+	if (need <= 0 || spare <= 0 || share <= 0) {
+		mape.wfMigration.fill(0);
+		return;
+	}
+	const moved = Math.min(spare, need, spare * share) * dt;
+	for (let k = 0; k < mape.settleCount; k++) {
+		const i = mape.settleCells[k];
 		const before = mape.pop[i];
-		const change = rate * MAPE_WF_MIGRATION_SHARE * dt;
-		mape.pop[i] = Math.max(0, Math.min(Math.max(before, mapeFluidCapacity(i)), before + change));
-		mape.popDelta += mape.pop[i] - before;
-		if (mape.pop[i] < MAPE_SETTLE_MIN) mape.wfMigration[i] = 0;
+		let change = 0;
+		if (donors[i] > 0) change -= moved * donors[i] / spare;
+		if (takers[i] > 0) change += moved * takers[i] / need;
+		if (change === 0) continue;
+		let next = before + change;
+		// A town never passes its carrying capacity on an influx, and never drops below zero.
+		const cap = Math.max(before, mapeFluidCapacity(i));
+		if (next > cap) next = cap;
+		if (next < 0) next = 0;
+		mape.pop[i] = next;
+		mape.popDelta += next - before;
+	}
+	if (mape.jobSlots > 0) {
+		for (let k = 0; k < mape.settleCount; k++) {
+			const i = mape.settleCells[k];
+			const goal = (takers[i] > 0 ? 1 : -1) * moved / Math.max(1e-9, mape.pop[i] + 1);
+			const rate = mape.wfMigration[i] + (goal - mape.wfMigration[i]) * blend;
+			mape.wfMigration[i] = rate;
+		}
 	}
 	mapeRebuildSettlements();
 }
 
-// One hamlet per tick, at the deepest pool on settlement-worthy land.
+// A worked deposit with no town in reach needs people, so it founds one where they can live.
+// Pools left by resting workers are not population and must not create towns.
 function mapeFluidSpawn(depleted, terrain) {
-	const n = world.n;
-	let best = -1;
-	let bestPool = MAPE_WF_SPAWN;
-	for (let i = 0; i < n; i++) {
-		const pool = depleted[i];
-		if (pool <= bestPool) continue;
-		if (mape.pop[i] > 0 || terrain[i] === TERRAIN.WATER || mapeIsIndustry(i)) continue;
-		if (world.settleValue[i] < MAPE_WF_SPAWN_VALUE) continue;
-		best = i;
-		bestPool = pool;
-	}
+	const best = mapeFluidFindSite(depleted, terrain);
 	if (best < 0) return;
 	depleted[best] -= MAPE_WF_SPAWN;
 	const x = best % world.size;
@@ -227,7 +267,58 @@ function mapeFluidSpawn(depleted, terrain) {
 	mape.popDelta += MAPE_POP_SEED_MIN;
 	mape.fluidSpawned += 1;
 	mapeRebuildSettlements();
-	eventsAdd('Exhausted workers pool into a new settlement at ' + x + ',' + y + '.');
+	eventsAdd('Workers settle a new hamlet at ' + x + ',' + y + '.');
+}
+
+// Only a job site nobody lives near needs a new town; a site inside a town's reach is staffed
+// by migration instead.
+function mapeFluidFindSite(depleted, terrain) {
+	let best = -1;
+	for (let m = 0; m < mape.mineCount; m++) {
+		if (!mapeMineActive(m)) continue;
+		const near = mapeFluidNearestTown(mape.mineX[m], mape.mineY[m]);
+		if (near < MAPE_WF_TOWN_REACH) continue;
+		best = mapeFluidSiteNear(depleted, terrain, best, mape.mineX[m], mape.mineY[m], MAPE_WF_TOWN_REACH);
+	}
+	for (let f = 0; f < mape.factoryCount; f++) {
+		if (mape.factoryState[f] !== MAPE_FACTORY_STATE.ACTIVE) continue;
+		if (mapeFluidNearestTown(mape.factoryX[f], mape.factoryY[f]) < MAPE_WF_TOWN_REACH) continue;
+		best = mapeFluidSiteNear(depleted, terrain, best, mape.factoryX[f], mape.factoryY[f], MAPE_WF_TOWN_REACH);
+	}
+	return best;
+}
+
+function mapeFluidNearestTown(x, y) {
+	const size = world.size;
+	let best = Infinity;
+	for (let k = 0; k < mape.settleCount; k++) {
+		const idx = mape.settleCells[k];
+		const dx = (idx % size) - x;
+		const dy = ((idx / size) | 0) - y;
+		const d = dx * dx + dy * dy;
+		if (d < best) best = d;
+	}
+	return Math.sqrt(best);
+}
+
+function mapeFluidSiteNear(depleted, terrain, best, x, y, reach) {
+	const size = world.size;
+	let pick = best;
+	let bestPool = best < 0 ? MAPE_WF_SPAWN : depleted[best];
+	for (let dy = -reach; dy <= reach; dy++) {
+		for (let dx = -reach; dx <= reach; dx++) {
+			if (dx * dx + dy * dy > reach * reach) continue;
+			const idx = (y + dy) * size + x + dx;
+			if (idx < 0 || idx >= world.n) continue;
+			if (mape.pop[idx] > 0 || terrain[idx] === TERRAIN.WATER || mapeIsIndustry(idx)) continue;
+			if (world.settleValue[idx] < MAPE_WF_SPAWN_VALUE) continue;
+			const pool = depleted[idx];
+			if (pool <= bestPool) continue;
+			pick = idx;
+			bestPool = pool;
+		}
+	}
+	return pick;
 }
 
 function mapeFluidStep(dt) {

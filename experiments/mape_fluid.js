@@ -167,30 +167,56 @@ check('population_ledger_balanced', Math.abs(mapePopResidual()) < 1e-3);
 	check('industry_cell_holds_no_residents', mape.pop[idx] === 0);
 }
 
-// --- Section 3: hamlet spawning from pooled depleted workforce and terrain gates
+// --- Section 3: a starved job site founds a hamlet; pools alone never do
 {
 	main.setup(START_SEED, 'a', 0, MAPE_ENGINE.CATCHMENT);
 	activateFluid();
-	let farCell = -1;
-	for (let i = 0; i < world.n; i++) {
-		if (world.settleValue[i] < 0.6) continue;
-		if (mape.pop[i] > 0 || (mape.cellExport[i] & MAPE_CELL_INDUSTRY) !== 0) continue;
-		let near = false;
-		for (let k = 0; k < mape.settleCount; k++) {
-			const s = mape.settleCells[k];
-			const dx = (s % world.size) - (i % world.size);
-			const dy = ((s / world.size) | 0) - ((i / world.size) | 0);
-			if (dx * dx + dy * dy < 64) { near = true; break; }
-		}
-		if (!near) { farCell = i; break; }
+	// Pick the worked deposit farthest from every town: that is the one that needs people.
+	let job = -1;
+	let bestReach = MAPE_WF_TOWN_REACH;
+	for (let m = 0; m < mape.mineCount; m++) {
+		if (!mapeMineActive(m)) continue;
+		const reach = mapeFluidNearestTown(mape.mineX[m], mape.mineY[m]);
+		if (reach > bestReach) { bestReach = reach; job = mape.mineY[m] * world.size + mape.mineX[m]; }
 	}
-	assert.ok(farCell >= 0, 'found a remote meadow cell');
+	assert.ok(job >= 0, 'a worked deposit sits beyond every town reach');
+	let site = -1;
+	for (const d of [-world.size, world.size, -1, 1]) {
+		const i = job + d;
+		if (world.terrain[i] === TERRAIN.WATER || mapeIsIndustry(i)) continue;
+		if (world.settleValue[i] < MAPE_WF_SPAWN_VALUE) continue;
+		site = i;
+		break;
+	}
+	assert.ok(site >= 0, 'workable ground beside the deposit');
 	const settleBefore = mape.settleCount;
-	mape.wfDepleted[farCell] = MAPE_WF_SPAWN + 5;
+	// A pool with no job near it creates nobody: pick open land far from every mine and town.
+	const size = world.size;
+	let lonely = -1;
+	for (let i = 0; i < world.n; i++) {
+		if (world.terrain[i] === TERRAIN.WATER || mape.pop[i] > 0 || mapeIsIndustry(i)) continue;
+		if (world.settleValue[i] < MAPE_WF_SPAWN_VALUE) continue;
+		const x = i % size;
+		const y = (i / size) | 0;
+		let near = false;
+		for (let d = 0; d < 12 && !near; d++) {
+			const cx = x + (d % 5) - 2;
+			const cy = y + ((d / 5) | 0) - 1;
+			if (cx < 0 || cy < 0 || cx >= size || cy >= size) continue;
+			const j = cy * size + cx;
+			if (mape.pop[j] > 0 || mapeIsIndustry(j)) near = true;
+		}
+		if (!near && Math.sqrt((x - job % size) ** 2 + (y - ((job / size) | 0)) ** 2) > 24) { lonely = i; break; }
+	}
+	assert.ok(lonely >= 0, 'found an empty far meadow cell');
+	mape.wfDepleted[lonely] = MAPE_WF_SPAWN * 3;
 	main.step(SIM_STEP_SEC);
-	check('depleted_pool_founds_settlement', mape.fluidSpawned === 1 && mapeIsSettlement(farCell) && mape.settleCount === settleBefore + 1);
-	check('spawn_debits_pool', mape.wfDepleted[farCell] < 5 + MAPE_WF_SPAWN);
-
+	check('pool_alone_founds_nothing', mape.fluidSpawned === 0 && !mapeIsSettlement(lonely));
+	// The same pool at the starved deposit founds a hamlet there and pays for it.
+	mape.wfDepleted[site] = MAPE_WF_SPAWN + 5;
+	main.step(SIM_STEP_SEC);
+	check('starved_job_founds_settlement', mape.fluidSpawned === 1 && mapeIsSettlement(site) && mape.settleCount === settleBefore + 1);
+	check('spawn_debits_pool', mape.wfDepleted[site] < 5 + MAPE_WF_SPAWN);
 	const swampIdx = 20 * world.size + 34;
 	world.terrain[swampIdx] = TERRAIN.SWAMP;
 	world.terrain[swampIdx - 1] = TERRAIN.SWAMP;

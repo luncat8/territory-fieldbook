@@ -32,10 +32,18 @@ const MAPE_POP_SEED_MAX = 20;
 const MAPE_FACTORY_CAP = 32;
 const MAPE_MINE_CAP = 32;
 const MAPE_STORAGE_CAP = 96;
-const MAPE_WORKSHOP_CAP = 8;
+const MAPE_WORKSHOP_CAP = 4;
 const MAPE_NEED_GOODS = 0.03;
 const MAPE_NEED_COAL = 0.02;
-const MAPE_SETTLE_DISTURB = 0.003;
+// Subsistence is what the land gives without trade. MAX is the ceiling at perfect ground;
+// NEUTRAL is the intake a town needs before it grows, so own ground never reaches it: the seeded
+// map holds its people on a deficit and imports are the only path to growth. Measured on the
+// 82-town map: no supply 1165 -> 1165 over 600 s; mines and haulage grow the served towns +46.
+const MAPE_SUBSIST_MAX = 0.62;
+const MAPE_SUBSIST_NEUTRAL = 0.82;
+const MAPE_SUBSIST_FAMINE = 0.15;
+const MAPE_SETTLE_VALUE_MIN = 0.3;
+const MAPE_SETTLE_DISTURB = 0.0024;
 const MAPE_GROWTH = 0.008;
 const MAPE_DEATH = 0.015;
 const MAPE_MIGRATE = 0.01;
@@ -43,6 +51,7 @@ const MAPE_MIGRATE_BIAS = 0.04;
 const MAPE_SAT_SCALE = 4;
 const MAPE_MINE_WORKERS = 6;
 const MAPE_FACTORY_BUILD_IRON = 0.2;
+const MAPE_FACTORY_BUILD_IRON_MIN = 0.04;
 const MAPE_FACTORY_BUILD_WORKERS = 4;
 const MAPE_FACTORY_COAL = 0.5;
 const MAPE_FACTORY_IRON = 0.5;
@@ -95,15 +104,18 @@ const mape = {
 	wfRestPullNext: null,
 	wfMigration: null,
 	wfBalance: null,
+	wfWanted: null,
 	fluidRested: 0,
 	fluidTired: 0,
 	fluidSpent: 0,
 	fluidSpawned: 0,
+	fluidGenerated: 0,
 	usedGoods: null,
 	usedCoal: null,
 	satGoods: null,
 	satCoal: null,
 	jobNeed: null,
+	jobSlots: 0,
 	cellExport: null,
 	money: null,
 	settleCells: null,
@@ -145,8 +157,8 @@ const mape = {
 function mapeInit(mode, fixedResidents = false) {
 	const n = world.n;
 	if (!mape.pop || mape.pop.length !== n) {
-		mape.pop = new Float32Array(n);
-		mape.popNext = new Float32Array(n);
+		mape.pop = new Float64Array(n);
+		mape.popNext = new Float64Array(n);
 		mape.demand = new Float32Array(MAPE_R * n);
 		mape.demandNext = new Float32Array(MAPE_R * n);
 		mape.goods = new Float64Array(MAPE_R * n);
@@ -166,6 +178,11 @@ function mapeInit(mode, fixedResidents = false) {
 		mape.wfRestPullNext = new Float32Array(n);
 		mape.wfMigration = new Float32Array(n);
 		mape.wfBalance = new Float32Array(n);
+		mape.wfWanted = new Float32Array(n);
+		mape.jobFilled = new Float32Array(n);
+		mape.jobVacant = new Float32Array(n);
+		mape.wfDonor = new Float32Array(n);
+		mape.wfTaker = new Float32Array(n);
 		mape.usedGoods = new Float64Array(n);
 		mape.usedCoal = new Float64Array(n);
 		mape.satGoods = new Float32Array(n);
@@ -200,8 +217,8 @@ function mapeReset() {
 	mape.flowDt = 0;
 	mape.workforce.fill(0);
 	mape.workforceNext.fill(0);
-	for (const field of ['wfFresh', 'wfFreshNext', 'wfDepleted', 'wfDepletedNext', 'wfRestPull', 'wfRestPullNext', 'wfMigration', 'wfBalance']) mape[field].fill(0);
-	for (const field of ['fluidRested', 'fluidTired', 'fluidSpent', 'fluidSpawned']) mape[field] = 0;
+	for (const field of ['wfFresh', 'wfFreshNext', 'wfDepleted', 'wfDepletedNext', 'wfRestPull', 'wfRestPullNext', 'wfMigration', 'wfBalance', 'wfWanted', 'jobFilled', 'jobVacant', 'wfDonor', 'wfTaker']) mape[field].fill(0);
+	for (const field of ['fluidRested', 'fluidTired', 'fluidSpent', 'fluidSpawned', 'fluidGenerated']) mape[field] = 0;
 	for (const field of ['usedGoods', 'usedCoal', 'satGoods', 'satCoal', 'jobNeed', 'cellExport', 'money',
 		'factoryState', 'factoryKind', 'factoryProgress', 'factoryStarved', 'factoryCoal', 'factoryIron', 'factoryGoods', 'factoryCo2', 'mineUnlocked']) mape[field].fill(0);
 	mape.factoryCount = 0;
@@ -332,7 +349,8 @@ function mapeSeedSettlements() {
 		mapePlaceSettlement(starter);
 		placed = 1;
 	}
-	const maxTries = target * 20;
+	// Settle the ground that can carry a town: swamp interior and bare desert cannot farm.
+	const maxTries = target * 40;
 	for (let t = 0; t < maxTries && placed < target; t++) {
 		const x = randomInt(world.size);
 		const y = randomInt(world.size);
@@ -340,6 +358,7 @@ function mapeSeedSettlements() {
 		const idx = y * world.size + x;
 		if (mape.pop[idx] > 0 || sitesAt(x, y) >= 0) continue;
 		if (x === world.startX && y === world.startY) continue;
+		if (world.settleValue[idx] < MAPE_SETTLE_VALUE_MIN) continue;
 		mapePlaceSettlement(idx);
 		placed++;
 	}

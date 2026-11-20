@@ -30,11 +30,17 @@ function mapeSyncCells() {
 	const exp = mape.cellExport;
 	job.fill(0);
 	exp.fill(0);
+	mape.jobSlots = 0;
+	mape.jobFilled.fill(0);
+	mape.jobVacant.fill(0);
 	for (let k = 0; k < mape.workshopCount; k++) exp[mape.workshopCells[k]] |= MAPE_CELL_INDUSTRY;
 	for (let m = 0; m < mape.mineCount; m++) {
 		const idx = mape.mineY[m] * size + mape.mineX[m];
 		exp[idx] |= MAPE_CELL_INDUSTRY;
-		if (mapeMineActive(m)) job[idx] += MAPE_MINE_WORKERS;
+		if (mapeMineActive(m)) {
+			job[idx] += MAPE_MINE_WORKERS;
+			mape.jobSlots += MAPE_MINE_WORKERS;
+		}
 	}
 	for (let f = 0; f < mape.factoryCount; f++) {
 		const st = mape.factoryState[f];
@@ -42,7 +48,39 @@ function mapeSyncCells() {
 		const idx = mape.factoryY[f] * size + mape.factoryX[f];
 		exp[idx] |= MAPE_CELL_INDUSTRY;
 		const need = mapeFactoryWorkers(st);
-		if (need > 0) job[idx] += need;
+		if (need > 0) {
+			job[idx] += need;
+			mape.jobSlots += need;
+		}
+	}
+	mapeTabulateJobs();
+}
+
+// Which towns actually staff the work they own: a town credits the jobs it fills and owes the
+// ones it leaves empty. Two-sided by construction, so it can drive migration where raw workforce
+// traffic cannot. A site on the town's own cell counts as filled while the crew body is there.
+function mapeTabulateJobs() {
+	const size = world.size;
+	const fresh = mape.wfFresh;
+	const filled = mape.jobFilled;
+	const vacant = mape.jobVacant;
+	const credit = (town, idx, need, workers) => {
+		const staffed = idx === town ? Math.min(need, 1 + fresh[idx]) : Math.min(need, fresh[idx]);
+		filled[town] += staffed;
+		vacant[town] += need - staffed;
+	};
+	for (let m = 0; m < mape.mineCount; m++) {
+		if (!mapeMineActive(m)) continue;
+		const town = mapeNearestSettlement(mape.mineX[m], mape.mineY[m]);
+		if (town < 0) continue;
+		credit(town, mape.mineY[m] * size + mape.mineX[m], MAPE_MINE_WORKERS, 0);
+	}
+	for (let f = 0; f < mape.factoryCount; f++) {
+		const need = mapeFactoryWorkers(mape.factoryState[f]);
+		if (need <= 0) continue;
+		const town = mapeNearestSettlement(mape.factoryX[f], mape.factoryY[f]);
+		if (town < 0) continue;
+		credit(town, mape.factoryY[f] * size + mape.factoryX[f], need, 0);
 	}
 }
 

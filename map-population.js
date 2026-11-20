@@ -1,4 +1,4 @@
-// owns: settlement intake, satisfaction, population growth, migration and household waste
+// owns: settlement intake, satisfaction, subsistence, population growth, migration and household waste
 // edit for: population dynamics and metabolism
 
 function mapePopulationBeginStep() {
@@ -35,6 +35,15 @@ function mapeUseDiffusionStock(dt) {
 function mapePopulationRate(r) {
 	if (mape.engine === MAPE_ENGINE.DIFFUSION) return r === MAPE_RES.GOODS ? MAPE_NEED_GOODS : MAPE_NEED_COAL;
 	return r === MAPE_RES.GOODS ? MAPE_MARKET_GOODS_USE : MAPE_MARKET_COAL_USE;
+}
+
+// Farm, forage and firewood cover part of a town's need; the rest is the market's job.
+// Imports are the profit a player brings, not the difference between life and death.
+// The square root keeps worthless ground habitable: swamp edge and desert still feed someone.
+function mapeSubsistence(i) {
+	const idle = 1 - land.disturbed[i];
+	const share = MAPE_SUBSIST_MAX * Math.sqrt(world.settleValue[i]) * idle;
+	return share > 1 ? 1 : share;
 }
 
 // Waste cuts carrying capacity to zero; Fluid field also empties industry cells, while
@@ -114,12 +123,12 @@ function mapePopulationStep(dt) {
 			satGoods[i] = satCoal[i] = 0;
 			continue;
 		}
-		const g = Math.min(1, mape.usedGoods[i] / (p * goodsRate * dt));
-		const c = Math.min(1, mape.usedCoal[i] / (p * coalRate * dt));
-		satGoods[i] += (g - satGoods[i]) * blend;
-		satCoal[i] += (c - satCoal[i]) * blend;
 		const goods = mape.usedGoods[i];
 		const coal = mape.usedCoal[i];
+		const g = Math.min(1, goods / (p * goodsRate * dt));
+		const c = Math.min(1, coal / (p * coalRate * dt));
+		satGoods[i] += (g - satGoods[i]) * blend;
+		satCoal[i] += (c - satCoal[i]) * blend;
 		if (goods > 0) landDisturbAround(i, goods * MAPE_SETTLE_DISTURB);
 		if (coal <= 0) continue;
 		const slot = MAPE_RES.CO2 * world.n + i;
@@ -128,22 +137,44 @@ function mapePopulationStep(dt) {
 		mape.massIn += mape.goods[slot] - before;
 	}
 	if (mapePopulationClamp()) mapeRebuildSettlements();
+	// Scenes that pin residents keep them; every live engine lets food decide.
+	if (!mape.fixedResidents) mapePopulationGrowth(dt);
+	// totalPop is the published figure; growth must not leave it a step behind.
+	mapeRebuildSettlements();
 	if (mape.fixedResidents || mape.engine !== MAPE_ENGINE.DIFFUSION) return;
-	mapePopulationGrowth(dt);
 	if (mape.workforceMode === MAPE_WORKFORCE_MODE.RESIDENTS) mapePopulationMigration(dt);
 	mapeRebuildSettlements();
 }
 
+// Sustenance 0…1: what the land gives plus what imports add on top of it. Between the famine
+// line and the neutral point a town neither grows nor shrinks — the seeded map has a deficit
+// but keeps its people. Only waste (which lowers land value) can push a town below famine.
+// Growth also fades as a town nears its room, so supplied towns settle at a steady size
+// instead of piling everyone onto the same few cells.
 function mapePopulationGrowth(dt) {
 	const pop = mape.pop;
 	const terrain = world.terrain;
+	const neutral = MAPE_SUBSIST_NEUTRAL;
+	const famine = MAPE_SUBSIST_FAMINE;
 	for (let i = 0; i < world.n; i++) {
 		const before = pop[i];
-		if (before <= 0 || terrain[i] === TERRAIN.WATER || mapeIsIndustry(i)) continue;
-		const sat = 0.75 * mape.satGoods[i] + 0.25 * mape.satCoal[i];
-		const change = before * (MAPE_GROWTH * sat - MAPE_DEATH * (1 - sat)) * dt;
-		let cap = mapePopCapacity(i);
-		if (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID && mapeIsSettlement(i)) cap = Math.max(before, mapeFluidCapacity(i));
+		if (before <= 0 || terrain[i] === TERRAIN.WATER) continue;
+		const settlement = mapeIsSettlement(i);
+		const own = mapeSubsistence(i);
+		const imports = 0.75 * mape.satGoods[i] + 0.25 * mape.satCoal[i];
+		const feed = own + (1 - own) * imports;
+		const cap = settlement && mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID
+			? Math.max(before, mapeFluidCapacity(i))
+			: Math.max(before, mapePopCapacity(i));
+		let rate = 0;
+		if (feed > neutral) {
+			const room = cap > 0 ? Math.max(0, cap - before) / cap : 0;
+			rate = MAPE_GROWTH * (feed - neutral) / (1 - neutral) * room;
+		} else if (feed < famine) {
+			rate = -MAPE_DEATH * (famine - feed) / famine;
+		}
+		const change = before * rate * dt;
+		if (change === 0) continue;
 		pop[i] = Math.max(0, Math.min(cap, before + change));
 		mape.popDelta += pop[i] - before;
 	}
