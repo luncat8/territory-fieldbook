@@ -146,3 +146,35 @@ Reservoir-sampling only eligible forest cells guarantees a cut whenever any fore
 it hides the effort of finding a sparse patch. For search friction, sample one cell from the
 fixed patch and let an ineligible result consume the attempt. This keeps per-tick work constant
 and makes output probability track forest coverage.
+
+## a diffusion field's halo must be shorter than the spacing of its sources
+
+The town pull relaxed toward ambient at `0.025/s`, i.e. a ~10-cell halo, while seeded towns
+sat 2–5 cells apart: the halos overlapped into one flat sheet (town/background contrast
+1.02–1.17) and every town read the same pull regardless of population. Measure the contrast,
+not the peak: sort land cells, compare the town median to the background median. Spacing sets
+the budget — halo reach must stay well under the nearest-neighbour distance.
+
+## never scale a physical need by the signal that decides where supply goes
+
+Catchment A consumed `rate × demandAtCenter × dt` from its reach. Stock cooled the demand
+(feedback), the cooled demand cut consumption, stock survived longer and cooled it further:
+towns hoarded 2715 coal, nothing was hauled, the field decayed to ~0 and the demand map went
+black. A pull field decides *where* goods go; metered use is a separate, need-driven rate.
+Two coupled quantities pointing at each other always find the dead fixed point.
+
+## a single pinned demand cell loses to a graded halo next door
+
+A factory's coal pull was one cell at 1.0 against a pop-60 town haloing 0.3–0.5 over a 10-cell
+reach: haulage moved the coal toward the town and the plant starved one cell from its own
+stock. A consumer that owns a catchment needs a pull zone with falloff (an active plant now
+uses a 4-cell half-width, `1 − ring/5`); compare the consumer's demand against the *sum* of
+competing halo values over the cells the haul would cross.
+
+## the demand palette must be tuned to where town pull lives
+
+The Fieldbook need ramp put its bright half above 0.5 of a 0–1 range, which only a pinned
+consumer reaches; town pull sits at 0.2–0.5, so a correct field looked uniformly dark. Spend
+the midtones where the data is, and give the ramp a warm low end (the old first stop was the
+same colour as water). Check the rendered pixel of a known town against the number in the
+inspector before blaming the physics.

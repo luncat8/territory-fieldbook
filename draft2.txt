@@ -275,6 +275,11 @@ place logs on map at cell where it was cut.
 then move by demand.
 to control how menu log really need - we can use same demand field: if gradient low - then no need to cut meany trees.
 
+#### build factory
+
+think good and make plan about how factories will be spawned, depends of supply , resources and demand and workforces. i suggest to not build all just at settlement but if factory use heavy resources and more lite product then it should be located average locations of few deposits (forest has area for example and sawmill is not point producer but produce over multiple cells) . 
+typically workforce build factory from wood, sawmill from forest. build time ~ workforce.
+
 #### CO2
 
 CO2 O2 gas diffusion dont blocked by water
@@ -419,6 +424,11 @@ recovery - better some dependence on disturbed percent, so more disturbed has lo
 Map balance is a **shared state** that every party affects. A rival who worsens the map through over-extraction or heavy industry increases `d` and change global climate and lowers biosphere quality in the affected cells.
 
 The response is territorial: the affected party extends its influence into those cells, then claims and improves them.
+
+coal: mines produce less then (settlements need + factories that produce for settlement) so charcoal has purpose.
+
+i think towns should have deficit and improving economy will be useful and easy to see profit. subject of balance what population should be stable (not depopulate) of initial map. without supply of resources
+
 
 - think in gameplay oriented direction: if player want to claim territory what he use as resource, what emergently limit his to use it in all ways in max amount. what possible variants of game implementation.
 ---

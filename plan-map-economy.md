@@ -175,6 +175,8 @@ MAPE_NEED_GOODS = 0.03           // signed reference goods need/person/s
 MAPE_NEED_COAL = 0.02            // signed reference coal need/person/s
 MAPE_MARKET_GOODS_USE = 0.036    // A/B household goods use/person/s
 MAPE_MARKET_COAL_USE = 0.045    // A/B household coal use/person/s
+MAPE_HUNGRY_POP = 8              // population half-saturation of the import target: pop/(pop+8)
+MAPE_FACTORY_YARD = 4            // half-width of the graded coal pull around an active plant
 MAPE_SETTLE_DISTURB = 0.003      // disturbance per unit goods consumed, spread around the cell
 MAPE_SAT_SCALE = 4                // satisfaction response timescale in seconds
 MAPE_DEMAND_GAIN = 8.0           // demand signal scale for unmet need rates
@@ -497,7 +499,9 @@ forest gate remain Phase 3.
 3. **Active**: consumes `0.5 coal + 0.5 iron/s`, produces `1.0 goods + 0.5 CO2/s`,
    disturbs at `0.0006/s` (above natural recovery so active industry requires
    restoration or management). Idles after `MAPE_FACTORY_IDLE_SEC` (`40 s`) of
-   starvation (`demand > 8` with no arriving inputs) and wakes when supply returns.
+   starvation with no arriving inputs and wakes on the first tick that has them.
+   An idled plant is no longer a job site, so the workforce pull leaves it for
+   live work and the mine is not kept staffed for nothing.
 4. **Mines**: bound at setup to every coal (`FUEL`) and iron (`ORE`) deposit.
    Each holds 1,400 units and starts locked. Once unlocked and staffed, a mine
    extracts `2.4 × staffFraction × (1 − d)` units/s into local stock. Mineral
@@ -508,18 +512,29 @@ forest gate remain Phase 3.
 
 Both modes use a bounded 0–1 import field for coal and goods, reflecting at
 water and the map edge. A/B use rates of `0.045` coal and `0.036` goods per
-resident per simulated second. A settlement's hungry target grows with its
-population. Household use debits the shared stock ledger, and the last 1.5
-units of settlement goods are reserved for player supply purchases. Iron, CO2
-and workforce keep the shared field rules.
+resident per simulated second. A settlement's hungry target is
+`pop / (pop + MAPE_HUNGRY_POP)`, so a crowded town pulls harder than a hamlet
+and the towns of one seed still differ. Household use debits the shared stock
+ledger, and the last 1.5 units of settlement goods are reserved for player
+supply purchases. Iron, CO2 and workforce keep the shared field rules.
+
+The field outside the settlements relaxes back to the ambient fill at
+`MAPE_CATCHMENT_DECAY` (`0.8/s`), which holds a town halo to about four cells.
+Town density matters: at the seeded 2% density the nearest neighbour is 2–5
+cells, so a longer halo floods the whole map and every town reads the same.
+An active plant also advertises a graded coal pull over `MAPE_FACTORY_YARD`
+(half-width 4, `1 − ring/5`), because a single pinned cell loses its coal to a
+larger town halo next door.
 
 - **A · Catchment:** relax the town's signal toward hungry pull times
   `1 / (1 + stock / max(1, 9 × rate))` at `0.9/s`. Stock is the total reachable
   in four cardinal steps. Apply that signal over the same reach with falloff,
   then spread it with six Jacobi passes per 0.05 s (`D ≈ 24 cells²/s`). The
-  3×3 filtered demand steers uncapped, conservative uphill hauling at up to
-  `6.5 cells/s`. After hauling, the town consumes up to
-  `rate × demandAtCenter × dt` proportionally from reachable stock.
+  3x3 filtered demand steers uncapped, conservative uphill hauling at up to
+  `6.5 cells/s`. After hauling, the town consumes its need,
+  `rate × dt`, proportionally from reachable stock; the need is fixed, because
+  scaling it by the demand signal let stock cool the pull and then stop its own
+  uptake, so towns hoarded coal and the field died.
 - **B · Queue:** the target senses falloff-weighted stock within four steps
   and cools further as the settlement fills its short intake buffer. The
   center relaxes at `1.6/s` and holds its value through four Jacobi passes
@@ -667,9 +682,12 @@ and scene replay. Reduced-motion preference disables flow animation at startup
 and when applying a look, but leaves static direction arrows available.
 
 Demand scales remain fixed: 0–1 for bounded market items, ±6 for signed fields,
-soft-normalized worker pulls, with green surplus even in the alternate looks. Water blocks land items, not
-atmospheric CO2. Contours omit water-crossing cells and cap their levels at the
-fixed display range. Grid paths and actor label strings are built at setup;
+soft-normalized worker pulls, with green surplus even in the alternate looks.
+The Fieldbook need ramp spends its midtones down in 0.08–0.60, where town pull
+sits (0.2–0.5 of the range), not at the bright end a mine pin reaches; the
+prototype ramps are unchanged. Water blocks land items, not atmospheric CO2.
+Contours omit water-crossing cells and cap their levels at the fixed display
+range. Grid paths and actor label strings are built at setup;
 per-frame field drawing reuses its raster and contour scratch buffers.
 
 The view radiogroup and the two item radiogroups (amount: `coal`, `iron`,
