@@ -141,16 +141,16 @@ check('population_ledger_balanced', Math.abs(mapePopResidual()) < 1e-3);
 
 	const b = mapeAddFactory(36, 39, MAPE_FACTORY_STATE.BUILDING);
 	const bidx = 39 * world.size + 36;
-	mape.goods[MAPE_RES.IRON * n + bidx] = 100;
+	mape.goods[MAPE_RES.LOGS * n + bidx] = 100;
 	mape.pop[bidx] = MAPE_FACTORY_BUILD_WORKERS;
 	for (let k = 0, steps = Math.round(5 / SIM_STEP_SEC); k < steps; k++) main.step(SIM_STEP_SEC);
-	check('factory_builds_with_iron', mape.factoryProgress[b] > 0.05);
+	check('factory_builds_with_logs', mape.factoryProgress[b] > 0.05);
 	const c = mapeAddFactory(3, 3, MAPE_FACTORY_STATE.BUILDING);
 	const cidx = 3 * world.size + 3;
 	mape.pop[cidx] = MAPE_FACTORY_BUILD_WORKERS;
 	const starvedBefore = mape.factoryStarved[c];
 	for (let k = 0, steps = Math.round(5 / SIM_STEP_SEC); k < steps; k++) main.step(SIM_STEP_SEC);
-	check('factory_starves_without_iron', mape.factoryProgress[c] === 0 && mape.factoryStarved[c] > starvedBefore + 4);
+	check('factory_starves_without_logs', mape.factoryProgress[c] === 0 && mape.factoryStarved[c] > starvedBefore + 4);
 
 	const s = mapeAddFactory(3, 9, MAPE_FACTORY_STATE.ACTIVE);
 	const sidx = 9 * world.size + 3;

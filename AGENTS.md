@@ -158,7 +158,7 @@ Before all topics has minimal implementation Do not try to implement 100% of som
   satisfaction-led migration while shared job staffing remains active. Two
   selectable workforce models: Residents (default) and Fluid field (map-fluid.js
   pools; tire/rest/spawn constants are the balance subjects). Factory
-  build/recipe runtime and sawmill → logs → charcoal/wood supply exist; the
+  build/recipe runtime and sawmill → logs → charcoal/wood works supply exist; the
   generic factory placement scan and idle rule remain Phase 3.
 
 ## housekeeping

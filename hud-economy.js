@@ -210,6 +210,14 @@ function hudFactorySiteText(f, idx) {
 	text += '\nCell ' + mape.factoryX[f] + ',' + mape.factoryY[f] + ' · productivity ' + Math.round(100 * landProductivity(idx)) + '% · disturbed ' + Math.round(100 * land.disturbed[idx]) + '%';
 	text += '\nWorkers ' + present.toFixed(1) + '/' + need + ' · ' + Math.round(100 * staff) + '% staffed';
 	const kind = mape.factoryKind[f];
+	if (st === MAPE_FACTORY_STATE.BUILDING) {
+		const mat = kind === MAPE_FACTORY_KIND.SAWMILL ? 'forest' : 'logs';
+		text += '\n' + mat + ' −' + mape.factoryIron[f].toFixed(2) + '/s · starved ' + Math.floor(mape.factoryStarved[f]) + 's';
+		text += '\n' + mat + ' stock ' + (kind === MAPE_FACTORY_KIND.SAWMILL
+			? economy.biomass[idx]
+			: mape.goods[MAPE_RES.LOGS * world.n + idx]).toFixed(2);
+		return text;
+	}
 	if (kind === MAPE_FACTORY_KIND.SAWMILL) {
 		text += '\nLogs +' + mape.factoryGoods[f].toFixed(2) + '/s · cuts only along log demand';
 		return text;
@@ -219,11 +227,6 @@ function hudFactorySiteText(f, idx) {
 		text += kind === MAPE_FACTORY_KIND.CHARCOAL
 			? '\nCoal +' + mape.factoryCoal[f].toFixed(2) + '/s · CO2 +' + mape.factoryCo2[f].toFixed(2) + '/s'
 			: '\nGoods +' + mape.factoryGoods[f].toFixed(2) + '/s';
-		return text;
-	}
-	if (st === MAPE_FACTORY_STATE.BUILDING) {
-		text += '\niron −' + mape.factoryIron[f].toFixed(2) + '/s · starved ' + Math.floor(mape.factoryStarved[f]) + 's';
-		text += '\niron stock ' + mape.goods[MAPE_RES.IRON * world.n + idx].toFixed(2);
 		return text;
 	}
 	text += '\ncoal −' + mape.factoryCoal[f].toFixed(2) + '/s · iron −' + mape.factoryIron[f].toFixed(2) + '/s';

@@ -50,8 +50,9 @@ const MAPE_MIGRATE = 0.01;
 const MAPE_MIGRATE_BIAS = 0.04;
 const MAPE_SAT_SCALE = 4;
 const MAPE_MINE_WORKERS = 6;
-const MAPE_FACTORY_BUILD_IRON = 0.2;
-const MAPE_FACTORY_BUILD_IRON_MIN = 0.04;
+const MAPE_BUILD_WOOD_RATE = 0.10;     // logs/s consumed per builder
+const MAPE_BUILD_SAWMILL_RATE = 0.02;  // biomass/s felled per builder on its own footprint
+const MAPE_BUILD_LOG_RESERVE = 8;      // logs a region keeps back for its next build
 const MAPE_FACTORY_BUILD_WORKERS = 4;
 const MAPE_FACTORY_COAL = 0.5;
 const MAPE_FACTORY_IRON = 0.5;
@@ -79,6 +80,8 @@ const mape = {
 	marketFill: 0,
 	marketSignal: null,
 	fixedResidents: false,
+	scanOn: true,
+	scanAcc: 0,
 	viewItem: MAPE_RES.GOODS,
 	viewItemDemand: MAPE_RES.GOODS,
 	pop: null,
@@ -291,7 +294,8 @@ function mapeWorkPresent(idx) {
 
 function mapeFactoryWorkers(state) {
 	if (state === MAPE_FACTORY_STATE.BUILDING) return MAPE_FACTORY_BUILD_WORKERS;
-	if (state === MAPE_FACTORY_STATE.ACTIVE || state === MAPE_FACTORY_STATE.IDLE) return MAPE_FACTORY_WORKERS;
+	if (state === MAPE_FACTORY_STATE.ACTIVE) return MAPE_FACTORY_WORKERS;
+	// An idled plant is no longer a job site, so the workforce pull leaves it for live work.
 	return 0;
 }
 
@@ -407,6 +411,7 @@ function mapeRecoverMoney(seconds) {
 
 function mapeStep(seconds) {
 	if (seconds > 0) mapeStepDiffusion(seconds);
+	mapeScanStep(seconds);
 }
 
 function mapeIsIndustry(idx) {

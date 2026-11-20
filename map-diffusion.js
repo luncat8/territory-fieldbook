@@ -114,20 +114,27 @@ function mapeInjectDemand(dt, marketsOnly) {
 	}
 	for (let f = 0; f < mape.factoryCount; f++) {
 		const st = mape.factoryState[f];
+		if (st === MAPE_FACTORY_STATE.GONE) continue;
 		const idx = mape.factoryY[f] * size + mape.factoryX[f];
-		if (mape.factoryKind[f] !== MAPE_FACTORY_KIND.GENERAL) {
-			if (!marketsOnly && (mape.factoryKind[f] === MAPE_FACTORY_KIND.CHARCOAL || mape.factoryKind[f] === MAPE_FACTORY_KIND.WOOD)) {
+		const kind = mape.factoryKind[f];
+		if (kind !== MAPE_FACTORY_KIND.GENERAL) {
+			if (marketsOnly) continue;
+			if (st === MAPE_FACTORY_STATE.BUILDING) {
+				// Construction hauls logs to the site; a sawmill fells its own footprint instead.
+				if (kind !== MAPE_FACTORY_KIND.SAWMILL) demand[MAPE_RES.LOGS * n + idx] += MAPE_BUILD_WOOD_RATE * gain;
+			} else if (kind === MAPE_FACTORY_KIND.CHARCOAL || kind === MAPE_FACTORY_KIND.WOOD) {
 				demand[MAPE_RES.LOGS * n + idx] += MAPE_FORESTRY_INPUT * gain;
 			}
 			continue;
 		}
 		if (st === MAPE_FACTORY_STATE.BUILDING) {
-			if (!marketsOnly) demand[ironOff + idx] += MAPE_FACTORY_BUILD_IRON * gain;
-		} else if (st === MAPE_FACTORY_STATE.ACTIVE) {
+			if (!marketsOnly) demand[MAPE_RES.LOGS * n + idx] += MAPE_BUILD_WOOD_RATE * gain;
+		} else if (st === MAPE_FACTORY_STATE.ACTIVE || st === MAPE_FACTORY_STATE.IDLE) {
+			// An idled plant still wants its inputs; demand is what wakes it.
 			if (local) demand[coalOff + idx] += MAPE_FACTORY_COAL * gain;
 			if (marketsOnly) continue;
 			demand[ironOff + idx] += MAPE_FACTORY_IRON * gain;
-			demand[co2Off + idx] -= MAPE_FACTORY_CO2 * gain;
+			if (st === MAPE_FACTORY_STATE.ACTIVE) demand[co2Off + idx] -= MAPE_FACTORY_CO2 * gain;
 		}
 	}
 	if (!mape.surplusFeedback) return;

@@ -27,7 +27,7 @@ Demand diffuses and physical stock moves up its gradient. Regional workshops
 provide goods while all deposits are still locked. A staffed sawmill randomly
 selects a forest cell in its local radius, creates logs on that cell, and only
 cuts where log demand reaches it. Logs move toward staffed charcoal and wood
-works; charcoal turns logs into coal, while wood works turn them into goods.
+works; charcoal works turn logs into coal, while wood works turn them into goods.
 Stock feedback cools log demand, so surplus logs suppress additional cutting.
 In the factory phase, factories appear where goods need and coal/iron surplus overlap, build
 over 10–30 s while demanding iron, then consume coal and iron ore to produce
@@ -408,7 +408,7 @@ three `ORE` deposits at `41,5 / 24,21 / 57,19` but `mapeSeedMines` binds mines t
 `FUEL` only, so **no iron is ever mined** and the `GENERAL` recipe
 (`0.5 coal + 0.5 iron -> 1.0 goods`) can never run. On the unsupplied map only three towns hold any coal
 at all. Charcoal works turn logs into coal at `0.8`, so the supply chain is
-`forest -> sawmill -> logs -> charcoal -> coal -> town`, and every factory
+`forest -> sawmill -> logs -> coal -> town`, and every factory
 (which burns `0.5/s`) competes with households for the same haulage. Coal keeps
 towns alive; it cannot make them grow on its own, because a coal-only town tops
 out at `0.71` against a neutral line of `0.82`. Goods are the growth input.

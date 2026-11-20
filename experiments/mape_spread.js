@@ -19,6 +19,8 @@ const metrics = vm.runInThisContext(`
 	const dt = MAPE_MAX_STEP;
 	const size = world.size;
 	const n = world.n;
+	// Physics unit tests: the placement scan would drop job sites mid-measurement.
+	mape.scanOn = false;
 
 	function blankMap(seed) {
 		main.setup(seed || START_SEED, '', 0, MAPE_ENGINE.DIFFUSION);
@@ -216,7 +218,7 @@ const metrics = vm.runInThisContext(`
 		const preMinePop = mape.pop[idx(24, 32)];
 		const preMined = mape.minedTotal;
 		// Factory starts staffed so worker flow into the coal mine is isolated from factory hiring.
-		mapeAddFactory(32, 37, MAPE_FACTORY_STATE.ACTIVE);
+		const fac = mapeAddFactory(32, 37, MAPE_FACTORY_STATE.ACTIVE);
 		mape.pop[facCell] = MAPE_FACTORY_WORKERS;
 		mapeRebuildSettlements();
 		mape.initialPop = mape.totalPop;
@@ -234,6 +236,9 @@ const metrics = vm.runInThisContext(`
 		let tCoalAtFac = -1;
 		let minedBeforeWorkers = 0;
 		let peakMineWork = 0;
+		// Staffing while the plant was still an active job site: with no iron it idles
+		// at 40 s and, per the plan, releases its workforce to live work after that.
+		let facPopActive = 0;
 		const s1CoalStart = mape.goods[MAPE_RES.COAL * n + s1];
 		const s2CoalStart = mape.goods[MAPE_RES.COAL * n + s2];
 		for (let s = 1; s <= 500; s++) {
@@ -256,12 +261,15 @@ const metrics = vm.runInThisContext(`
 			if (tUnlock > 0 && tCoalAtS1 < 0 && mape.goods[MAPE_RES.COAL * n + s1] >= s1CoalStart + 0.05) tCoalAtS1 = t - tUnlock;
 			if (tUnlock > 0 && tCoalAtS2 < 0 && mape.goods[MAPE_RES.COAL * n + s2] >= s2CoalStart + 0.05) tCoalAtS2 = t - tUnlock;
 			if (tUnlock > 0 && tCoalAtFac < 0 && mape.goods[MAPE_RES.COAL * n + facCell] >= 0.5) tCoalAtFac = t - tUnlock;
+			if (mape.factoryState[fac] === MAPE_FACTORY_STATE.ACTIVE) facPopActive = mape.pop[facCell];
 		}
 		return {
 			preUnlocked, preMineWork, preMinePop, preMined, minedBeforeWorkers,
 			tUnlock, tWorkAtS1, tWorkerAtMine, tCoalMined, tCoalAtS1, tCoalAtS2, tCoalAtFac,
 			peakMineWork,
 			chainMinePop: mape.pop[idx(24, 32)],
+			facPopActive,
+			facStateEnd: mape.factoryState[fac],
 			chainFacPop: mape.pop[facCell],
 			chainMined: mape.minedTotal,
 			chainStockStart: stockStart,
@@ -438,7 +446,9 @@ check('co2_crosses_water', metrics.waterCo2 > 10 && metrics.eastCo2Gain > 5 && M
 check('water_routing', metrics.routedBuyerGoods + metrics.routedBuyerUse > 0.5);
 check('locked_mine_idle', metrics.preUnlocked === 0 && metrics.preMineWork === 0 && metrics.preMinePop === 0 && metrics.preMined === 0 && metrics.minedBeforeWorkers === 0);
 check('coal_workers_demand', metrics.tUnlock > 0 && metrics.peakMineWork > 1 && metrics.tWorkAtS1 > 0 && metrics.tWorkAtS1 < 15);
-check('workers_diffuse_to_mine', metrics.tWorkerAtMine > 0 && metrics.chainMinePop >= 3 && metrics.chainFacPop >= 2);
+check('workers_diffuse_to_mine', metrics.tWorkerAtMine > 0 && metrics.chainMinePop >= 3 && metrics.facPopActive >= 2);
+// An idled plant is no longer a job site: the never-supplied factory starves, idles and releases.
+check('idle_factory_releases_workforce', metrics.facStateEnd === MAPE_FACTORY_STATE.IDLE && metrics.chainFacPop < 1);
 check('mine_produces_coal', metrics.tCoalMined >= metrics.tWorkerAtMine * 0.5 && metrics.chainMined > 5 && Math.abs(metrics.chainStockStart - metrics.chainStockLeft - metrics.chainMined) < 1e-5);
 check('coal_diffuses_to_settlement_and_factory',
 	metrics.tCoalAtS1 > 0 && metrics.tCoalAtS2 > 0 && metrics.tCoalAtFac > 0 &&

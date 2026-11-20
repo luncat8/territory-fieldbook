@@ -163,6 +163,45 @@ function mapeFactoryAt(x, y) {
 	return -1;
 }
 
+function mapeStepFactoryBuild(f, idx, dt, staff) {
+	const n = world.n;
+	mape.factoryCoal[f] = mape.factoryIron[f] = mape.factoryGoods[f] = mape.factoryCo2[f] = 0;
+	const kind = mape.factoryKind[f];
+	// Wood is the currency of construction: logs hauled to the site, or raw forest
+	// on a sawmill's own footprint (forest is both its material and its working area).
+	let rate = MAPE_BUILD_WOOD_RATE;
+	let paid = false;
+	if (kind === MAPE_FACTORY_KIND.SAWMILL) {
+		rate = MAPE_BUILD_SAWMILL_RATE;
+		const want = rate * staff * dt;
+		if (staff > 0 && economy.biomass[idx] >= want) {
+			economy.biomass[idx] -= want;
+			paid = true;
+		}
+	} else {
+		const slot = MAPE_RES.LOGS * n + idx;
+		const want = rate * staff * dt;
+		if (staff > 0 && mape.goods[slot] >= want) {
+			mape.goods[slot] -= want;
+			mape.massOut += want;
+			paid = true;
+		}
+	}
+	if (paid) {
+		mape.factoryProgress[f] += staff * dt / MAPE_FACTORY_BUILD_SEC;
+		mape.factoryIron[f] = rate * staff;
+		landDisturbAround(idx, MAPE_FACTORY_BUILD_DISTURB * staff * dt);
+	} else {
+		mape.factoryStarved[f] += dt;
+		mape.factoryIron[f] = 0;
+	}
+	if (mape.factoryProgress[f] >= 1) {
+		mape.factoryProgress[f] = 1;
+		mape.factoryState[f] = MAPE_FACTORY_STATE.ACTIVE;
+		eventsAdd(MAPE_FACTORY_KIND_NAME[kind] + ' at ' + mape.factoryX[f] + ',' + mape.factoryY[f] + ' is online.');
+	}
+}
+
 function mapeStepFactories(dt) {
 	const size = world.size;
 	const n = world.n;
@@ -178,34 +217,25 @@ function mapeStepFactories(dt) {
 		const need = mapeFactoryWorkers(st);
 		const staff = need > 0 ? Math.min(1, mapeWorkPresent(idx) / need) : 0;
 		const kind = mape.factoryKind[f];
-		if (kind !== MAPE_FACTORY_KIND.GENERAL) {
-			mapeStepForestryFactory(f, idx, dt, staff);
+		if (st === MAPE_FACTORY_STATE.BUILDING) {
+			mapeStepFactoryBuild(f, idx, dt, staff);
 			continue;
 		}
-		if (st !== MAPE_FACTORY_STATE.BUILDING && staff <= 0) {
+		if (st === MAPE_FACTORY_STATE.IDLE) {
+			// Not a job site: the pull left. Wake on the first tick that has inputs on hand.
+			if (goods[coalOff + idx] > 0 && goods[ironOff + idx] > 0) {
+				mape.factoryState[f] = MAPE_FACTORY_STATE.ACTIVE;
+				mape.factoryStarved[f] = 0;
+			}
 			mape.factoryCoal[f] = mape.factoryIron[f] = mape.factoryGoods[f] = mape.factoryCo2[f] = 0;
 			continue;
 		}
-		if (st === MAPE_FACTORY_STATE.BUILDING) {
-			const ironWant = MAPE_FACTORY_BUILD_IRON * staff * dt;
-			if (staff > 0 && goods[ironOff + idx] >= ironWant) {
-				goods[ironOff + idx] -= ironWant;
-				mape.massOut += ironWant;
-				mape.factoryProgress[f] += staff * dt / MAPE_FACTORY_BUILD_SEC;
-				mape.factoryIron[f] = MAPE_FACTORY_BUILD_IRON * staff;
-				landDisturbAround(idx, MAPE_FACTORY_BUILD_DISTURB * staff * dt);
-			} else {
-				mape.factoryStarved[f] += dt;
-				mape.factoryIron[f] = 0;
-			}
-			mape.factoryCoal[f] = 0;
-			mape.factoryGoods[f] = 0;
-			mape.factoryCo2[f] = 0;
-			if (mape.factoryProgress[f] >= 1) {
-				mape.factoryProgress[f] = 1;
-				mape.factoryState[f] = MAPE_FACTORY_STATE.ACTIVE;
-				eventsAdd('Factory at ' + mape.factoryX[f] + ',' + mape.factoryY[f] + ' is online.');
-			}
+		if (staff <= 0) {
+			mape.factoryCoal[f] = mape.factoryIron[f] = mape.factoryGoods[f] = mape.factoryCo2[f] = 0;
+			continue;
+		}
+		if (kind !== MAPE_FACTORY_KIND.GENERAL) {
+			mapeStepForestryFactory(f, idx, dt, staff);
 			continue;
 		}
 		const coalWant = MAPE_FACTORY_COAL * staff * dt;
@@ -284,7 +314,9 @@ function mapeStepForestryFactory(f, idx, dt, staff) {
 		if (cell < 0) return;
 		const pull = mape.demandView[MAPE_RES.LOGS][cell];
 		const demandScale = Math.min(1, pull / (MAPE_SAWMILL_MIN_PULL * 2));
-		const units = Math.min(MAPE_SAWMILL_RATE * staff * landProductivity(idx) * demandScale * dt,
+		// A mill in deep forest out-earns one on the edge: cover scales the cut.
+		const cover = mapeForestCover(mape.factoryX[f], mape.factoryY[f]);
+		const units = Math.min(MAPE_SAWMILL_RATE * (1 + 0.15 * cover) * staff * landProductivity(idx) * demandScale * dt,
 			economy.biomass[cell] / MAPE_SAWMILL_FOREST_PER_LOG);
 		if (units <= 0) return;
 		economy.biomass[cell] -= units * MAPE_SAWMILL_FOREST_PER_LOG;
