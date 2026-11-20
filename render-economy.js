@@ -10,7 +10,8 @@ const RENDER_B_EXPOSURE = 6000;
 const RENDER_B_LOG = Math.log1p(RENDER_B_EXPOSURE);
 const RENDER_A_LOG = Math.log1p(RENDER_A_STOCK_MAX);
 const RENDER_B_STOCK = [[0, 25, 24, 27], [0.12, 53, 39, 42], [0.26, 109, 58, 38], [0.41, 169, 86, 39], [0.55, 225, 138, 54], [0.7, 255, 202, 112], [1, 255, 241, 198]];
-const RENDER_B_NEED = [[0, 23, 21, 31], [0.16, 39, 31, 52], [0.3, 59, 42, 82], [0.48, 99, 65, 135], [0.69, 147, 100, 192], [0.88, 192, 148, 229], [1, 237, 207, 255]];
+// Town pull lives at 0.1–0.5 of the 0–1 range, so the ramp spends its midtones there.
+const RENDER_B_NEED = [[0, 23, 21, 31], [0.08, 44, 30, 78], [0.18, 90, 52, 132], [0.32, 152, 84, 190], [0.46, 206, 120, 232], [0.6, 236, 163, 247], [1, 248, 222, 255]];
 const RENDER_POP_RAMP = [[0, 30, 26, 30], [0.12, 110, 74, 78], [0.3, 190, 126, 96], [0.55, 240, 186, 112], [1, 255, 246, 214]];
 const RENDER_CIVIC_GAIN = 2;
 const RENDER_CIVIC_DIM = 0.24;
@@ -177,9 +178,9 @@ function renderEconomyCells(view) {
 				pixels[p + 1] = 17 + 148 * k + 85 * shine;
 				pixels[p + 2] = 29 + 186 * k + 40 * shine;
 			} else {
-				pixels[p] = 27 + 228 * k;
-				pixels[p + 1] = 15 + 214 * k * k;
-				pixels[p + 2] = 23 + 68 * k * k;
+				pixels[p] = 55 + 200 * k;
+				pixels[p + 1] = 25 + 204 * k * k;
+				pixels[p + 2] = 27 + 64 * k * k;
 			}
 		} else if (style === RENDER_STYLE.B) {
 			const k = demand ? Math.min(1, value / demandMax) : Math.min(1, Math.log1p(RENDER_B_EXPOSURE * value / RENDER_STOCK_MAX) / RENDER_B_LOG);
@@ -200,9 +201,9 @@ function renderEconomyCells(view) {
 			pixels[p + 2] = 29 + 186 * k + 40 * shine;
 		} else {
 			const k = Math.sqrt(Math.min(1, value / demandMax));
-			pixels[p] = 27 + 228 * k;
-			pixels[p + 1] = 15 + 214 * k * k;
-			pixels[p + 2] = 23 + 68 * k * k;
+			pixels[p] = 55 + 200 * k;
+			pixels[p + 1] = 25 + 204 * k * k;
+			pixels[p + 2] = 27 + 64 * k * k;
 		}
 		pixels[p + 3] = 255;
 	}
