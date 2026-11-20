@@ -264,6 +264,10 @@ MAPE_MONEY_REGEN = 0.04          // market funds recovery /s toward target
 MAPE_SUPPLY_GOODS = 0.2          // settlement goods used per party supply unit
 MAPE_TRANSPORT_COST = 0.08       // site engine: price added per cell distance
 MAPE_TRANSPORT_SPEED = 2.0       // site engine: transit speed in cells/s
+MAPE_SHIPMENT_CAP = 512          // site engine: fixed transit pool capacity
+MAPE_SITE_HOLD_SEC = 10          // site engine: household/factory hold window (s)
+MAPE_SITE_ORDER_MIN = 0.5        // site engine: minimum order quantity
+MAPE_SITE_STEP = 0.05            // site engine: order/arrival substep (s)
 ```
 
 State:
@@ -291,9 +295,9 @@ State:
 - `factories` (cap 32, SoA): `x, y, state` (building/active/idle), `progress`, `starved`.
 - `mines` (cap 32, SoA): `x, y, site, res, unlocked`.
 - `storages` (cap 96, SoA): `x, y, site` (registered on unlock/build; stock lives in `goods`).
-- `engine`: `DIFFUSION`, `CATCHMENT`, or `QUEUE`; `SITES` is reserved for the
-  discrete engine. `viewItem`: `0…3`.
-- Ledger counters (Float64): `initialGoods, massIn, massOut, dissipated, minedTotal, transportWork, initialPop, popDelta`.
+- `engine`: `DIFFUSION`, `CATCHMENT`, `QUEUE`, or `SITES` (discrete engine).
+  `viewItem`: `0…3`.
+- Ledger counters (Float64): `initialGoods, massIn, massOut, dissipated, minedTotal, transportWork, transit, initialPop, popDelta`.
 
 Memory: shared physical and visual fields use about 684 KiB at 64×64. The
 land stencil, catchment reach and queue scratch are built once per layout.
@@ -740,7 +744,7 @@ clicking any other cell clears). The **workforce** block then shows:
 Test scenes place an active factory with the **Factory** tool (after Erase);
 the scene keeps coal-only stock, so iron-starved construction and production
 read directly in the panel. Factory placement scan, the idle rule and the CO2
-forest gate remain Phase 3.
+forest gate landed with Phase 3.
 
 ## Factory and mine lifecycle
 
@@ -836,15 +840,26 @@ diffusion. Shares the same arrays, pools, recipes, time constants, ledger, views
 HUD and atmospheric CO2 diffusion, replacing goods routing and placement scoring:
 
 - Settlements, factories, mines and storages trade discrete quantities from
-  `goods[r * N + i]`. Deterministic delivered price is
-  `base * ref / (stock + 1) + dist * MAPE_TRANSPORT_COST`.
-- Shipments sit in a fixed-size SoA transit pool and arrive after
-  `dist / MAPE_TRANSPORT_SPEED` seconds (`~10 s` across 20 cells on 1×), charging
-  `qty * dist * MAPE_WORKFORCE_PER_UNIT` transport workforce.
-- Factory placement scores candidate cells by margin between best nearby goods
-  buyer price and delivered coal + iron cost, using the same spacing, workforce
+  `goods[r * N + i]`. One price law serves matching, cost and placement:
+  `base * ref / (counterparty stock + 1) + dist * MAPE_TRANSPORT_COST`. Sellers
+  are matched on their own stock, so a scarce seller is expensive and abundance
+  at distance beats scarcity next door; placement revenue reads the buyer's stock
+  at the candidate cell; haulage is always a discount, never a bonus.
+- Shipments sit in a fixed-size SoA transit pool (`MAPE_SHIPMENT_CAP`, released
+  by swap-remove) and arrive after `dist / MAPE_TRANSPORT_SPEED` seconds
+  (`~10 s` across 20 cells on 1×), charging `qty * dist * MAPE_WORKFORCE_PER_UNIT`
+  transport workforce split evenly across the shipment's two endpoints. The
+  in-flight total rides the conservation ledger as `transit`: credited on
+  departure, debited on arrival, flushed into goods when the engine switches.
+- Factory placement scores candidate cells inside the existing scan reach by
+  margin — best nearby goods-buyer price (settlements and factories holding the
+  product) minus delivered coal + iron cost — using the same spacing, workforce
   and `MAPE_FACTORY_BUILD_SEC` rules.
+- Household and factory holds (`MAPE_SITE_HOLD_SEC` windows) bound what may leave
+  a counterparty's stock; orders below `MAPE_SITE_ORDER_MIN` wait.
 - Population satisfaction and growth read delivered settlement stocks directly.
+- `mapeStepSites` substeps at ≤ `MAPE_SITE_STEP`: population and atmosphere
+  first, then arrivals, metabolism and production, then orders.
 
 ## Selectable interface
 
@@ -885,7 +900,11 @@ Household intake records what left the map (`massOut`), and player trades record
 actual additions or removals. Factory recipes and the atmospheric uptake cycle
 can extend those same counters. Gradient transport conserves stock; signed
 demand decay recorded in `dissipated` is not material loss. Process balance
-requires `|massIn - massOut - (goodsTotal - initialGoods)| < 1e-6`.
+requires `|(goodsTotal + massOut + transit) - (initialGoods + massIn)| < 1e-6`.
+`transit` is the Site engine's in-flight shipment total; without it a departure
+would read as loss and its later arrival as a fresh source. Engines that ship
+nothing keep `transit` at 0, so the formula reduces to
+`|massIn - massOut - (goodsTotal - initialGoods)| < 1e-6`.
 
 Two rules keep that ledger honest and both were bugs once:
 
@@ -1003,7 +1022,7 @@ seeding (~2% of map, pop 8…20), locked mine indexing, settlement market action
 (replacing towns across `economy.js`, `sites.js`, `actions.js`, `hud.js`), static
 preview gradients on `demand`/`goods`/`workforce`, stub `mapeStep` (lock sync +
 market fund recovery, no field dynamics), four new render views + item selector +
-markers, HUD cell inspector and engine switch (`Sites` disabled pending Phase 4).
+markers, HUD cell inspector and engine switch (`Sites` disabled pending Phase 5).
 
 Gate: all nine views and four items render non-empty readable fields, settlements
 seed at ~2% of map (~82 cells, pop 8…20, none on water), deposit unlock triggers
@@ -1021,7 +1040,7 @@ unlocked coal extraction (closing `discover deposit → workforce demand → wor
 diffusion → mine output → settlement/factory supply`). Seed one marked coal trace
 inside the starting party's around-list range so the loop is playable immediately.
 Defer iron deposits and player-operated coal/iron extraction until factories
-consume iron; keep the alternate sites engine disabled until Phase 4. Includes
+consume iron; keep the alternate sites engine disabled until Phase 5. Includes
 `experiments/mape_spread.js`.
 
 Gate: midpoint across 20 walkable cells crosses zero within `15 s` on 1×, axial vs
