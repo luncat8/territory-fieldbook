@@ -8,11 +8,15 @@ const MAPE_MARKET_RESERVE = 1.5;
 const MAPE_CATCHMENT_STOCK_SECONDS = 9;
 const MAPE_CATCHMENT_RESPONSE = 0.9;
 const MAPE_CATCHMENT_STRENGTH = 5;
+const MAPE_CATCHMENT_DECAY = 0.8;
 const MAPE_QUEUE_STOCK_SECONDS = 12;
 const MAPE_QUEUE_RESPONSE = 1.6;
+const MAPE_QUEUE_DECAY = 0.8;
 const MAPE_QUEUE_SECONDS = 0.25;
 const MAPE_QUEUE_SERVICE_SECONDS = 0.1;
 const MAPE_QUEUE_COOLING = 0.32;
+const MAPE_HUNGRY_POP = 8;
+const MAPE_FACTORY_YARD = 4;
 const MAPE_MARKET_PRESSURE = 0.32;
 const MAPE_MARKET_AMBIENT = 0.3;
 
@@ -22,6 +26,29 @@ function mapeIsMarketItem(r) {
 
 function mapeMarketUseRate(r, i) {
 	return mape.pop[i] * (r === MAPE_RES.COAL ? MAPE_MARKET_COAL_USE : MAPE_MARKET_GOODS_USE);
+}
+
+// Population picks the target so a crowded town pulls harder than a hamlet; a flat floor pulled every town alike.
+function mapeMarketHungry(i) {
+	const pop = mape.pop[i];
+	return pop / (pop + MAPE_HUNGRY_POP);
+}
+
+// A single pinned cell loses its coal to a bigger town halo next door; the yard keeps a graded pull all round the plant.
+function mapePullFactoryYard(off, center, strength) {
+	const size = world.size;
+	const terrain = world.terrain;
+	for (let dy = -MAPE_FACTORY_YARD; dy <= MAPE_FACTORY_YARD; dy++) {
+		for (let dx = -MAPE_FACTORY_YARD; dx <= MAPE_FACTORY_YARD; dx++) {
+			const i = center + dy * size + dx;
+			if (terrain[i] === TERRAIN.WATER) continue;
+			const ring = Math.max(dx < 0 ? -dx : dx, dy < 0 ? -dy : dy);
+			const want = 1 - ring / (MAPE_FACTORY_YARD + 1);
+			const p = off + i;
+			if (want <= mape.demand[p]) continue;
+			mape.demand[p] += (want - mape.demand[p]) * strength;
+		}
+	}
 }
 
 function mapeMarketStock(reach, off, i) {
@@ -67,14 +94,14 @@ function mapeResetMarketFields(fill) {
 
 function mapePullMarketSlice(r, dt, queue) {
 	const { catchments, counts, weights } = mapeMarketFlow;
-	const { demand, marketSignal, pop } = mape;
+	const { demand, marketSignal } = mape;
 	const off = r * world.n;
 	const response = 1 - Math.exp(-(queue ? MAPE_QUEUE_RESPONSE : MAPE_CATCHMENT_RESPONSE) * dt);
 	const strength = 1 - Math.exp(-MAPE_CATCHMENT_STRENGTH * dt);
 	for (let k = 0; k < mape.settleCount; k++) {
 		const i = mape.settleCells[k];
 		const p = off + i;
-		const hungry = Math.min(1, 0.52 + 0.024 * pop[i]);
+		const hungry = mapeMarketHungry(i);
 		const target = hungry * mapeMarketPull(r, i);
 		const signal = marketSignal[p] + (target - marketSignal[p]) * response;
 		marketSignal[p] = signal;
@@ -91,8 +118,7 @@ function mapePullMarketSlice(r, dt, queue) {
 	if (r !== MAPE_RES.COAL) return;
 	for (let f = 0; f < mape.factoryCount; f++) {
 		if (mape.factoryState[f] !== MAPE_FACTORY_STATE.ACTIVE) continue;
-		const p = off + mape.factoryY[f] * world.size + mape.factoryX[f];
-		demand[p] += (1 - demand[p]) * strength;
+		mapePullFactoryYard(off, mape.factoryY[f] * world.size + mape.factoryX[f], strength);
 	}
 }
 
@@ -115,11 +141,16 @@ function mapeMarketPinQueues(dst, off) {
 	}
 }
 
+function mapeMarketDecay(queue) {
+	return queue ? MAPE_QUEUE_DECAY : MAPE_CATCHMENT_DECAY;
+}
+
+// Halos fade within ~4 cells; a wider reach flooded the whole map at 2% town density.
 function mapeDriftMarketSlice(off, dt, queue) {
 	const { land, landCount } = mapeMarketFlow;
 	const { demand, goods, localPressure, marketFill } = mape;
 	const ambient = localPressure ? Math.max(MAPE_MARKET_AMBIENT, marketFill) : marketFill;
-	const recover = 1 - Math.exp(-(localPressure ? 0.12 : queue ? 0.065 : 0.025) * dt);
+	const recover = 1 - Math.exp(-(localPressure ? 0.12 : mapeMarketDecay(queue)) * dt);
 	for (let k = 0; k < landCount; k++) {
 		const p = off + land[k];
 		const here = demand[p];
@@ -168,6 +199,7 @@ function mapeUseMarketStock(p, amount) {
 	return used;
 }
 
+// Household need is fixed; scaling it by the demand signal let stock cool the pull and then stop its own uptake.
 function mapeUseCatchmentStock(r, i, dt) {
 	const off = r * world.n;
 	const { catchments, counts } = mapeMarketFlow;
@@ -176,7 +208,7 @@ function mapeUseCatchmentStock(r, i, dt) {
 	let stock = 0;
 	for (let k = base; k < end; k++) stock += mapeMarketUsable(r, catchments[k]);
 	if (stock <= 0) return;
-	const share = Math.min(1, mapeMarketUseRate(r, i) * mape.demand[off + i] * dt / stock);
+	const share = Math.min(1, mapeMarketUseRate(r, i) * dt / stock);
 	let used = 0;
 	for (let k = base; k < end; k++) {
 		const cell = catchments[k];
