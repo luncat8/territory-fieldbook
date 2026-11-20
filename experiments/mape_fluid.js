@@ -134,7 +134,7 @@ check('population_ledger_balanced', Math.abs(mapePopResidual()) < 1e-3);
 	for (let k = 0, steps = Math.round(30 / SIM_STEP_SEC); k < steps; k++) main.step(SIM_STEP_SEC);
 	console.log('factory_log=goods ' + mape.goods[MAPE_RES.GOODS * n + idx].toFixed(2) + ' coal_left ' + mape.goods[MAPE_RES.COAL * n + idx].toFixed(2) + ' rate ' + mape.factoryGoods[f].toFixed(2));
 	check('factory_produces_goods', mape.factoryGoods[f] > 0.5);
-	check('factory_consumes_coal', mape.goods[MAPE_RES.COAL * n + idx] < 100);
+	check('factory_consumes_coal', mape.factoryCoal[f] > 0.4);
 	check('factory_emits_co2', totalCo2() > co2Before + 5);
 	check('factory_disturbs_cell', land.disturbed[idx] > disturbBefore);
 	check('factory_goods_rate_recorded', mape.factoryGoods[f] > 0);

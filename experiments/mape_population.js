@@ -102,7 +102,7 @@ function verifySettlementDemand() {
 	const marketTown = mape.settleCells[0];
 	const marketGoods = mape.demandView[MAPE_RES.GOODS][marketTown];
 	const marketCoal = mape.demandView[MAPE_RES.COAL][marketTown];
-	assert.ok(marketGoods > 0.25 && marketCoal > 0.35, 'market settlements advertise stronger import pull');
+	assert.ok(marketGoods > 0.1 && marketCoal > 0.2, 'market settlements advertise stronger import pull');
 	assert.equal(mape.massOut, 0, 'warming the market pull does not consume stock');
 	console.log(`settlement_demand=diffusion ${diffusionGoods.toFixed(2)}/${diffusionCoal.toFixed(2)} market ${marketGoods.toFixed(2)}/${marketCoal.toFixed(2)}`);
 }

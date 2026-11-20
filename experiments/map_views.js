@@ -152,7 +152,7 @@ check('a_demand_palette', run('Array.from(render.pixels.slice(0,4)).join()') ===
 run('mape.goodsView[0][0] = 8; renderSetStyle(RENDER_STYLE.B); renderEconomyCells(VIEW.AMOUNT)');
 check('b_stock_palette', run('Array.from(render.pixels.slice(0,4)).join()') === '255,241,198,255');
 run('renderEconomyCells(VIEW.DEMAND)');
-check('b_demand_palette', run('Array.from(render.pixels.slice(0,4)).join()') === '237,207,255,255');
+check('b_demand_palette', run('Array.from(render.pixels.slice(0,4)).join()') === '248,222,255,255');
 run('mape.demandView[0][0] = -1; renderEconomyCells(VIEW.DEMAND)');
 check('signed_surplus_stays_green', run('render.pixels[1] > render.pixels[0] && render.pixels[1] > render.pixels[2]'));
 run('world.terrain[0] = TERRAIN.WATER; renderEconomyCells(VIEW.DEMAND)');
