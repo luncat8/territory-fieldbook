@@ -58,6 +58,7 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	map-economy.js — shared fields, settlement and market state, engine selection and ledgers.
 	map-industry.js — mine/factory pools, deposit locks, workshops and forestry production.
 	map-diffusion.js — shared field tick, signed diffusion, gradient goods/worker flow.
+	map-sites.js — discrete Site engine: delivered-price orders, SoA shipment pool, margin siting.
 	map-market-flow.js — land stencil, catchment reach and joint intake admission.
 	map-market-demand.js — bounded A/B pull, stock feedback and household use.
 	map-population.js — settlement intake, satisfaction, population dynamics and waste.
@@ -78,7 +79,7 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	hud-scenes.js — scene controls, readouts and actor tools.
 	actions.js — player verbs spanning features (move, work, sell, hire, restore, declare).
 	experiments/ — smoke (sim), dom_smoke + dom_fixture (boot/UI), map_views (display),
-	mape_compare (engines), mape_scenes (scenes), mape_population (settlements), mape_fluid (workforce), mape_fluid_migration (capacity and migration), mape_forestry (logs and forest production); never loaded by the page.
+	mape_compare (engines), mape_sites (site engine), mape_scenes (scenes), mape_population (settlements), mape_fluid (workforce), mape_fluid_migration (capacity and migration), mape_forestry (logs and forest production); never loaded by the page.
 - new code goes to its owner, never appended "because the file is already there". no owner exists -> new file + header + map entry.
 - file > ~500 lines = defect. split by feature within the same plan.
 - moves are pure moves: contiguous ranges, snap to enclosing declarations, no behavior change.
@@ -158,8 +159,10 @@ Before all topics has minimal implementation Do not try to implement 100% of som
   satisfaction-led migration while shared job staffing remains active. Two
   selectable workforce models: Residents (default) and Fluid field (map-fluid.js
   pools; tire/rest/spawn constants are the balance subjects). Factory
-  build/recipe runtime and sawmill → logs → charcoal/wood works supply exist; the
-  generic factory placement scan and idle rule remain Phase 3.
+  build/recipe runtime, sawmill → logs → charcoal/wood works supply and the
+  generic factory placement scan + idle rule exist (Phase 3). Site engine
+  (map-sites.js: orders, shipments, margin siting) runs as `SITES`; its HUD
+  switch stays disabled until Phase 5.
 
 ## housekeeping
 

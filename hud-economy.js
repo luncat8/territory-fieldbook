@@ -79,7 +79,7 @@ function hudSyncWorkforce() {
 function hudSyncEngine() {
 	for (let k = 0; k < hudEconomy.radios.length; k++) hudEconomy.radios[k].checked = mape.engine === k;
 	hudEconomy.noteEl.textContent = HUD_ENGINE_NOTE[mape.engine];
-	hudEconomy.pressureEl.disabled = mape.engine === MAPE_ENGINE.DIFFUSION;
+	hudEconomy.pressureEl.disabled = !mapeMarketEngine();
 	hudSyncMapLegend();
 }
 
@@ -188,7 +188,7 @@ function hudUpdateInspect() {
 		text += '\nfresh ' + mape.wfFresh[idx].toFixed(1) + ' · depleted ' + mape.wfDepleted[idx].toFixed(1);
 		if (mapeIsSettlement(idx)) text += '\nSettlement room ' + mapeFluidFreeSpace(idx).toFixed(1) + ' / ' + mapeFluidCapacity(idx).toFixed(1) + ' · migration signal ' + hudSigned(mape.wfMigration[idx] * MAPE_WF_MIGRATION_SHARE) + '/s';
 	}
-	if (mape.engine !== MAPE_ENGINE.DIFFUSION && mapeIsSettlement(idx)) {
+	if (mapeMarketEngine() && mapeIsSettlement(idx)) {
 		text += '\nImport pull · coal ' + Math.round(100 * mapeMarketPull(MAPE_RES.COAL, idx)) +
 			'% · goods ' + Math.round(100 * mapeMarketPull(MAPE_RES.GOODS, idx)) + '%';
 	}

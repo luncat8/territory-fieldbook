@@ -202,3 +202,52 @@ consumer reaches; town pull sits at 0.2–0.5, so a correct field looked uniform
 the midtones where the data is, and give the ramp a warm low end (the old first stop was the
 same colour as water). Check the rendered pixel of a known town against the number in the
 inspector before blaming the physics.
+
+## the site engine diverges from diffusion on purpose — name the divergences
+
+Diffusion hauls down a water gradient over shared fields; Sites matches orders
+point-to-point by euclidean distance and an eta delay, so delivery timing is a
+shipping schedule, not a front velocity. Transport cost is charged as workforce
+but never throttles a shipment — it only prices orders, so material always moves
+if a seller exists. Sellers are chosen globally by price (abundance at distance
+beats scarcity next door); diffusion can only push locally. Factories site by
+margin against the hungriest buyer; diffusion's scan weighted centroid toward
+deposits. Transport work is split across both shipment endpoints — charging it
+all at the origin paints the seller side with a work halo and pumps the buying
+town's Residents toward the supplier (orders recur faster than WORK_DECAY).
+
+## revenue that adds haulage selects the farthest buyer
+
+Margin revenue must be `buyer price − dist · COST`: haulage is what the seller
+gains by delivering, so it is a discount on the offer. Adding distance to the
+revenue term pays the plant for travelling and the scan walks to the farthest
+town — inverting "best nearby goods buyer" while looking like a delivery fee.
+Costs already pay haulage on the input side; revenue only ever discounts it.
+
+## in-transit stock must join the conservation ledger
+
+A shipment debited on arrival alone lets a seller spend the same stock twice
+(reserve nothing, sell everything). Debit on departure, credit on arrival, and
+carry the in-flight total as `transit` in the residual — `|(goods + massOut +
+transit) − (initial + massIn)|` — or a mid-flight engine switch mints goods out
+of nothing when the pool is settled into a different accounting.
+
+## goods arrays are sliced by resource — `mape.goods[cell]` writes coal
+
+Every writer needs the offset: `mape.goods[MAPE_RES.GOODS * world.n + cell]`, or
+the `mape.goodsView[res][cell]` view. A test seeding a seller with
+`mape.goods[cell] = 300` lands in the r=0 (coal) slice, the follow-up coal line
+overwrites it, and a growth gate fails on a map whose "goods" seller holds no
+goods — with a perfectly conserved ledger, because both writes were valid coal.
+
+## a chain whose first link is gated by the second never starts
+
+The placement scan sited sawmills while regional logs sat below the build
+reserve and log-fed works only above it — but the sawmill cuts only where log
+demand reaches it, and that demand comes only from charcoal and wood works.
+Default survey: three fully staffed mills planned in the first 15 s, then zero
+logs, zero coal satisfaction, no consumer, forever. When a producer's output is
+gated on a consumer's signal, the rule must allow one consumer as soon as the
+producer stands (its own demand pulls the first cut); keep the scarcity reserve
+for every later build. Diagnose by printing the gate variable the producer
+waits on, not just what was placed.

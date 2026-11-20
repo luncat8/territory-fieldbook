@@ -85,7 +85,7 @@ function mapeTabulateJobs() {
 }
 
 function mapeInjectDemand(dt, marketsOnly) {
-	const local = mape.engine === MAPE_ENGINE.DIFFUSION;
+	const local = !mapeMarketEngine();
 	if (!local && marketsOnly) return;
 	const n = world.n;
 	const size = world.size;
@@ -282,7 +282,7 @@ function mapeDiffuseCo2Stock(goods, next, off, size, dt) {
 }
 
 function mapeDiffuseFields(dt, marketsOnly) {
-	const marketFlow = mape.engine !== MAPE_ENGINE.DIFFUSION;
+	const marketFlow = mapeMarketEngine();
 	const size = world.size;
 	const n = world.n;
 	const terrain = world.terrain;
@@ -464,7 +464,7 @@ function mapeStepDiffusion(seconds) {
 // Rebuild the visible signals without advancing inventories or the clock.
 function mapeWarmDemand(marketsOnly) {
 	if (!marketsOnly) mapeSyncCells();
-	const fieldMarkets = mape.engine !== MAPE_ENGINE.DIFFUSION;
+	const fieldMarkets = mapeMarketEngine();
 	if (!marketsOnly || !fieldMarkets) {
 		const dissipated = mape.dissipated;
 		const steps = Math.round((marketsOnly ? MAPE_SWITCH_WARM_SEC : MAPE_WARM_SEC) / MAPE_MAX_STEP);

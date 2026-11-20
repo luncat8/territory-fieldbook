@@ -9,7 +9,7 @@ const root = path.join(__dirname, '..');
 for (const [, file] of fs.readFileSync(path.join(root, 'index.html'), 'utf8').matchAll(/<script src="([^"]+)"><\/script>/g)) {
 	vm.runInThisContext(fs.readFileSync(path.join(root, file), 'utf8'), { filename: file });
 }
-for (const mode of [MAPE_ENGINE.DIFFUSION, MAPE_ENGINE.CATCHMENT, MAPE_ENGINE.QUEUE]) {
+for (const mode of [MAPE_ENGINE.DIFFUSION, MAPE_ENGINE.CATCHMENT, MAPE_ENGINE.QUEUE, MAPE_ENGINE.SITES]) {
 	main.setup(START_SEED, '', 0, mode);
 	assert.ok(!world.terrain.includes(TERRAIN.FOREST));
 	const i = world.terrain.findIndex(t => t === TERRAIN.HILLS);

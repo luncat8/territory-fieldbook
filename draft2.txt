@@ -275,14 +275,27 @@ place logs on map at cell where it was cut.
 then move by demand.
 to control how menu log really need - we can use same demand field: if gradient low - then no need to cut meany trees.
 
+#### sawmill-like factories that work with map cells around
+
+i suggest make it cut more forest in one tick. because we choose random cell, it is better to cut all available in cell forest -> wood, and make in maybe not every tick to save performance. this is subject of balance industry. 
+
+
 #### build factory
 
 think good and make plan about how factories will be spawned, depends of supply , resources and demand and workforces. i suggest to not build all just at settlement but if factory use heavy resources and more lite product then it should be located average locations of few deposits (forest has area for example and sawmill is not point producer but produce over multiple cells) . 
 typically workforce build factory from wood, sawmill from forest. build time ~ workforce.
 
+#### settlements
+
+settlements probably need some demand of wood. this may push sawmill industry.
+
 #### CO2
 
 CO2 O2 gas diffusion dont blocked by water
+
+#### settings panel
+
+add special panel with sliders to play with (all) fabs, settlements, sites, mines, etc. speed. and button to copy result settings to clipboard so i can paste to chat to tell what is good working
 
 
 ### waste view map

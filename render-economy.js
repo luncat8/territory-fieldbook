@@ -95,7 +95,7 @@ function renderFieldPalette(stops) {
 }
 
 function renderDemandMax(item) {
-	return mape.engine !== MAPE_ENGINE.DIFFUSION && item <= MAPE_RES.CO2 && mapeIsMarketItem(item) ? 1 : RENDER_DEMAND_MAX;
+	return mapeMarketEngine() && item <= MAPE_RES.CO2 && mapeIsMarketItem(item) ? 1 : RENDER_DEMAND_MAX;
 }
 
 // Amount reads stocks, demand reads the pull each stock follows: fresh to jobs, depleted home to rest.

@@ -69,7 +69,7 @@ function validate(mode) {
 	console.log(`engine=${MAPE_ENGINE_NAME[mode]} supplied=${startSupplied.toFixed(1)}->${mape.pop[supplied].toFixed(1)} unsupplied=${startHungry.toFixed(1)}->${mape.pop[hungry].toFixed(1)} dense_d=${land.disturbed[dense].toFixed(3)} ring_d=${land.disturbed[dense + 1].toFixed(3)} small_d=${land.disturbed[supplied].toFixed(3)} residual=${mapeLedgerResidual().toExponential(1)}`);
 }
 
-for (const mode of [MAPE_ENGINE.DIFFUSION, MAPE_ENGINE.CATCHMENT, MAPE_ENGINE.QUEUE]) validate(mode);
+for (const mode of [MAPE_ENGINE.DIFFUSION, MAPE_ENGINE.CATCHMENT, MAPE_ENGINE.QUEUE, MAPE_ENGINE.SITES]) validate(mode);
 
 // A filled landfill leaves no carrying capacity for a settlement.
 const full = setup(MAPE_ENGINE.DIFFUSION);
