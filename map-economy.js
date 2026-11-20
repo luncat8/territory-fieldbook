@@ -154,6 +154,7 @@ const mape = {
 	initialGoods: 0,
 	massIn: 0,
 	massOut: 0,
+	transit: 0,
 	dissipated: 0
 };
 
@@ -201,10 +202,12 @@ function mapeInit(mode, fixedResidents = false) {
 			mape.goodsView[r] = mape.goods.subarray(r * n, (r + 1) * n);
 		}
 	}
-	if (mapeEngineAvailable(mode)) mape.engine = mode;
+	// Sites runs from setup only; runtime switching lands with the HUD toggle (Phase 5).
+	if (mode === MAPE_ENGINE.SITES || mapeEngineAvailable(mode)) mape.engine = mode;
 	mape.fixedResidents = fixedResidents;
 	mapeReset();
 	mapeMarketFlowPrepare();
+	mapeSitesPrepare();
 }
 
 function mapeReset() {
@@ -233,7 +236,9 @@ function mapeReset() {
 	mape.popDelta = 0;
 	mape.massIn = 0;
 	mape.massOut = 0;
+	mape.transit = 0;
 	mape.dissipated = 0;
+	mapeSitesReset();
 }
 
 function mapeSeedSurvey() {
@@ -267,8 +272,15 @@ function mapeEngineAvailable(mode) {
 	return mode === MAPE_ENGINE.DIFFUSION || mode === MAPE_ENGINE.CATCHMENT || mode === MAPE_ENGINE.QUEUE;
 }
 
+// Bounded 0–1 import-pull engines; Diffusion and Sites carry signed fields instead.
+function mapeMarketEngine() {
+	return mape.engine === MAPE_ENGINE.CATCHMENT || mape.engine === MAPE_ENGINE.QUEUE;
+}
+
 function mapeSetEngine(mode) {
 	if (mode === mape.engine || !mapeEngineAvailable(mode)) return false;
+	// Stock in flight must land before the routing changes or the ledger loses it.
+	if (mape.engine === MAPE_ENGINE.SITES) mapeSitesSettle();
 	mape.engine = mode;
 	mapeResetMarketFields(mape.marketFill);
 	mapeWarmDemand(true);
@@ -410,7 +422,10 @@ function mapeRecoverMoney(seconds) {
 }
 
 function mapeStep(seconds) {
-	if (seconds > 0) mapeStepDiffusion(seconds);
+	if (seconds > 0) {
+		if (mape.engine === MAPE_ENGINE.SITES) mapeStepSites(seconds);
+		else mapeStepDiffusion(seconds);
+	}
 	mapeScanStep(seconds);
 }
 
@@ -518,7 +533,8 @@ function mapeGoodsTotal() {
 }
 
 function mapeLedgerResidual() {
-	return (mapeGoodsTotal() + mape.massOut) - (mape.initialGoods + mape.massIn);
+	// Transit is material on the map but in no goods slice; without it every shipment reads as loss.
+	return (mapeGoodsTotal() + mape.massOut + mape.transit) - (mape.initialGoods + mape.massIn);
 }
 
 function mapePopResidual() {
@@ -527,7 +543,7 @@ function mapePopResidual() {
 
 if (typeof module !== 'undefined') {
 	module.exports = {
-		mape, mapeInit, mapeStep, mapeField, mapeSetEngine, mapeEngineAvailable, mapeSetWorkforceMode, mapeWorkPresent,
+		mape, mapeInit, mapeStep, mapeField, mapeSetEngine, mapeEngineAvailable, mapeMarketEngine, mapeSetWorkforceMode, mapeWorkPresent,
 		mapeFinishSetup, mapeSeedSurvey, mapeLedgerResidual, mapePopResidual, MAPE_R, MAPE_RES, MAPE_RES_NAME, MAPE_ENGINE, MAPE_ENGINE_NAME, MAPE_FIELD, MAPE_FACTORY_STATE, MAPE_FACTORY_STATE_NAME, MAPE_FACTORY_KIND, MAPE_FACTORY_KIND_NAME, MAPE_WORKFORCE_MODE, MAPE_WORKFORCE_MODE_NAME, MAPE_FACTORY_WORKERS, MAPE_FACTORY_BUILD_WORKERS, MAPE_FACTORY_BUILD_SEC,
 		MAPE_VIEW_ITEM, MAPE_VIEW_ITEM_NAME, MAPE_VIEW_ITEM_LABEL, MAPE_VIEW_AMOUNT_IDS, MAPE_VIEW_DEMAND_IDS, MAPE_VIEW_AMOUNT_NAMES, MAPE_VIEW_DEMAND_NAMES,
 		MAPE_VIEW_POP_MAX, MAPE_VIEW_JOB_MAX, MAPE_VIEW_PULL_REF, MAPE_VIEW_POOL_MAX
