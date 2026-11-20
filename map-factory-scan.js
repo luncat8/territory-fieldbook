@@ -203,7 +203,13 @@ function mapeScanRun() {
 	const kind = general ? MAPE_FACTORY_KIND.GENERAL
 		: logs < MAPE_BUILD_LOG_RESERVE ? MAPE_FACTORY_KIND.SAWMILL
 			: coal >= unmet ? MAPE_FACTORY_KIND.CHARCOAL : MAPE_FACTORY_KIND.WOOD;
-	// 4. Where it sits. A deposit-fed plant anchors on the haul-weighted deposits of
+	// 4. Where it sits. Sites scores the region disc by margin instead of the centroid.
+	if (mape.engine === MAPE_ENGINE.SITES) {
+		const site = mapeSitesScanSite(anchor, kind);
+		if (site >= 0) mapeScanPlace(site, kind);
+		return;
+	}
+	// A deposit-fed plant anchors on the haul-weighted deposits of
 	// its inputs; a log-fed plant has no anchor and uses the town-weighted centre.
 	let px = cx;
 	let py = cy;
@@ -246,8 +252,12 @@ function mapeScanRun() {
 		}
 	}
 	if (best < 0) return;
-	const x = best % size;
-	const y = (best / size) | 0;
+	mapeScanPlace(best, kind);
+}
+
+function mapeScanPlace(idx, kind) {
+	const x = idx % world.size;
+	const y = (idx / world.size) | 0;
 	if (mapeAddFactory(x, y, MAPE_FACTORY_STATE.BUILDING, kind) < 0) return;
 	eventsAdd(MAPE_FACTORY_KIND_NAME[kind] + ' planned at ' + x + ',' + y + '.');
 }
