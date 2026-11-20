@@ -4,6 +4,7 @@
 const MAPE_MINE_RATE = 2.4;
 const MAPE_MINE_MIN_WORKERS = 0.1;
 const MAPE_MINE_WASTE = 0.0016;
+const MAPE_FACTORY_IDLE_SEC = 40;
 const MAPE_WORKSHOP_RATE = 1.8;
 const MAPE_WORKSHOP_STOCK = 8;
 const MAPE_SAWMILL_RATE = 1.1;
@@ -211,9 +212,15 @@ function mapeStepFactories(dt) {
 		const ironWant = MAPE_FACTORY_IRON * staff * dt;
 		const k = Math.min(1, goods[coalOff + idx] / coalWant, goods[ironOff + idx] / ironWant);
 		if (k < 1) mape.factoryStarved[f] += dt;
+		// An idled plant stops counting as a job site, so the workforce pull moves on to live work.
+		if (mape.factoryStarved[f] >= MAPE_FACTORY_IDLE_SEC) mape.factoryState[f] = MAPE_FACTORY_STATE.IDLE;
 		if (k <= 0) {
 			mape.factoryCoal[f] = mape.factoryIron[f] = mape.factoryGoods[f] = mape.factoryCo2[f] = 0;
 			continue;
+		}
+		if (mape.factoryState[f] === MAPE_FACTORY_STATE.IDLE) {
+			mape.factoryState[f] = MAPE_FACTORY_STATE.ACTIVE;
+			mape.factoryStarved[f] = 0;
 		}
 		goods[coalOff + idx] -= coalWant * k;
 		goods[ironOff + idx] -= ironWant * k;
