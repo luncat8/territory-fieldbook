@@ -394,6 +394,17 @@ flat), mines unlocked `1165 -> 1186` with the three served towns gaining
 `+46 / +43 / +36` and two towns on worked-out ground losing 3. Visible profit is
 the intended result: a player who builds haulage sees specific towns grow.
 
+### Coal is the scarce input
+
+Household coal use is `0.045/person/s`, so the 82-town map wants 53.9 coal/s.
+All five fuel deposits worked flat out make `5 * MAPE_MINE_RATE = 12.0/s` — a
+4.5× shortfall, by design. On the unsupplied map only three towns hold any coal
+at all. Charcoal works turn logs into coal at `0.8`, so the supply chain is
+`forest -> sawmill -> logs -> charcoal -> coal -> town`, and every factory
+(which burns `0.5/s`) competes with households for the same haulage. Coal keeps
+towns alive; it cannot make them grow on its own, because a coal-only town tops
+out at `0.71` against a neutral line of `0.82`. Goods are the growth input.
+
 Growth also fades as a town nears its room, so a supplied town settles at a
 steady size instead of piling everyone onto one cell. Landfill waste lowers
 `settleValue` and therefore both the subsistence share and the carrying
