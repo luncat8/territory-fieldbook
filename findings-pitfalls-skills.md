@@ -98,12 +98,36 @@ boot and silently forces paired rendering once the context exists. Keep looks se
 engine changes: palette/overlay switches must not warm demand or mutate stocks. Reduced motion
 should disable animated trace phase, not hide static evidence of accepted transfers.
 
-## float32 population migration accounting
+## float32 population accounting is not enough for a settlement ledger
 
 Migration flux is computed in double precision but applied to Float32 population cells.
 Record the actual source-plus-destination change after each pair write in `popDelta`; the
-proposed flux alone accumulates measurable residual over long runs. Compare populations in
-small controlled scenes before widening the entire population field to Float64.
+proposed flux alone accumulates measurable residual over long runs. This was measured the
+hard way: 3 000 steps of ordinary growth on the seeded map left `mapePopResidual()` at
+0.032 people with every write already booked, because each cell update rounds at ~6e-5 and
+150 000 of them accumulate. `mape.pop` and `mape.popNext` are now `Float64Array` and the
+residual is exactly zero. Widen the field rather than loosening the tolerance — the
+tolerance is what catches a real leak, and a rounded ledger cannot tell the two apart.
+
+## satisfaction reported from stock the rule forbids you to spend
+
+`mapeUseCatchmentStock` summed a cell's *usable* goods (`max(0, stock - reserve)` at a
+settlement), but spent the *raw* stock and recorded the full request as consumed. A town sat
+at exactly the reserve with `satG = 1.0` and ate 0.033/s forever: satisfaction without a
+source, which then fed growth and hid the map's deficit. Any "what can I spend" rule and the
+debit that follows must be the same expression — `mapeSpendUsable` now returns what it
+actually took and the caller records that. When satisfaction and stock disagree, print the
+reserve, the raw stock and the recorded use side by side; a town that eats without its
+granary falling is a one-line diagnosis.
+
+## one-sided accounting cannot drive migration
+
+Every settlement exports fresh workforce on its first tick and no settlement receives
+another's export, so boundary balance is structurally negative for every town. Feeding that
+number into population migration drains the whole map (`1165 -> 747`, 64 towns) no matter
+how small the share, and a dual-sided debit makes it worse rather than better. Migration needs
+a *two-sided* signal: staffed versus vacant job slots per town conserves people by
+construction and leaves famine and waste as the only ways to lose them.
 
 ## signals that gain per second need a bounded display, not a bounded field
 

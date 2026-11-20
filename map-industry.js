@@ -239,6 +239,27 @@ function mapeStepFactories(dt) {
 	}
 }
 
+// Forest is an area, not a point: a sawmill works the disc of MAPE_SAWMILL_SEARCH_RADIUS
+// around its site, so site choice and output both read this cover figure.
+function mapeForestCover(x, y) {
+	const size = world.size;
+	const radius = MAPE_SAWMILL_SEARCH_RADIUS;
+	let sum = 0;
+	let count = 0;
+	for (let dy = -radius; dy <= radius; dy++) {
+		for (let dx = -radius; dx <= radius; dx++) {
+			const cx = x + dx;
+			const cy = y + dy;
+			count++;
+			if (cx < 0 || cy < 0 || cx >= size || cy >= size) continue;
+			const idx = cy * size + cx;
+			if (world.terrain[idx] === TERRAIN.WATER) continue;
+			sum += Math.min(1, economy.biomass[idx]);
+		}
+	}
+	return count > 0 ? sum / count : 0;
+}
+
 function mapeSampleForestCutCell(x, y) {
 	// A miss costs this tick, so sparse forest lowers effective sawmill output.
 	const size = world.size;

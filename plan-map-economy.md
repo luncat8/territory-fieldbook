@@ -214,7 +214,12 @@ MAPE_FACTORY_THRESHOLD = 6.0     // min placement score to build
 MAPE_FACTORY_SPACING = 4         // min cells between factories
 MAPE_FACTORY_WORKFORCE_MIN = 10  // min pop within 3 cells to place a factory
 MAPE_FACTORY_BUILD_SEC = 20      // construction duration on 1x (10-30 s = 10-30 days)
-MAPE_FACTORY_BUILD_IRON = 0.2    // iron demanded /s while building (4 iron total)
+MAPE_BUILD_WOOD_RATE = 0.10      // logs/s consumed per builder (sawmill: forest biomass)
+MAPE_FACTORY_SNAP = 2            // cells: centroid snapped to the best buildable cell nearby
+MAPE_FACTORY_POP_WEIGHT = 0.35   // workforce weight against the deposit stock weight of 1
+MAPE_REGION_REACH = 12           // cells: settlements whose unmet need forms a region
+MAPE_SAWMILL_MIN_COVER = 0.45    // minimum forest cover in the search radius to site a mill
+MAPE_BUILD_LOG_RESERVE = 8       // logs a region keeps back for its next build
 MAPE_FACTORY_IDLE_SEC = 40       // starved duration before idling (40 s)
 MAPE_FACTORY_COAL = 0.5          // coal consumed /s per active factory
 MAPE_FACTORY_IRON = 0.5          // iron consumed /s per active factory
@@ -398,7 +403,10 @@ the intended result: a player who builds haulage sees specific towns grow.
 
 Household coal use is `0.045/person/s`, so the 82-town map wants 53.9 coal/s.
 All five fuel deposits worked flat out make `5 * MAPE_MINE_RATE = 12.0/s` — a
-4.5× shortfall, by design. On the unsupplied map only three towns hold any coal
+4.5× shortfall, by design. Note the whole mine fleet is fuel: the map seeds
+three `ORE` deposits at `41,5 / 24,21 / 57,19` but `mapeSeedMines` binds mines to
+`FUEL` only, so **no iron is ever mined** and the `GENERAL` recipe
+(`0.5 coal + 0.5 iron -> 1.0 goods`) can never run. On the unsupplied map only three towns hold any coal
 at all. Charcoal works turn logs into coal at `0.8`, so the supply chain is
 `forest -> sawmill -> logs -> charcoal -> coal -> town`, and every factory
 (which burns `0.5/s`) competes with households for the same haulage. Coal keeps
@@ -541,6 +549,179 @@ adjacency requires an actual water cell.
 Initial ~2% settlement seeding is unchanged. In Fluid field mode these values
 set settlement room and govern spawning; placement remains a later subject.
 
+## Factory build plan (Phase 3 placement, Phase 5 construction)
+
+Factories are never placed by the player. The engine decides *where*, *what kind*
+and *when*, from supply, resources, demand and workforce. Six rules, in the
+order the engine applies them.
+
+### 1. What gets built: unmet goods demand, paid for in wood
+
+A region earns a factory when its **unmet goods need** stays positive. Per
+settlement, unmet need is the shortfall the market did not cover:
+
+```
+unmet(i) = max(0, pop(i) * MAPE_MARKET_GOODS_USE - goodsDelivered(i))
+```
+
+and a region's figure is the sum of `unmet` over the settlements within
+`MAPE_REGION_REACH = 12` cells, weighted `1/d²` so the nearest town dominates.
+The scan runs every `MAPE_SCAN_SEC = 5 s`; a candidate must also clear
+`MAPE_FACTORY_THRESHOLD` and have `MAPE_FACTORY_CAP - factoryCount` room left
+(32 today). One build starts per scan.
+
+**Construction consumes wood, not iron.** The doc's older `MAPE_FACTORY_BUILD_IRON`
+scheme is replaced by:
+
+| plant | construction input | rate | total (4 builders, 20 s) |
+| --- | --- | --- | --- |
+| general factory | logs | `MAPE_BUILD_WOOD_RATE = 0.10`/builder/s | ~8 logs |
+| charcoal works | logs | `0.10`/builder/s | ~8 logs |
+| wood works | logs | `0.10`/builder/s | ~8 logs |
+| sawmill | raw forest, on site | `0.02`/builder/s of `economy.biomass` | ~1.6 biomass |
+
+A site is a **construction demand** exactly like a mine is a workspace demand:
+`mapeSyncCells` advertises the logs need in the mound around the site, the
+market hauls logs there, and `progress` advances only while both labour and
+construction stock are present. A sawmill instead fells its own footprint, so
+forest is both its material and its long-term working area — which is why a
+sawmill site is only legal where `mapeForestCover(x, y)` (mean biomass in the 5×5 radius) is above
+`MAPE_SAWMILL_MIN_COVER = 0.45`.
+
+No wood, no build. That is the intended bottleneck: **wood is the currency of
+construction and workforce is the clock**, so the player's first jobs are
+haulage and a sawmill.
+
+Worked numbers, so the rates can be checked against the balance table:
+
+- one build = `4 builders * 20 s * 0.10 = 8 logs`;
+- a sawmill instead fells `0.02 * 4 * 20 = 1.6` biomass on site — small next to
+  the `0.45 * 25 = 11.25` biomass standing in its 5×5, so the site pays for
+  itself many times over and the mill's long-run limit is regrowth, not the
+  build;
+- one charcoal works turns `0.55 logs/s` into `0.44 coal/s`, and one wood works
+  turns `0.55 logs/s` into `0.55 goods/s`. A 20-pop town needs `0.90 coal/s` and
+  `0.72 goods/s`, so **a single works cannot feed a town** — coal and goods both
+  need two plants per town, and coal the more so. That is deliberate: it is why
+  the map runs a deficit and why haulage, not plant count, is the constraint.
+
+### 2. Where it sits: haul-cost weighted centroid, deposits weigh more
+
+Population can move; a deposit cannot. So deposit geometry is the anchor and
+population only bends the choice.
+
+For a deposit-fed plant (general factory on ore, charcoal works on forest/logs)
+take every deposit of the inputs it consumes, and compute
+
+```
+C = ( Σ w_d * P_d ) / ( Σ w_d ),   w_d = depositStock_d / (1 + haulDistance_d)
+```
+
+where `haulDistance_d` is the walking distance from the candidate region's towns
+to deposit `d` along the same land stencil the market uses. Population enters
+through the haul term: a deposit far from the people who would work it weighs
+less, so `C` slides toward the town — but never past the point where the
+deposits stop being reachable.
+
+`C` is then snapped to the best buildable cell within `MAPE_FACTORY_SNAP = 2`
+cells, scored
+
+```
+site = w_stock * Σ_d stock_d/(1+d_d)      // closer to deposits is better
+     - MAPE_DISTURB_PENALTY * disturbed
+     + w_pop   * Σ_t pop_t/(1+d_t)        // closer to workforce is better
+```
+
+with `w_stock = 1`, `w_pop = MAPE_FACTORY_POP_WEIGHT = 0.35`. Because the stock
+term has the larger weight and shrinks with distance, a plant on heavy ore sits
+near the ore even when that is a long way from any town; people are expected to
+follow the work (the staffing-driven migration in **Population dynamics** does
+exactly that). Legal cells must be walkable, at least `MAPE_FACTORY_SPACING = 4`
+cells from another factory, outside a settlement cell, and clear of existing
+sites.
+
+A plant with no deposit input — a pure assembly plant turning logs into goods —
+has no anchor and uses the town-weighted centre alone.
+
+### 3. Sawmill: an area producer, not a point
+
+The sawmill already samples a forest cell inside `MAPE_SAWMILL_SEARCH_RADIUS = 2`
+each tick and misses cost that tick, so sparseness lowers output. The build plan
+makes that area explicit rather than accidental:
+
+- site score includes `mapeForestCover(x, y)`, the mean biomass over the 5×5
+  search radius, with a hard floor of `0.45`. Measured on the seeded map: cover
+  runs `0.00 … 0.58` with median `0.33` and p75 `0.45`, so a floor of `0.45`
+  leaves the wooded quarter — 25% of land — legal and rejects the rest. (A floor
+  of `0.35` would have admitted 46% of the map, which is not a forest);
+- once active, `MAPE_SAWMILL_RATE * (1 + 0.15 * cover)` scales output with how
+  well the surrounding area is still wooded, so a mill in deep forest out-earns
+  one on the edge;
+- felling removes `0.025` biomass per log and CO2 feeds regrowth, so a mill
+  works an *area* that regrows around it rather than a single cell that empties.
+
+A full multi-cell footprint (several forest cells owned by one mill) is noted as
+the follow-up if the area model proves too abstract: it changes the site
+footprint, rendering and site accounting together.
+
+### 4. Who builds it: workforce is the clock
+
+`MAPE_FACTORY_BUILD_WORKERS = 4` builders are advertised at the site through the
+same `jobNeed` path mines use, so the workforce field hauls labour there. Build
+time is **inversely proportional to staffing**:
+
+```
+progress += staffFraction * dt / MAPE_FACTORY_BUILD_SEC      // 20 s at full staff
+```
+
+with `staffFraction = min(1, fresh[site] / MAPE_FACTORY_BUILD_WORKERS)`. Four
+builders finish in 20 s; two take 40 s; one takes 80 s. Labour and construction
+stock must both be present on the same tick, so a well-fed site with poor haulage
+stalls just as visibly as an unstaffed one, and both read in the inspection
+panel (`build progress`, incoming logs, staffed/slots).
+
+### 5. Kind selection
+
+| condition | kind | why |
+| --- | --- | --- |
+| goods need high, logs surplus within reach, forest nearby | `SAWMILL` | produces logs the plant can use |
+| logs surplus, coal need unmet | `CHARCOAL` | logs -> coal at 0.8, the only coal source off-deposit |
+| logs surplus, goods need unmet | `WOOD` | logs -> goods at 1.0 |
+| coal **and** iron surplus, goods need unmet | `GENERAL` | deposit-fed, sits at the weighted centroid |
+
+`GENERAL` is **blocked on iron**: the map has three `ORE` deposits but no mine
+binds to them, so the recipe's iron half is unobtainable (see **Coal is the
+scarce input**). Until ore mines exist, the scan can only choose the log-fed
+kinds, and a `GENERAL` plant would build and then starve. The gate below treats
+that as a hard requirement rather than a soft one.
+
+Ties resolve toward the input the map is shortest of, which on the seeded map is
+coal (see **Coal is the scarce input**), so early engine-chosen industry tends to
+be charcoal works — the intended shape of a wood-poor, coal-starved start.
+
+**One rule the gate must protect:** logs are the build material *and* the feed
+for charcoal and wood works, so a plant that eats the region's last log starves
+the next build. The scan reserves `MAPE_BUILD_LOG_RESERVE = 8` logs — the cost
+of one build — before it lets a works consume logs, and it prefers a `SAWMILL`
+first whenever regional logs are below that reserve. Wood has to exist before
+wood can be spent.
+
+### 6. Test gate
+
+`experiments/mape_factory.js` (pending) must show:
+
+- a region with unmet goods and no logs builds nothing, then starts within one
+  scan of logs arriving;
+- build time halves when staffing doubles;
+- two deposits 10 cells apart place a general factory within 3 cells of their
+  weighted centroid, and moving the towns does not move it more than 3 cells;
+- a sawmill is never placed below `0.45` forest cover (the seeded map's p75),
+  and its output rises with cover;
+- a `GENERAL` plant is never chosen while no mine is bound to an `ORE` deposit
+  (the seeded map's state), because it would build and then starve;
+- at `MAPE_FACTORY_CAP` no further builds start;
+- `massIn`/`massOut` still close to 1e-6 through a full build.
+
 ## Job-site inspection
 
 Clicking a factory or mine cell selects it (the party does not move; `Esc` or
@@ -563,24 +744,26 @@ forest gate remain Phase 3.
 
 ## Factory and mine lifecycle
 
-1. **Placement scan** every `MAPE_SCAN_SEC` (`5 s`): score each walkable cell at
-   least `MAPE_FACTORY_SPACING` cells from existing factories:
-   `score = demand[GOODS][i] - demand[COAL][i] - demand[IRON][i] - MAPE_DISTURB_PENALTY * disturbed[i]`.
-   Best cell wins if `score > MAPE_FACTORY_THRESHOLD` and population within 3
-   cells exceeds `MAPE_FACTORY_WORKFORCE_MIN`. At most one build starts per scan;
-   spacing plus build-iron demand prevent simultaneous duplicate builds during
-   the 20 s construction lag.
+1. **Placement scan** every `MAPE_SCAN_SEC` (`5 s`): the region's unmet goods
+   need must clear `MAPE_FACTORY_THRESHOLD`, and the site is the haul-cost
+   weighted centroid of the inputs it feeds on, snapped to the best buildable
+   cell within `MAPE_FACTORY_SNAP`; deposits carry the heavier weight because
+   population moves and deposits do not. Full rule, kind selection and sawmill
+   area requirements are in **Factory build plan**.
 2. **Construction**: `progress` advances `0 → 1` over `MAPE_FACTORY_BUILD_SEC`
-   (`20 s` on 1×) at the site's staffing fraction, injecting and drawing
-   `MAPE_FACTORY_BUILD_IRON` iron; construction stalls while iron is missing
-   and disturbs at `0.0003/s`.
+   (`20 s` on 1×) at the site's staffing fraction, drawing **logs** at
+   `MAPE_BUILD_WOOD_RATE` per builder (a sawmill fells raw forest on its own
+   footprint instead); construction stalls while the material is missing and
+   disturbs at `0.0003/s`.
 3. **Active**: consumes `0.5 coal + 0.5 iron/s`, produces `1.0 goods + 0.5 CO2/s`,
    disturbs at `0.0006/s` (above natural recovery so active industry requires
    restoration or management). Idles after `MAPE_FACTORY_IDLE_SEC` (`40 s`) of
    starvation with no arriving inputs and wakes on the first tick that has them.
    An idled plant is no longer a job site, so the workforce pull leaves it for
    live work and the mine is not kept staffed for nothing.
-4. **Mines**: bound at setup to every coal (`FUEL`) and iron (`ORE`) deposit.
+4. **Mines**: bound at setup to every coal (`FUEL`) deposit. The `ORE` deposits
+   are not bound yet — see **Coal is the scarce input**; binding them is a
+   prerequisite for any `GENERAL` factory to produce.
    Each holds 1,400 units and starts locked. Once unlocked and staffed, a mine
    extracts `2.4 × staffFraction × (1 − d)` units/s into local stock. Mineral
    extraction adds `0.00025 × units` disturbance so productivity declines over
@@ -878,20 +1061,24 @@ logs, and the factory inspector reports staffing and recipe rates.
 
 ### Phase 3 — Factories, mines and forest CO2 loop (diffusion)
 
-Deliverable: `5 s` placement scan with spacing guard, `20 s` construction with
-build-iron demand, active `coal + iron → goods + waste + CO2`, `40 s` idle rule,
-unlocked mine extraction, CO2-gated forest growth, `MAPE_GATE_ON_GOODS` on vs off
-comparison in `experiments/mape_factory.js` over `300 s`. The construction and
-production runtime (iron draw, recipe, CO2, disturbance, worker-staffed output
-under both workforce models, scene Factory tool) is implemented; the placement
-scan, idle rule and the factory experiment remain. Humidity/CO2 forest response
-is validated across engines by `experiments/mape_forest.js`.
+Deliverable: `5 s` placement scan on unmet goods need, `20 s` construction paid
+in logs (see **Factory build plan**), active `coal + iron → goods + waste + CO2`,
+`40 s` idle rule, unlocked mine extraction, CO2-gated forest growth,
+`MAPE_GATE_ON_GOODS` on vs off comparison in `experiments/mape_factory.js` over
+`300 s`. The construction and production runtime (recipe, CO2, disturbance,
+worker-staffed output under both workforce models, scene Factory tool) is
+implemented; the placement scan, the log-paid construction, the idle rule and the
+factory experiment remain. Humidity/CO2 forest response is validated across
+engines by `experiments/mape_forest.js`.
 
-Gate: factories site between goods need and coal/iron surplus (never on water or
-high disturbance, no duplicate stack during construction), builds finish in
-`10–30 s` on 1×, forests grow only with CO2, disturbance rises at active factories
-and mines, gated ledger residual `< 1e-4` (Float64 flow `< 1e-6`), gate-on vs
-gate-off outcome recorded in `findings-pitfalls-skills.md`.
+Gate: factories site on unmet goods need at the haul-weighted centroid of their
+inputs (never on water, on a settlement cell, or high disturbance; no duplicate
+stack during construction), a plant with no logs never finishes and finishes
+within one scan of logs arriving, build time halves when staffing doubles, a
+sawmill is never sited below `0.45` forest cover, forests grow only with CO2,
+disturbance rises at active factories and mines, gated ledger residual `< 1e-4`
+(Float64 flow `< 1e-6`), gate-on vs gate-off outcome recorded in
+`findings-pitfalls-skills.md`.
 
 ### Phase 4 — Site engine on the shared foundation
 
