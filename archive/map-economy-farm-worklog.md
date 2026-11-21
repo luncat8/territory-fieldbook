@@ -1,0 +1,21 @@
+# farm worklog (plan-map-economy)
+
+plan: `plan-map-economy.md` — "Farm: a field worked by its workforce" (settlements demand food → spawn farm; construction pays in forest or wood; one worker per farmland cell as a constant demand; whole-field harvest)
+review: the session before this one implemented the farm and stopped mid-docs — the plan still described the draft (need 1–10 workers off food pull, one worst farmland cell released to the forest each season, season 20 s, 0.05 cover/log, FELL_RATE) while the code carried the settled design
+changed: `map-farm.js` — farm runtime (prior session): sawmill-rule clearing of its own field (random sample, miss costs the visit, hit fells all cover to logs on the site cell and marks farmland), build paid in forest or wood, need = one worker per farmland cell, whole-field harvest every `MAPE_FARM_SEASON_SEC = 8`, moisture quality read at the harvest pass, waste on one random ring cell at Chebyshev 3 (feature)
+changed: `map-factory-scan.js` — unmet food spawns a farm per region (one build at a time), field-quality siting, wood-chain fallback when no legal field (feature)
+changed: `experiments/mape_farm.js` — farm gates: clearing, build self-pay, crew sizing, no release when undermanned, batch harvest (dt 0.2 == 0.05), moisture band, waste ring, household food in four engines (feature; drift-proof — the harvest is counted when it fires, quality is compared against the engine's own value, zero is asserted strictly outside the moisture band)
+changed: `map-industry.js` — `MAPE_SAWMILL_FOREST_PER_LOG` 0.125 → 0.3: 2.4x fewer logs per cut (asked 2–3x), float yield kept (tuning)
+changed: `map-economy.js` — `MAPE_FACTORY_WORKERS` 16 → 32 (max workforce capacity 2x); `MAPE_VIEW_POP_MAX` 600, `MAPE_VIEW_JOB_MAX` 32, `MAPE_VIEW_POOL_MAX` 200 so the views keep their range at the new scales (tuning)
+changed: `experiments/mape_spread.js` — the coal waypoint now measures a rise above the unlock-time workforce field; the doubled factory pull crosses an absolute 0.05 threshold before unlock (test intent kept)
+changed: `experiments/map_views.js` — legend strings read the view constants through `run()` instead of hard-coded 200/40/16 (test intent kept)
+changed: `plan-map-economy.md` — constants list synced (mine 12, crew 32, build 8, settle disturb 0.00048, FELL_SEC 3, FOREST_PER_LOG 0.3, pool caps, view maxima, the farm block, CHARCOAL_CO2, BUILD_SAWMILL_RATE; dropped the GATE_ON_GOODS and FACTORY_WORKFORCE_MIN rows — both mechanics are gone from the code), sawmill work-visit model written out, build-cost table rewritten as per-build totals, farm section rewritten to the implemented design (docs)
+changed: `AGENTS.md` — map entries for `map-farm.js` and `map-factory-scan.js`; `mape_farm` and `mape_factory` added to the experiment list (docs)
+validation: `node --check` on every touched js; full suite 17/17 (smoke, hydrology, compare, factory, farm, forestry, forest, population, sites, scenes, fluid, fluid_migration, spread, survey_spread, map_views 79/79, dom_smoke, dom_fixture); farm food ledger `0.0e+0`
+evidence: sawmill cut cadence is unchanged, yield per cut is 2.4x smaller — 1 worker stocks 60 logs / 120 s (144 at 0.125), full crew of 16 → 83.3; `capacity_shore=600.0`
+decisions: no integer items anywhere — every stock, yield and harvest is a float (`cover / 0.3 ≈ 3.33` logs from a full cell); the GUI rounds for display only
+decisions: a farm does not ask — it constantly creates workforce demand equal to its farmland count; no food-pull sizing, no shrink-on-glut
+decisions: farmland never reverts on its own; the forest is a number field that regrows only when the farm is removed — the draft's "release one worst cell per season" was dropped as nonsense
+decisions: town capacity: the pop cap sits at 600 (5x its earlier value; `MAPE_SETTLE_DISTURB` carries the matching rescale note), which meets the 4–6x ask
+pitfalls: build cost is a per-build total (rate × staff-fraction summed over time = rate × BUILD_SEC); crew size sets the clock, not the total — write worked numbers as totals, never as per-builder products
+next: visual playtest at the new scales — 32-crew mills, farm fields growing against towns, waste rings at 600 pop

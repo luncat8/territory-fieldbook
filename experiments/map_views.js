@@ -68,11 +68,11 @@ for (const [item, range] of [['HUMIDITY', '0 → 0.4+ · linear'], ['WATER', 'La
 	check('weather_' + item.toLowerCase(), elements.get('ui-map-range').textContent === range && elements.get('ui-flow').disabled);
 }
 run('hud.itemRadios[6].click()');
-check('amount_population_legend', elements.get('ui-map-layer').textContent === 'Amount · population' && elements.get('ui-map-unit').textContent === 'Persons / cell' && elements.get('ui-map-range').textContent === '0 → 200 · sqrt');
+check('amount_population_legend', elements.get('ui-map-layer').textContent === 'Amount · population' && elements.get('ui-map-unit').textContent === 'Persons / cell' && elements.get('ui-map-range').textContent === '0 → ' + run('MAPE_VIEW_POP_MAX') + ' · sqrt');
 run('hud.itemRadios[7].click()');
-check('amount_fresh_legend', elements.get('ui-map-layer').textContent === 'Amount · workforce · fresh' && elements.get('ui-map-unit').textContent === 'Workforce pool / cell' && elements.get('ui-map-range').textContent === 'log 0 → 40');
+check('amount_fresh_legend', elements.get('ui-map-layer').textContent === 'Amount · workforce · fresh' && elements.get('ui-map-unit').textContent === 'Workforce pool / cell' && elements.get('ui-map-range').textContent === 'log 0 → ' + run('MAPE_VIEW_POOL_MAX'));
 run('hud.itemRadios[8].click()');
-check('amount_depleted_legend', elements.get('ui-map-layer').textContent === 'Amount · workforce · depleted' && elements.get('ui-map-range').textContent === 'log 0 → 40');
+check('amount_depleted_legend', elements.get('ui-map-layer').textContent === 'Amount · workforce · depleted' && elements.get('ui-map-range').textContent === 'log 0 → ' + run('MAPE_VIEW_POOL_MAX'));
 check('depleted_flow_controls_enabled', !elements.get('ui-flow').disabled && !elements.get('ui-flow-motion').disabled);
 run('hud.itemRadios[7].click()');
 check('fresh_flow_controls_enabled', !elements.get('ui-flow').disabled);
@@ -83,7 +83,7 @@ check('fluid_flow_controls_restore', !elements.get('ui-flow').disabled);
 check('amount_worker_fields', run('renderItemField(MAPE_VIEW_ITEM.FRESH, false) === mape.wfFresh && renderItemField(MAPE_VIEW_ITEM.DEPLETED, false) === mape.wfDepleted && renderItemField(MAPE_VIEW_ITEM.POPULATION, false) === mape.pop'));
 run('hud.itemRadios[0].click()');
 run('hud.demandItemRadios[6].click()');
-check('demand_jobs_legend', elements.get('ui-demand-layer').textContent === 'Demand · jobs' && elements.get('ui-demand-unit').textContent === 'Job slots / cell' && elements.get('ui-demand-range').textContent === '0 → 16 · sqrt');
+check('demand_jobs_legend', elements.get('ui-demand-layer').textContent === 'Demand · jobs' && elements.get('ui-demand-unit').textContent === 'Job slots / cell' && elements.get('ui-demand-range').textContent === '0 → ' + run('MAPE_VIEW_JOB_MAX') + ' · sqrt');
 run('hud.demandItemRadios[7].click()');
 check('demand_fresh_legend', elements.get('ui-demand-layer').textContent === 'Demand · workforce · fresh' && elements.get('ui-demand-unit').textContent === 'Fresh pull / cell' && elements.get('ui-demand-range').textContent === '0 → 1 pull');
 run('hud.demandItemRadios[8].click()');

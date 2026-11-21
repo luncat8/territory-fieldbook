@@ -9,13 +9,14 @@ const MAPE_WORKSHOP_RATE = 0.9;
 const MAPE_WORKSHOP_STOCK = 4;
 // Labour is charged per forest felled in worker-seconds: one worker fells cover 1.0 in
 // MAPE_SAWMILL_FELL_SEC, so cutting speed scales with the crew on site. The log yield is a
-// pure conversion knob — a full cell of cover turns into 8 logs.
+// pure conversion knob — a cell of cover becomes cover / MAPE_SAWMILL_FOREST_PER_LOG logs,
+// a float amount, never a whole item.
 const MAPE_SAWMILL_FELL_SEC = 3;
 const MAPE_SAWMILL_SEARCH_SEC = 2;
 const MAPE_SAWMILL_SEARCH_RADIUS = 2;
 const MAPE_SAWMILL_MIN_FOREST = 0.08;
 const MAPE_SAWMILL_MIN_PULL = 0.015;
-const MAPE_SAWMILL_FOREST_PER_LOG = 0.125;
+const MAPE_SAWMILL_FOREST_PER_LOG = 0.3;
 const MAPE_FORESTRY_INPUT = 0.55;
 const MAPE_CHARCOAL_YIELD = 0.8;
 const MAPE_CHARCOAL_CO2 = 0.2;

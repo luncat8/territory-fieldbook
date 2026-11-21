@@ -228,6 +228,7 @@ const metrics = vm.runInThisContext(`
 		party.condition = 95;
 		party.morale = 80;
 		let tUnlock = -1;
+		let s1WorkAtUnlock = 0;
 		let tWorkAtS1 = -1;
 		let tWorkerAtMine = -1;
 		let tCoalMined = -1;
@@ -254,8 +255,13 @@ const metrics = vm.runInThisContext(`
 			const mp = mape.pop[mineCell];
 			if (mw > peakMineWork) peakMineWork = mw;
 			if (mp < MAPE_MINE_MIN_WORKERS && mape.minedTotal > minedBeforeWorkers) minedBeforeWorkers = mape.minedTotal;
-			if (tUnlock < 0 && mape.mineUnlocked[0] === 1) tUnlock = t;
-			if (tUnlock > 0 && tWorkAtS1 < 0 && mape.workforce[s1] >= 0.05) tWorkAtS1 = t - tUnlock;
+			if (tUnlock < 0 && mape.mineUnlocked[0] === 1) {
+				tUnlock = t;
+				// The standing factory pull keeps the waypoint warm, so the mine's own
+				// demand is a rise above the unlock-time field, not an absolute level.
+				s1WorkAtUnlock = mape.workforce[s1];
+			}
+			if (tUnlock > 0 && tWorkAtS1 < 0 && mape.workforce[s1] >= s1WorkAtUnlock + 0.05) tWorkAtS1 = t - tUnlock;
 			if (tUnlock > 0 && tWorkerAtMine < 0 && mp >= 0.5) tWorkerAtMine = t - tUnlock;
 			if (tUnlock > 0 && tCoalMined < 0 && mape.minedTotal >= 0.5) tCoalMined = t - tUnlock;
 			if (tUnlock > 0 && tCoalAtS1 < 0 && mape.goods[MAPE_RES.COAL * n + s1] >= s1CoalStart + 0.05) tCoalAtS1 = t - tUnlock;

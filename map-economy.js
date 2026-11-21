@@ -60,7 +60,7 @@ const MAPE_FACTORY_BUILD_WORKERS = 8;
 const MAPE_FACTORY_COAL = 0.5;
 const MAPE_FACTORY_IRON = 0.5;
 const MAPE_FACTORY_CO2 = 0.5;
-const MAPE_FACTORY_WORKERS = 16;
+const MAPE_FACTORY_WORKERS = 32;
 const MAPE_FACTORY_BUILD_SEC = 20;
 const MAPE_FACTORY_YIELD = 1.0;
 const MAPE_FACTORY_DISTURB = 0.004;
@@ -70,10 +70,11 @@ const MAPE_CO2_INIT = 0.4;
 const MAPE_MONEY_PER_POP = 25;
 const MAPE_MONEY_REGEN = 0.04;
 const MAPE_SUPPLY_GOODS = 0.2;
-const MAPE_VIEW_POP_MAX = 200;
-const MAPE_VIEW_JOB_MAX = 16;
+// View normalisation rides the sim scales: the pop cap sits at 600 and a full crew at 32.
+const MAPE_VIEW_POP_MAX = 600;
+const MAPE_VIEW_JOB_MAX = 32;
 const MAPE_VIEW_PULL_REF = 0.25;
-const MAPE_VIEW_POOL_MAX = 40;
+const MAPE_VIEW_POOL_MAX = 200;
 
 const mape = {
 	engine: MAPE_ENGINE.CATCHMENT,

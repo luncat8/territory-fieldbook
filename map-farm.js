@@ -3,7 +3,7 @@
 
 const MAPE_FARM_RADIUS = 2;
 const MAPE_FARM_TILL_SEC = 2;            // worker-seconds per clearing visit, hit or miss
-const MAPE_FARM_SEASON_SEC = 8;          // the whole field is brought in at once, this often
+const MAPE_FARM_SEASON_SEC = 8;          // seconds between whole-field harvests
 const MAPE_FARM_YIELD = 3;               // food per quality-1 farmland cell per season
 const MAPE_FARM_MOISTURE_OPTIMUM = 0.6;  // wetter than the forest optimum: river plains farm best
 const MAPE_FARM_MOISTURE_WIDTH = 0.3;
