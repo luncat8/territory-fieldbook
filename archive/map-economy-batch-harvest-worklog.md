@@ -27,3 +27,18 @@ decision: 2fd5ecc logs-as-market-item (need ×4) not taken: rebalances the measu
 decision: 2fd5ecc per-subsystem dt multipliers are the right shape for the draft settings panel; take them with the panel, adding forest/farm growth sliders
 pitfalls: dropping one side of a household commodity is silent outside Sites — see findings
 next: implement farm first cut (FOOD resource, household use in four engines, map-farm.js, scene tool), then the settings panel
+
+# Whole-cell sawmill cuts at half wood yield; farm plan rework
+plan: `plan-map-economy.md` §3 Sawmill, Forestry supply chain, Farm: a field worked by its workforce
+review: previous entry misread "forest→wood 2× less" as half-cell cuts; reverted to whole-cell felling
+changed: `map-industry.js` — fix: whole cell felled to 0; `FOREST_PER_LOG` 0.025 → 0.05; work charged per forest via `MAPE_SAWMILL_FELL_RATE = 0.0275` (replaces logs-based `MAPE_SAWMILL_RATE`); search 1 → 2 s
+changed: `hud-scenes.js`, `experiments/mape_forestry.js` — tool help; whole-cell, yield and forest-charged work gates
+changed: `plan-map-economy.md` — sawmill numbers; farm section rewritten (crew-sized field, demand-scaled need, clearing build, batch harvest, outside-ring waste)
+changed: `findings-pitfalls-skills.md` — labour in input units
+validation: node --check; mape_forestry pass (120 s: 80 logs at dt 0.2 and 0.05, was 160 whole-cell; half staff 40; ledger <2e-12); mape_factory, dom_smoke pass
+decision: work in forest units keeps forest draw per mill unchanged and halves wood (≈0.55 logs/s per mill); yield is now a single knob
+decision: farm output follows crew (worked cells), not season length; need = 1…10 workers by food pull, so farms always produce and glut shrinks them
+decision: from 2fd5ecc took for the farm only: one pass over the whole field on a sim-time clock, budget split evenly over eligible cells; sim-time clock fits because output scales with crew
+decision: farm build follows the earlier draft — clears forest to zero by sawmill visits, felled logs pay the build (forest OR wood); the prior "farms never clear forest" rule dropped
+decision: 2fd5ecc rejected again for sawmill patch cut, logs as market item at 4× need, and Sites log-order removal; its speed multipliers wait for the settings panel
+next: implement farm first cut — FOOD across four engines (gate: households pull food with no farm), then map-farm.js + scene Farm tool
