@@ -239,3 +239,15 @@ the `mape.goodsView[res][cell]` view. A test seeding a seller with
 `mape.goods[cell] = 300` lands in the r=0 (coal) slice, the follow-up coal line
 overwrites it, and a growth gate fails on a map whose "goods" seller holds no
 goods — with a perfectly conserved ledger, because both writes were valid coal.
+
+## a chain whose first link is gated by the second never starts
+
+The placement scan sited sawmills while regional logs sat below the build
+reserve and log-fed works only above it — but the sawmill cuts only where log
+demand reaches it, and that demand comes only from charcoal and wood works.
+Default survey: three fully staffed mills planned in the first 15 s, then zero
+logs, zero coal satisfaction, no consumer, forever. When a producer's output is
+gated on a consumer's signal, the rule must allow one consumer as soon as the
+producer stands (its own demand pulls the first cut); keep the scarcity reserve
+for every later build. Diagnose by printing the gate variable the producer
+waits on, not just what was placed.
