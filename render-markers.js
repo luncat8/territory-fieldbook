@@ -1,7 +1,9 @@
 // owns: settlement/industry markers and cached actor labels
 // edit for: marker shapes, visibility and field label placement
 
-const FACTORY_KIND_CSS = ['#e0a458', '#60c89a', '#777f91', '#b58bd4'];
+const FACTORY_KIND_CSS = ['#e0a458', '#60c89a', '#777f91', '#b58bd4', '#d8b13f'];
+const FARM_FIELD_CSS = '#8a6b2f';
+const FARM_FIELD_EDGE = '#d8b13f';
 const renderMarkers = { towns: [], mines: [], workshops: [], factories: [] };
 
 function renderMarkersInit() {
@@ -88,7 +90,37 @@ function renderIndustry(ctx, field, view) {
 			ctx.fillStyle = FACTORY_KIND_CSS[mape.factoryKind[f]];
 			ctx.fillRect(cx, cy, fsize, fsize);
 		}
+		if (mape.factoryKind[f] === MAPE_FACTORY_KIND.FARM) renderFarmField(ctx, f);
 	}
+}
+
+// The farm outlines its 5×5 field and fills owned farmland by season progress, so field growth
+// and the batch harvest read at a glance.
+function renderFarmField(ctx, f) {
+	const cell = CELL_PX;
+	const reach = MAPE_FARM_RADIUS;
+	const size = reach * 2 + 1;
+	const owner = f + 1;
+	const left = (mape.factoryX[f] - reach) * cell;
+	const top = (mape.factoryY[f] - reach) * cell;
+	ctx.globalAlpha = 0.3 + 0.4 * Math.min(1, mape.factoryClock[f] / MAPE_FARM_SEASON_SEC);
+	ctx.fillStyle = FARM_FIELD_CSS;
+	ctx.beginPath();
+	for (let dy = -reach; dy <= reach; dy++) {
+		const y = mape.factoryY[f] + dy;
+		if (y < 0 || y >= world.size) continue;
+		for (let dx = -reach; dx <= reach; dx++) {
+			const x = mape.factoryX[f] + dx;
+			if (x < 0 || x >= world.size) continue;
+			if (mape.farmOwner[y * world.size + x] !== owner) continue;
+			ctx.rect(x * cell, y * cell, cell, cell);
+		}
+	}
+	ctx.fill();
+	ctx.globalAlpha = 1;
+	ctx.strokeStyle = FARM_FIELD_EDGE;
+	ctx.lineWidth = 1.2;
+	ctx.strokeRect(left, top, size * cell, size * cell);
 }
 
 function renderMineMarker(ctx, mine, field) {

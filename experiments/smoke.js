@@ -295,8 +295,9 @@ console.log('party_alive=' + (result.partyAlive ? 1 : 0) + ' condition=' + resul
 check('terrain_all_present', result.terrain.every((value, id) => id === 1 ? value === 0 : value > 0));
 check('settlements_seeded', result.settlePct >= 1.8 && result.settlePct <= 2.2 && result.settleWater === 0 && result.settlePopOut === 0);
 check('mape_fields_seeded',
-	[0, 2, 4].every(r => result.itemSpreads[r].stock > 0 && (result.itemSpreads[r].pos > 0 || result.itemSpreads[r].neg > 0)) &&
-	result.itemSpreads[1].stock === 0 && result.itemSpreads[1].pos === 0 && result.itemSpreads[1].neg === 0);
+	[0, 2, 5].every(r => result.itemSpreads[r].stock > 0 && (result.itemSpreads[r].pos > 0 || result.itemSpreads[r].neg > 0)) &&
+	result.itemSpreads[1].stock === 0 && result.itemSpreads[1].pos === 0 && result.itemSpreads[1].neg === 0 &&
+	result.itemSpreads[4].stock === 0 && result.itemSpreads[4].pos > 0);
 check('deposit_unlocks',
 	result.mineCount >= 4 && result.unlockedStart === 0 && result.mineUnlockedAfter &&
 	result.mineWorkersAfter >= 2 && result.minedAfter > 5 &&

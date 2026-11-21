@@ -151,7 +151,7 @@ function hudPaintLegendKey(refs, item, demand, style) {
 	let key = towns ? '○ Settlement' : '';
 	const showSource = render.showSources && resource && (item === MAPE_RES.GOODS || !demand || style !== RENDER_STYLE.A);
 	if (showSource && item !== MAPE_RES.CO2) {
-		const source = item === MAPE_RES.GOODS ? '◇ Workshop' : item === MAPE_RES.LOGS ? '▣ Sawmill' : style === RENDER_STYLE.A ? '■ Mine' : style === RENDER_STYLE.B ? '◆ Mine' : '▲ Mine';
+		const source = item === MAPE_RES.GOODS ? '◇ Workshop' : item === MAPE_RES.LOGS ? '▣ Sawmill' : item === MAPE_RES.FOOD ? '▤ Farm' : style === RENDER_STYLE.A ? '■ Mine' : style === RENDER_STYLE.B ? '◆ Mine' : '▲ Mine';
 		key += (key ? ' · ' : '') + source;
 	}
 	refs.key.textContent = key;
@@ -202,7 +202,7 @@ function hudUpdateInspect() {
 
 function hudFactorySiteText(f, idx) {
 	const st = mape.factoryState[f];
-	const need = mapeFactoryWorkers(st);
+	const need = mapeFactoryWorkers(f);
 	const present = mapeWorkPresent(idx);
 	const staff = need > 0 ? Math.min(1, present / need) : 0;
 	let text = MAPE_FACTORY_KIND_NAME[mape.factoryKind[f]] + ' F' + (f + 1) + ' · ' + MAPE_FACTORY_STATE_NAME[st];
@@ -216,10 +216,18 @@ function hudFactorySiteText(f, idx) {
 		text += '\n' + mat + ' stock ' + (kind === MAPE_FACTORY_KIND.SAWMILL
 			? economy.biomass[idx]
 			: mape.goods[MAPE_RES.LOGS * world.n + idx]).toFixed(2);
+		text += '\nfield ' + mapeFarmCells(f) + '/' + (MAPE_FARM_RADIUS * 2 + 1) * (MAPE_FARM_RADIUS * 2 + 1) + ' · clearing debt ' + mape.factoryHarvestWork[f].toFixed(1) + 's';
 		return text;
 	}
 	if (kind === MAPE_FACTORY_KIND.SAWMILL) {
 		text += '\nLogs +' + mape.factoryGoods[f].toFixed(2) + '/s · cuts only along log demand';
+		return text;
+	}
+	if (kind === MAPE_FACTORY_KIND.FARM) {
+		const field = (MAPE_FARM_RADIUS * 2 + 1) * (MAPE_FARM_RADIUS * 2 + 1);
+		text += '\nfield ' + mapeFarmCells(f) + '/' + field + ' · worked ' + Math.min(present, mapeFarmCells(f)).toFixed(1) +
+			' · season ' + Math.round(100 * mape.factoryClock[f] / MAPE_FARM_SEASON_SEC) + '%';
+		text += '\nFood +' + mape.factoryGoods[f].toFixed(2) + '/s at last harvest';
 		return text;
 	}
 	if (kind === MAPE_FACTORY_KIND.CHARCOAL || kind === MAPE_FACTORY_KIND.WOOD) {

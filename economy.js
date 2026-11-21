@@ -34,6 +34,7 @@ const RECIPES = [
 const economy = {
 	inventory: new Float32Array(RES_COUNT),
 	biomass: null,
+	tilled: null,
 	oxygen: 100,
 	carbon: 20,
 	oxygenProduced: 0,
@@ -49,11 +50,13 @@ const economy = {
 
 function economyInit() {
 	economy.biomass = new Float32Array(world.n);
+	economy.tilled = new Uint8Array(world.n);
 	economyReset();
 }
 
 function economyReset() {
 	economy.inventory.fill(0);
+	economy.tilled.fill(0);
 	economy.oxygen = 100;
 	economy.carbon = 20;
 	economy.oxygenProduced = 0;
@@ -125,7 +128,14 @@ function economyBurnFuel(amount) {
 	economy.energyFuel += amount * 4;
 }
 
+function economyTill(i, on) {
+	economy.tilled[i] = on ? 1 : 0;
+}
+
+// Farmland grows no forest: a tilled cell's target cover is zero, and releasing it
+// hands regrowth back to the ordinary humidity/CO2 model without a special mechanic.
 function economyForestTarget(i, co2) {
+	if (economy.tilled[i]) return 0;
 	const width = 0.055 + 0.38 * co2 / (co2 + 0.25);
 	const suitability = Math.max(0, 1 - Math.abs(hydrology.soil[i] - BIO_SOIL_OPTIMUM) / width);
 	return suitability * co2 / (co2 + 0.025) * (1 - land.disturbed[i]);

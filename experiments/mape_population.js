@@ -29,10 +29,12 @@ function setup(mode) {
 	const dense = 48 * world.size + 48;
 	mapePlaceSettlement(supplied, 20, false);
 	mapePlaceSettlement(hungry, 20, false);
-	mapePlaceSettlement(dense, 100, false);
+	mapePlaceSettlement(dense, 500, false);
 	for (const i of [supplied, dense]) {
-		mape.goodsView[MAPE_RES.GOODS][i] = 1000;
-		mape.goodsView[MAPE_RES.COAL][i] = 1000;
+		const stock = i === dense ? 4000 : 1000;
+		mape.goodsView[MAPE_RES.GOODS][i] = stock;
+		mape.goodsView[MAPE_RES.COAL][i] = stock;
+		mape.goodsView[MAPE_RES.FOOD][i] = stock;
 	}
 	mapeMarketFlowPrepare();
 	mapeFinishSetup(1, true);
@@ -49,7 +51,7 @@ function validate(mode) {
 	const startHungry = mape.pop[hungry];
 	advance(120);
 	if (mode === MAPE_ENGINE.DIFFUSION) {
-		assert.ok(mape.pop[supplied] > startSupplied, 'supplied settlement grows');
+		assert.ok(mape.pop[supplied] > startSupplied, 'supplied settlement grows on food, goods and coal');
 		assert.ok(mape.pop[hungry] < startHungry, 'unsupplied settlement declines');
 		assert.ok(land.disturbed[supplied] < 0.25 && land.disturbed[dense] > 0.25, 'waste scales from a small village to a dense city');
 		assert.ok(land.disturbed[dense + 1] > 0.01, 'household waste settles on neighbouring land');

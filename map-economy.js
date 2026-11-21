@@ -1,14 +1,14 @@
 // owns: settlements, settlement markets, map-economy fields, mine/factory/storage pools and ledger
 // edit for: map-economy data tables, seeding, deposit unlock rules, settlement market actions
 
-const MAPE_R = 5;
-const MAPE_RES = { COAL: 0, IRON: 1, GOODS: 2, LOGS: 3, CO2: 4 };
-const MAPE_RES_NAME = ['coal', 'iron', 'goods', 'logs', 'co2'];
-const MAPE_VIEW_ITEM = { POPULATION: 5, FRESH: 6, JOBS: 7, DEPLETED: 8, WASTE: 9, FOREST: 10, SOIL: 11, HUMIDITY: 12, WATER: 13 };
-const MAPE_VIEW_ITEM_NAME = ['coal', 'iron', 'goods', 'logs', 'co2', 'population', 'fresh', 'jobs', 'depleted', 'waste', 'forest', 'soil moisture', 'air humidity', 'surface water'];
-const MAPE_VIEW_ITEM_LABEL = ['coal', 'iron', 'goods', 'logs', 'co2', 'population', 'workforce · fresh', 'jobs', 'workforce · depleted', 'waste', 'forest cover', 'soil moisture', 'air humidity', 'surface water'];
-const MAPE_VIEW_AMOUNT_IDS = [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13];
-const MAPE_VIEW_DEMAND_IDS = [0, 1, 2, 3, 4, 7, 6, 8];
+const MAPE_R = 6;
+const MAPE_RES = { COAL: 0, IRON: 1, GOODS: 2, LOGS: 3, FOOD: 4, CO2: 5 };
+const MAPE_RES_NAME = ['coal', 'iron', 'goods', 'logs', 'food', 'co2'];
+const MAPE_VIEW_ITEM = { POPULATION: 6, FRESH: 7, JOBS: 8, DEPLETED: 9, WASTE: 10, FOREST: 11, SOIL: 12, HUMIDITY: 13, WATER: 14 };
+const MAPE_VIEW_ITEM_NAME = ['coal', 'iron', 'goods', 'logs', 'food', 'co2', 'population', 'fresh', 'jobs', 'depleted', 'waste', 'forest', 'soil moisture', 'air humidity', 'surface water'];
+const MAPE_VIEW_ITEM_LABEL = ['coal', 'iron', 'goods', 'logs', 'food', 'co2', 'population', 'workforce · fresh', 'jobs', 'workforce · depleted', 'waste', 'forest cover', 'soil moisture', 'air humidity', 'surface water'];
+const MAPE_VIEW_AMOUNT_IDS = [0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14];
+const MAPE_VIEW_DEMAND_IDS = [0, 1, 2, 3, 4, 5, 8, 7, 9];
 const MAPE_VIEW_AMOUNT_NAMES = MAPE_VIEW_AMOUNT_IDS.map(id => MAPE_VIEW_ITEM_NAME[id]);
 const MAPE_VIEW_DEMAND_NAMES = MAPE_VIEW_DEMAND_IDS.map(id => MAPE_VIEW_ITEM_NAME[id]);
 const MAPE_ENGINE = { DIFFUSION: 0, CATCHMENT: 1, QUEUE: 2, SITES: 3 };
@@ -18,15 +18,15 @@ const MAPE_WORKFORCE_MODE_NAME = ['Residents', 'Fluid field'];
 const MAPE_FIELD = { DEMAND: 0, GOODS: 1, POP: 2, WORKFORCE: 3 };
 const MAPE_FACTORY_STATE = { GONE: 0, BUILDING: 1, ACTIVE: 2, IDLE: 3 };
 const MAPE_FACTORY_STATE_NAME = ['gone', 'building', 'active', 'idle'];
-const MAPE_FACTORY_KIND = { GENERAL: 0, SAWMILL: 1, CHARCOAL: 2, WOOD: 3 };
-const MAPE_FACTORY_KIND_NAME = ['Factory', 'Sawmill', 'Charcoal works', 'Wood works'];
+const MAPE_FACTORY_KIND = { GENERAL: 0, SAWMILL: 1, CHARCOAL: 2, WOOD: 3, FARM: 4 };
+const MAPE_FACTORY_KIND_NAME = ['Factory', 'Sawmill', 'Charcoal works', 'Wood works', 'Farm'];
 const MAPE_CELL_INDUSTRY = 128;
 
 // All rates are per sim-second; on 1x speed, 1 s = 1 real second = 1 storyline day.
 const MAPE_SETTLE_TARGET = 0.02;
 const MAPE_SETTLE_MIN = 3;
 const MAPE_HIRE_MIN_POP = 4;
-const MAPE_POP_CAP = 120;
+const MAPE_POP_CAP = 600;
 const MAPE_POP_SEED_MIN = 8;
 const MAPE_POP_SEED_MAX = 20;
 const MAPE_FACTORY_CAP = 32;
@@ -36,6 +36,7 @@ const MAPE_WORKSHOP_CAP = 4;
 const MAPE_NEED_GOODS = 0.03;
 const MAPE_NEED_COAL = 0.02;
 const MAPE_NEED_LOGS = 0.005;
+const MAPE_NEED_FOOD = 0.03;
 // Subsistence is what the land gives without trade. MAX is the ceiling at perfect ground;
 // NEUTRAL is the intake a town needs before it grows, so own ground never reaches it: the seeded
 // map holds its people on a deficit and imports are the only path to growth. Measured on the
@@ -44,21 +45,22 @@ const MAPE_SUBSIST_MAX = 0.62;
 const MAPE_SUBSIST_NEUTRAL = 0.82;
 const MAPE_SUBSIST_FAMINE = 0.15;
 const MAPE_SETTLE_VALUE_MIN = 0.3;
-const MAPE_SETTLE_DISTURB = 0.0024;
+// Waste per consumed goods; scaled with the 5x pop cap so the disturbance curve of a dense town is unchanged.
+const MAPE_SETTLE_DISTURB = 0.00048;
 const MAPE_GROWTH = 0.008;
 const MAPE_DEATH = 0.015;
 const MAPE_MIGRATE = 0.01;
 const MAPE_MIGRATE_BIAS = 0.04;
 const MAPE_SAT_SCALE = 4;
-const MAPE_MINE_WORKERS = 6;
+const MAPE_MINE_WORKERS = 12;
 const MAPE_BUILD_WOOD_RATE = 0.10;     // logs/s consumed per builder
 const MAPE_BUILD_SAWMILL_RATE = 0.02;  // biomass/s felled per builder on its own footprint
 const MAPE_BUILD_LOG_RESERVE = 8;      // logs a region keeps back for its next build
-const MAPE_FACTORY_BUILD_WORKERS = 4;
+const MAPE_FACTORY_BUILD_WORKERS = 8;
 const MAPE_FACTORY_COAL = 0.5;
 const MAPE_FACTORY_IRON = 0.5;
 const MAPE_FACTORY_CO2 = 0.5;
-const MAPE_FACTORY_WORKERS = 8;
+const MAPE_FACTORY_WORKERS = 16;
 const MAPE_FACTORY_BUILD_SEC = 20;
 const MAPE_FACTORY_YIELD = 1.0;
 const MAPE_FACTORY_DISTURB = 0.004;
@@ -68,10 +70,10 @@ const MAPE_CO2_INIT = 0.4;
 const MAPE_MONEY_PER_POP = 25;
 const MAPE_MONEY_REGEN = 0.04;
 const MAPE_SUPPLY_GOODS = 0.2;
-const MAPE_VIEW_POP_MAX = 40;
-const MAPE_VIEW_JOB_MAX = 8;
+const MAPE_VIEW_POP_MAX = 200;
+const MAPE_VIEW_JOB_MAX = 16;
 const MAPE_VIEW_PULL_REF = 0.25;
-const MAPE_VIEW_POOL_MAX = 20;
+const MAPE_VIEW_POOL_MAX = 40;
 
 const mape = {
 	engine: MAPE_ENGINE.CATCHMENT,
@@ -116,8 +118,10 @@ const mape = {
 	fluidGenerated: 0,
 	usedGoods: null,
 	usedCoal: null,
+	usedFood: null,
 	satGoods: null,
 	satCoal: null,
+	satFood: null,
 	jobNeed: null,
 	jobSlots: 0,
 	cellExport: null,
@@ -138,6 +142,9 @@ const mape = {
 	factoryIron: new Float32Array(MAPE_FACTORY_CAP),
 	factoryGoods: new Float32Array(MAPE_FACTORY_CAP),
 	factoryCo2: new Float32Array(MAPE_FACTORY_CAP),
+	factoryCrop: new Float32Array(MAPE_FACTORY_CAP),
+	factoryClock: new Float32Array(MAPE_FACTORY_CAP),
+	farmOwner: null,
 	factoryCount: 0,
 	mineX: new Uint8Array(MAPE_MINE_CAP),
 	mineY: new Uint8Array(MAPE_MINE_CAP),
@@ -191,8 +198,11 @@ function mapeInit(mode, fixedResidents = false) {
 		mape.wfTaker = new Float32Array(n);
 		mape.usedGoods = new Float64Array(n);
 		mape.usedCoal = new Float64Array(n);
+		mape.usedFood = new Float64Array(n);
 		mape.satGoods = new Float32Array(n);
 		mape.satCoal = new Float32Array(n);
+		mape.satFood = new Float32Array(n);
+		mape.farmOwner = new Uint8Array(n);
 		mape.jobNeed = new Float32Array(n);
 		mape.cellExport = new Uint8Array(n);
 		mape.money = new Float32Array(n);
@@ -227,8 +237,8 @@ function mapeReset() {
 	mape.workforceNext.fill(0);
 	for (const field of ['wfFresh', 'wfFreshNext', 'wfDepleted', 'wfDepletedNext', 'wfRestPull', 'wfRestPullNext', 'wfMigration', 'wfBalance', 'wfWanted', 'jobFilled', 'jobVacant', 'wfDonor', 'wfTaker']) mape[field].fill(0);
 	for (const field of ['fluidRested', 'fluidTired', 'fluidSpent', 'fluidSpawned', 'fluidGenerated']) mape[field] = 0;
-	for (const field of ['usedGoods', 'usedCoal', 'satGoods', 'satCoal', 'jobNeed', 'cellExport', 'money',
-		'factoryState', 'factoryKind', 'factoryProgress', 'factoryHarvestWork', 'factoryStarved', 'factoryCoal', 'factoryIron', 'factoryGoods', 'factoryCo2', 'mineUnlocked']) mape[field].fill(0);
+	for (const field of ['usedGoods', 'usedCoal', 'usedFood', 'satGoods', 'satCoal', 'satFood', 'farmOwner', 'jobNeed', 'cellExport', 'money',
+		'factoryState', 'factoryKind', 'factoryProgress', 'factoryHarvestWork', 'factoryStarved', 'factoryCoal', 'factoryIron', 'factoryGoods', 'factoryCo2', 'factoryCrop', 'factoryClock', 'mineUnlocked']) mape[field].fill(0);
 	mape.factoryCount = 0;
 	mape.mineCount = 0;
 	mape.storageCount = 0;
@@ -306,9 +316,13 @@ function mapeWorkPresent(idx) {
 	return mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID ? mape.wfFresh[idx] : mape.pop[idx];
 }
 
-function mapeFactoryWorkers(state) {
+// Farm crews follow the field (one worker per farmland cell); every other site keeps a fixed crew.
+function mapeFactoryWorkers(f) {
+	const state = mape.factoryState[f];
 	if (state === MAPE_FACTORY_STATE.BUILDING) return MAPE_FACTORY_BUILD_WORKERS;
-	if (state === MAPE_FACTORY_STATE.ACTIVE) return MAPE_FACTORY_WORKERS;
+	if (state === MAPE_FACTORY_STATE.ACTIVE) {
+		return mape.factoryKind[f] === MAPE_FACTORY_KIND.FARM ? mapeFarmNeed(f) : MAPE_FACTORY_WORKERS;
+	}
 	// An idled plant is no longer a job site, so the workforce pull leaves it for live work.
 	return 0;
 }
@@ -324,6 +338,7 @@ function mapeResOf(res) {
 	if (res === RES.FUEL) return MAPE_RES.COAL;
 	if (res === RES.ORE) return MAPE_RES.IRON;
 	if (res === RES.GOODS) return MAPE_RES.GOODS;
+	if (res === RES.FOOD) return MAPE_RES.FOOD;
 	return -1;
 }
 

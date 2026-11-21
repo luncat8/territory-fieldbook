@@ -168,16 +168,17 @@ Fluid field workforce model (the default). `world.js` owns terrain and the
 settlement location value map. All buffers are reused per tick.
 
 ```
-MAPE_R = 5                       // coal, iron, goods, logs, co2
+MAPE_R = 6                       // coal, iron, goods, logs, food, co2
 MAPE_SETTLE_TARGET = 0.02        // seeded fraction of cells with pop > 0 (~82)
 MAPE_SETTLE_MIN = 3              // min pop for active settlement market
 MAPE_HIRE_MIN_POP = 4            // min settlement pop to recruit a party member
-MAPE_POP_CAP = 120               // per-cell carrying cap at d = 0 (d = 1 holds nobody)
+MAPE_POP_CAP = 600               // per-cell carrying cap at d = 0 (d = 1 holds nobody)
 MAPE_POP_SEED_MIN = 8            // seeded settlement persons, low
 MAPE_POP_SEED_MAX = 20           // seeded settlement persons, high
 MAPE_NEED_GOODS = 0.03           // signed reference goods need/person/s
 MAPE_NEED_COAL = 0.02            // signed reference coal need/person/s
 MAPE_NEED_LOGS = 0.005           // household timber upkeep/person/s, every engine
+MAPE_NEED_FOOD = 0.03            // household food need/person/s, every engine
 MAPE_MARKET_GOODS_USE = 0.036    // A/B household goods use/person/s
 MAPE_MARKET_COAL_USE = 0.045    // A/B household coal use/person/s
 MAPE_HUNGRY_POP = 8              // population half-saturation of the import target: pop/(pop+8)

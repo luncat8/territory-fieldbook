@@ -59,6 +59,7 @@ function mapeSiteRes(r) {
 	if (r === MAPE_RES.COAL) return RES.FUEL;
 	if (r === MAPE_RES.IRON) return RES.ORE;
 	if (r === MAPE_RES.GOODS) return RES.GOODS;
+	if (r === MAPE_RES.FOOD) return RES.FOOD;
 	return RES.TIMBER;
 }
 
@@ -72,6 +73,7 @@ function mapeSitesHouseholdHold(r, i) {
 	if (p <= 0 || mapeIsIndustry(i)) return 0;
 	if (r === MAPE_RES.GOODS) return p * MAPE_MARKET_GOODS_USE * MAPE_SITE_HOLD_SEC + MAPE_MARKET_RESERVE;
 	if (r === MAPE_RES.COAL) return p * MAPE_MARKET_COAL_USE * MAPE_SITE_HOLD_SEC;
+	if (r === MAPE_RES.FOOD) return p * MAPE_MARKET_FOOD_USE * MAPE_SITE_HOLD_SEC;
 	if (r === MAPE_RES.LOGS) return p * MAPE_NEED_LOGS * MAPE_SITE_HOLD_SEC;
 	return 0;
 }
@@ -201,6 +203,7 @@ function mapeSitesOrders() {
 		const i = mape.settleCells[k];
 		mapeSitesOrderItem(MAPE_RES.GOODS, i, mapeSitesHouseholdHold(MAPE_RES.GOODS, i));
 		mapeSitesOrderItem(MAPE_RES.COAL, i, mapeSitesHouseholdHold(MAPE_RES.COAL, i));
+		mapeSitesOrderItem(MAPE_RES.FOOD, i, mapeSitesHouseholdHold(MAPE_RES.FOOD, i));
 		mapeSitesOrderItem(MAPE_RES.LOGS, i, mapeSitesHouseholdHold(MAPE_RES.LOGS, i));
 	}
 	for (let f = 0; f < mape.factoryCount; f++) {
@@ -251,11 +254,13 @@ function mapeSitesMetabolism(dt) {
 	const pop = mape.pop;
 	const goodsRate = mapePopulationRate(MAPE_RES.GOODS);
 	const coalRate = mapePopulationRate(MAPE_RES.COAL);
+	const foodRate = mapePopulationRate(MAPE_RES.FOOD);
 	for (let i = 0; i < world.n; i++) {
 		const p = pop[i];
 		if (p <= 0 || mapeIsIndustry(i)) continue;
 		mapeUseLocalStock(MAPE_RES.GOODS, i, p * goodsRate * dt);
 		mapeUseLocalStock(MAPE_RES.COAL, i, p * coalRate * dt);
+		mapeUseLocalStock(MAPE_RES.FOOD, i, p * foodRate * dt);
 		mapeUseLocalStock(MAPE_RES.LOGS, i, p * MAPE_NEED_LOGS * dt);
 	}
 }
@@ -311,12 +316,13 @@ function mapeStepSites(seconds) {
 function mapeSitesProduct(kind) {
 	if (kind === MAPE_FACTORY_KIND.SAWMILL) return MAPE_RES.LOGS;
 	if (kind === MAPE_FACTORY_KIND.CHARCOAL) return MAPE_RES.COAL;
+	if (kind === MAPE_FACTORY_KIND.FARM) return MAPE_RES.FOOD;
 	return MAPE_RES.GOODS;
 }
 
 function mapeSitesInputCount(kind) {
 	if (kind === MAPE_FACTORY_KIND.GENERAL) return 2;
-	return kind === MAPE_FACTORY_KIND.SAWMILL ? 0 : 1;
+	return kind === MAPE_FACTORY_KIND.SAWMILL || kind === MAPE_FACTORY_KIND.FARM ? 0 : 1;
 }
 
 function mapeSitesInput(kind, k) {
@@ -334,7 +340,7 @@ function mapeSitesMargin(x, y, kind) {
 	const product = mapeSitesProduct(kind);
 	const poff = product * n;
 	let revenue = -Infinity;
-	if (product === MAPE_RES.GOODS || product === MAPE_RES.COAL) {
+	if (product !== MAPE_RES.LOGS) {
 		for (let k = 0; k < mape.settleCount; k++) {
 			const b = mape.settleCells[k];
 			const dx = (b % size) - x;

@@ -47,7 +47,7 @@ function mapeSyncCells() {
 		if (st === MAPE_FACTORY_STATE.GONE) continue;
 		const idx = mape.factoryY[f] * size + mape.factoryX[f];
 		exp[idx] |= MAPE_CELL_INDUSTRY;
-		const need = mapeFactoryWorkers(st);
+		const need = mapeFactoryWorkers(f);
 		if (need > 0) {
 			job[idx] += need;
 			mape.jobSlots += need;
@@ -76,7 +76,7 @@ function mapeTabulateJobs() {
 		credit(town, mape.mineY[m] * size + mape.mineX[m], MAPE_MINE_WORKERS, 0);
 	}
 	for (let f = 0; f < mape.factoryCount; f++) {
-		const need = mapeFactoryWorkers(mape.factoryState[f]);
+		const need = mapeFactoryWorkers(f);
 		if (need <= 0) continue;
 		const town = mapeNearestSettlement(mape.factoryX[f], mape.factoryY[f]);
 		if (town < 0) continue;
@@ -98,6 +98,7 @@ function mapeInjectDemand(dt, marketsOnly) {
 	const coalOff = MAPE_RES.COAL * n;
 	const ironOff = MAPE_RES.IRON * n;
 	const goodsOff = MAPE_RES.GOODS * n;
+	const foodOff = MAPE_RES.FOOD * n;
 	const co2Off = MAPE_RES.CO2 * n;
 	for (let i = 0; i < n; i++) {
 		const t = terrain[i];
@@ -106,6 +107,7 @@ function mapeInjectDemand(dt, marketsOnly) {
 		if (p > 0 && local) {
 			demand[goodsOff + i] += p * MAPE_NEED_GOODS * gain;
 			demand[coalOff + i] += p * MAPE_NEED_COAL * gain;
+			demand[foodOff + i] += p * MAPE_NEED_FOOD * gain;
 		}
 		if (marketsOnly) continue;
 		if (p > 0 && !mapeIsIndustry(i)) demand[MAPE_RES.LOGS * n + i] += p * MAPE_NEED_LOGS * gain;

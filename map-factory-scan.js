@@ -27,6 +27,10 @@ function mapeScanUnmetGoods(idx) {
 	return mape.pop[idx] * (1 - mape.satGoods[idx]);
 }
 
+function mapeScanUnmetFood(idx) {
+	return mape.pop[idx] * (1 - mape.satFood[idx]);
+}
+
 function mapeScanUnmetCoal(idx) {
 	return mape.pop[idx] * (1 - mape.satCoal[idx]);
 }
@@ -87,14 +91,15 @@ function mapeScanLegal(x, y, kind) {
 		const dy = mape.factoryY[f] - y;
 		if (dx * dx + dy * dy < spacing2) return false;
 	}
-	// A sawmill's site must be wooded: forest is both its material and its working area.
+	// A farm's site must carry a field: mean potential quality of its 5×5 clears the floor.
 	if (kind === MAPE_FACTORY_KIND.SAWMILL && mapeForestCover(x, y) < MAPE_SAWMILL_MIN_COVER) return false;
+	if (kind === MAPE_FACTORY_KIND.FARM && mapeFarmFieldQuality(x, y) < MAPE_FARM_MIN_FIELD) return false;
 	return true;
 }
 
 // Site score: closer to deposits is better, closer to the workforce is better,
 // disturbed land costs. A log-fed plant has no deposit term — the town centre alone.
-function mapeScanSiteScore(x, y, towns, deposits) {
+function mapeScanSiteScore(x, y, towns, deposits, kind) {
 	const size = world.size;
 	const idx = y * size + x;
 	let score = -MAPE_DISTURB_PENALTY * land.disturbed[idx];
@@ -105,6 +110,7 @@ function mapeScanSiteScore(x, y, towns, deposits) {
 			score += deposits[d].stock / (1 + dist);
 		}
 	}
+	if (kind === MAPE_FACTORY_KIND.FARM) score += mapeFarmFieldQuality(x, y);
 	for (let t = 0; t < towns.length; t++) {
 		const town = towns[t];
 		const dx = (town % size) - x;
@@ -121,11 +127,12 @@ function mapeScanRun() {
 	const cells = mape.settleCells;
 	const count = mape.settleCount;
 	if (count <= 0) return;
-	// 1. What gets built: the region whose unmet goods need, weighted 1/d² from
-	// each settlement anchor, clears the threshold. The nearest town dominates.
+	// 1. What gets built: the region whose unmet need — goods or food, whichever dominates —
+	// weighted 1/d² from each settlement anchor, clears the threshold. The nearest town dominates.
 	let anchor = -1;
 	let score = 0;
 	let unmet = 0;
+	let foodUnmet = 0;
 	let coal = 0;
 	let cx = 0;
 	let cy = 0;
@@ -135,10 +142,14 @@ function mapeScanRun() {
 		const fx = from % size;
 		const fy = (from / size) | 0;
 		let s = 0;
+		let fs = 0;
 		let sum = 0;
+		let foodSum = 0;
 		let coalSum = 0;
 		let wx = 0;
 		let wy = 0;
+		let fwx = 0;
+		let fwy = 0;
 		let found = null;
 		for (let t = 0; t < count; t++) {
 			const idx = cells[t];
@@ -147,22 +158,31 @@ function mapeScanRun() {
 			const d2 = dx * dx + dy * dy;
 			if (d2 > MAPE_REGION_REACH * MAPE_REGION_REACH) continue;
 			const need = mapeScanUnmetGoods(idx);
+			const food = mapeScanUnmetFood(idx);
 			const w = 1 / Math.max(1, d2);
+			const px = idx % size;
+			const py = (idx / size) | 0;
 			s += need * w;
+			fs += food * w;
 			sum += need;
+			foodSum += food;
 			coalSum += mapeScanUnmetCoal(idx);
-			wx += need * (idx % size);
-			wy += need * ((idx / size) | 0);
+			wx += need * px;
+			wy += need * py;
+			fwx += food * px;
+			fwy += food * py;
 			if (!found) found = [];
 			found.push(idx);
 		}
-		if (s <= score || sum <= 0) continue;
+		const best = fs > s ? fs : s;
+		if (best <= score || (fs > s ? foodSum : sum) <= 0) continue;
 		anchor = from;
-		score = s;
+		score = best;
 		unmet = sum;
+		foodUnmet = foodSum;
 		coal = coalSum;
-		cx = wx / sum;
-		cy = wy / sum;
+		cx = (fs > s ? fwx / foodSum : wx / sum);
+		cy = (fs > s ? fwy / foodSum : wy / sum);
 		towns = found;
 	}
 	if (anchor < 0 || score < MAPE_FACTORY_THRESHOLD || !towns) return;
@@ -203,23 +223,35 @@ function mapeScanRun() {
 	}
 	let mills = 0;
 	let works = 0;
+	let farmsBuilding = 0;
 	for (let f = 0; f < mape.factoryCount; f++) {
 		if (mape.factoryState[f] === MAPE_FACTORY_STATE.GONE) continue;
 		const dx = mape.factoryX[f] - ax;
 		const dy = mape.factoryY[f] - ay;
 		if (dx * dx + dy * dy > reach2) continue;
 		if (mape.factoryKind[f] === MAPE_FACTORY_KIND.SAWMILL) mills++;
-		else if (mape.factoryKind[f] !== MAPE_FACTORY_KIND.GENERAL) works++;
+		else if (mape.factoryKind[f] === MAPE_FACTORY_KIND.FARM) {
+			if (mape.factoryState[f] === MAPE_FACTORY_STATE.BUILDING) farmsBuilding++;
+		} else if (mape.factoryKind[f] !== MAPE_FACTORY_KIND.GENERAL) works++;
 	}
 	const general = deposits && hasIron && hasCoal;
 	const firstWorks = mills > 0 && works === 0;
-	const kind = general ? MAPE_FACTORY_KIND.GENERAL
+	const woodKind = general ? MAPE_FACTORY_KIND.GENERAL
 		: logs < MAPE_BUILD_LOG_RESERVE && !firstWorks ? MAPE_FACTORY_KIND.SAWMILL
 			: coal >= unmet ? MAPE_FACTORY_KIND.CHARCOAL : MAPE_FACTORY_KIND.WOOD;
+	// Food dominates the wood chain once goods satisfaction moves; one farm builds per region
+	// at a time, so the crew is not split across a field of unfinished sites.
+	const kind = foodUnmet > unmet && farmsBuilding === 0 ? MAPE_FACTORY_KIND.FARM : woodKind;
 	// 4. Where it sits. Sites scores the region disc by margin instead of the centroid.
 	if (mape.engine === MAPE_ENGINE.SITES) {
-		const site = mapeSitesScanSite(anchor, kind);
-		if (site >= 0) mapeScanPlace(site, kind);
+		let site = mapeSitesScanSite(anchor, kind);
+		let placed = kind;
+		// A farm with no legal field falls back to the wood chain instead of stalling the scan.
+		if (site < 0 && kind === MAPE_FACTORY_KIND.FARM) {
+			site = mapeSitesScanSite(anchor, woodKind);
+			placed = woodKind;
+		}
+		if (site >= 0) mapeScanPlace(site, placed);
 		return;
 	}
 	// A deposit-fed plant anchors on the haul-weighted deposits of
@@ -249,8 +281,19 @@ function mapeScanRun() {
 		px = wx / wsum;
 		py = wy / wsum;
 	}
-	const sx = Math.round(px);
-	const sy = Math.round(py);
+	const site = mapeScanSnapSite(kind, Math.round(px), Math.round(py), towns, general ? deposits : null);
+	if (site >= 0) {
+		mapeScanPlace(site, kind);
+		return;
+	}
+	if (kind !== MAPE_FACTORY_KIND.FARM) return;
+	const alt = mapeScanSnapSite(woodKind, Math.round(px), Math.round(py), towns, general ? deposits : null);
+	if (alt >= 0) mapeScanPlace(alt, woodKind);
+}
+
+// The centroid snapped to the best legal cell nearby.
+function mapeScanSnapSite(kind, sx, sy, towns, deposits) {
+	const size = world.size;
 	let best = -1;
 	let bestScore = -Infinity;
 	for (let dy = -MAPE_FACTORY_SNAP; dy <= MAPE_FACTORY_SNAP; dy++) {
@@ -258,14 +301,13 @@ function mapeScanRun() {
 			const x = sx + dx;
 			const y = sy + dy;
 			if (!mapeScanLegal(x, y, kind)) continue;
-			const s = mapeScanSiteScore(x, y, towns, general ? deposits : null);
+			const s = mapeScanSiteScore(x, y, towns, deposits, kind);
 			if (s <= bestScore) continue;
 			bestScore = s;
 			best = y * size + x;
 		}
 	}
-	if (best < 0) return;
-	mapeScanPlace(best, kind);
+	return best;
 }
 
 function mapeScanPlace(idx, kind) {

@@ -266,7 +266,7 @@ check('frames_advance_at_4x', result.clockSec >= 7.8 && result.clockSec <= 8.1 &
 check('canvas_painted', result.litCells > 3000);
 check('time_controls', result.timeButtons === 4);
 check('view_controls', result.viewRadios === 8 && result.distinctViews === 7);
-check('item_controls', result.startsOnSupply && result.itemRadios === 13 && result.demandItemRadios === 8 && result.itemHiddenOnTerrain && result.itemShownOnDemand && result.distinctItems >= 5);
+check('item_controls', result.startsOnSupply && result.itemRadios === 14 && result.demandItemRadios === 9 && result.itemHiddenOnTerrain && result.itemShownOnDemand && result.distinctItems >= 5);
 check('engine_controls', result.engineRadios === 4 && result.engineCatchmentChecked && result.engineSitesDisabled && result.engineClickOnly);
 check('workforce_controls', result.workforceRadios === 2 && /Jobs/.test(result.workforceStats || ''));
 check('workforce_switch', result.fluidSwitch && result.residentsSwitch);
@@ -295,7 +295,7 @@ check('new_survey_restarts', result.restartState === 'true:0');
 check('test_scene_boot', result.sceneBoots);
 check('test_scene_replay_and_step', result.sceneFill && result.sceneStep && result.sceneResume);
 check('test_scene_paired_tools', result.sceneEdit && result.sceneErase && result.sceneFlow);
-check('test_scene_factory_select', result.factoryPlaced === true && result.factorySelected === true && result.factoryToolCount === 8);
+check('test_scene_factory_select', result.factoryPlaced === true && result.factorySelected === true && result.factoryToolCount === 9);
 
 if (failures > 0) {
 	console.log('dom_smoke_failures=' + failures);

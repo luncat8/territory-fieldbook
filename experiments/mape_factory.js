@@ -139,11 +139,13 @@ blank();
 mape.demandView[MAPE_RES.LOGS].fill(1);
 economy.biomass.fill(0.5);
 const sA = mapeAddFactory(10, 10, MAPE_FACTORY_STATE.ACTIVE, MAPE_FACTORY_KIND.SAWMILL);
-mapeStepForestryFactory(sA, cell(10, 10), 1, 1);
+mape.pop[cell(10, 10)] = 1;
+mapeStepForestryFactory(sA, cell(10, 10), 1);
 const outA = mape.factoryGoods[sA];
 economy.biomass.fill(1);
 const sB = mapeAddFactory(50, 50, MAPE_FACTORY_STATE.ACTIVE, MAPE_FACTORY_KIND.SAWMILL);
-mapeStepForestryFactory(sB, cell(50, 50), 1, 1);
+mape.pop[cell(50, 50)] = 1;
+mapeStepForestryFactory(sB, cell(50, 50), 1);
 const outB = mape.factoryGoods[sB];
 check('sawmill_output_rises_with_cover', outB > outA,
 	'cover0.5=' + outA.toFixed(3) + ' cover1.0=' + outB.toFixed(3));
@@ -158,16 +160,19 @@ let built = 0;
 let general = 0;
 let sawmills = 0;
 let works = 0;
+let farms = 0;
 for (let f = 0; f < mape.factoryCount; f++) {
 	if (mape.factoryState[f] === MAPE_FACTORY_STATE.GONE) continue;
 	built++;
 	if (mape.factoryKind[f] === MAPE_FACTORY_KIND.GENERAL) general++;
 	else if (mape.factoryKind[f] === MAPE_FACTORY_KIND.SAWMILL) sawmills++;
+	else if (mape.factoryKind[f] === MAPE_FACTORY_KIND.FARM) farms++;
 	else works++;
 }
 check('no_general_without_ore_mine', general === 0, 'built=' + built + ' general=' + general);
 check('survey_starts_wood_chain', sawmills >= 1 && works >= 1,
-	'sawmills=' + sawmills + ' works=' + works);
+	'sawmills=' + sawmills + ' works=' + works + ' farms=' + farms);
+check('survey_starts_farm_chain', farms >= 1, 'farms=' + farms);
 
 // Gate 6: at MAPE_FACTORY_CAP no further builds start.
 blank();

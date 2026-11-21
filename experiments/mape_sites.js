@@ -96,6 +96,7 @@ function growthSetup(withSeller) {
 	if (withSeller) {
 		mape.goods[MAPE_RES.GOODS * world.n + cell(14, 10)] = 300;
 		mape.goods[MAPE_RES.COAL * world.n + cell(14, 10)] = 300;
+		mape.goods[MAPE_RES.FOOD * world.n + cell(14, 10)] = 300;
 	}
 	mapeFinishSetup(0, true);
 	return cell(10, 10);

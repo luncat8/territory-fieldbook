@@ -22,6 +22,7 @@ function makeContext2d() {
 		beginPath() { this.calls++; },
 		closePath() { this.calls++; },
 		arc() { this.calls++; },
+		rect(x, y, w, h) { this.calls++; },
 		moveTo(x, y) { this.calls++; recordPoint(this, 'move', x, y); },
 		lineTo(x, y) { this.calls++; recordPoint(this, 'line', x, y); },
 		fill() { this.calls++; },

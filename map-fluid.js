@@ -91,7 +91,7 @@ function mapeFluidSpendJobs(dt, fresh, depleted) {
 		spendAt(mape.mineY[m] * size + mape.mineX[m], MAPE_MINE_WORKERS);
 	}
 	for (let f = 0; f < mape.factoryCount; f++) {
-		const need = mapeFactoryWorkers(mape.factoryState[f]);
+		const need = mapeFactoryWorkers(f);
 		if (need === 0) continue;
 		spendAt(mape.factoryY[f] * size + mape.factoryX[f], need);
 	}

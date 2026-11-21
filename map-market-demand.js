@@ -4,6 +4,7 @@
 const MAPE_MARKET_STEP = 0.05;
 const MAPE_MARKET_COAL_USE = 0.045;
 const MAPE_MARKET_GOODS_USE = 0.036;
+const MAPE_MARKET_FOOD_USE = 0.036;
 const MAPE_MARKET_RESERVE = 1.5;
 const MAPE_CATCHMENT_STOCK_SECONDS = 9;
 const MAPE_CATCHMENT_RESPONSE = 0.9;
@@ -21,10 +22,11 @@ const MAPE_MARKET_PRESSURE = 0.32;
 const MAPE_MARKET_AMBIENT = 0.3;
 
 function mapeIsMarketItem(r) {
-	return r === MAPE_RES.COAL || r === MAPE_RES.GOODS;
+	return r === MAPE_RES.COAL || r === MAPE_RES.GOODS || r === MAPE_RES.FOOD;
 }
 
 function mapeMarketUseRate(r, i) {
+	if (r === MAPE_RES.FOOD) return mape.pop[i] * MAPE_MARKET_FOOD_USE;
 	return mape.pop[i] * (r === MAPE_RES.COAL ? MAPE_MARKET_COAL_USE : MAPE_MARKET_GOODS_USE);
 }
 
@@ -182,6 +184,7 @@ function mapeUpdateMarketFields(dt) {
 	const queue = mape.engine === MAPE_ENGINE.QUEUE;
 	mapeUpdateMarketSlice(MAPE_RES.COAL, dt, queue);
 	mapeUpdateMarketSlice(MAPE_RES.GOODS, dt, queue);
+	mapeUpdateMarketSlice(MAPE_RES.FOOD, dt, queue);
 }
 
 function mapeMarketUsable(r, i, stock = mape.goods[r * world.n + i]) {
@@ -232,6 +235,7 @@ function mapeUseCatchments(dt) {
 		const i = mape.settleCells[k];
 		mapeUseCatchmentStock(MAPE_RES.COAL, i, dt);
 		mapeUseCatchmentStock(MAPE_RES.GOODS, i, dt);
+		mapeUseCatchmentStock(MAPE_RES.FOOD, i, dt);
 		mapeUseLocalStock(MAPE_RES.LOGS, i, mape.pop[i] * MAPE_NEED_LOGS * dt);
 	}
 }
@@ -249,6 +253,7 @@ function mapeServeQueues(dt) {
 		const i = mape.settleCells[k];
 		mapeServeQueue(MAPE_RES.COAL, i, dt, share);
 		mapeServeQueue(MAPE_RES.GOODS, i, dt, share);
+		mapeServeQueue(MAPE_RES.FOOD, i, dt, share);
 		mapeUseLocalStock(MAPE_RES.LOGS, i, mape.pop[i] * MAPE_NEED_LOGS * dt);
 	}
 }

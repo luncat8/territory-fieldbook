@@ -15,7 +15,7 @@ const MAPE_SCENE_LAYOUTS = {
 		towns: [[27, 23], [17, 38], [42, 36]]
 	}
 };
-const MAPE_SCENE_TOOLS = ['Inspect', 'Mine', 'Settlement', 'Erase', 'Factory', 'Sawmill', 'Charcoal works', 'Wood works'];
+const MAPE_SCENE_TOOLS = ['Inspect', 'Mine', 'Settlement', 'Erase', 'Factory', 'Sawmill', 'Charcoal works', 'Wood works', 'Farm'];
 const MAPE_SCENE_POP = 100;
 const MAPE_SCENE_FLUID_POP = 60;
 
