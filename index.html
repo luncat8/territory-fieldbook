@@ -184,6 +184,8 @@ button.ui-chip.on { background: #2c5f6e; border-color: #4f8d9d; color: #f2fbfd; 
 	border-radius: var(--ui-radius-sm);
 	padding: 10px 12px;
 }
+/* Reserve the slot so hiding the inspector never shifts the canvas; only its content is hidden. */
+#ui-site-panel.ui-collapsed { visibility: hidden; }
 #ui-site-panel h2 {
 	margin: 0;
 	font-size: 10px;
@@ -239,6 +241,8 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 @media (max-width: 960px) {
 	#ui-app { flex-direction: column; }
 	#ui-site-panel { flex: 0 0 auto; width: 100%; }
+	/* On the stacked layout the slot is full width, so collapse it entirely instead of leaving a gap. */
+	#ui-site-panel.ui-collapsed { display: none; }
 	#ui-app:not(.ui-paired) #ui-mapwrap, #ui-mapwrap { flex: 0 0 auto; max-width: none; width: 100%; }
 	#ui-panel { flex: 0 0 auto; width: 100%; max-width: none; max-height: none; }
 	#ui-app.ui-scene-active { gap: 10px; }
@@ -256,7 +260,7 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 </head>
 <body>
 <div id="ui-app">
-	<aside id="ui-site-panel" aria-labelledby="ui-site-panel-title" hidden>
+	<aside id="ui-site-panel" aria-labelledby="ui-site-panel-title" class="ui-collapsed">
 		<h2 id="ui-site-panel-title">selected site</h2>
 		<div id="ui-jobsite"></div>
 	</aside>

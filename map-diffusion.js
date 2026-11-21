@@ -365,8 +365,11 @@ function mapeStepWorkforce(dt, transportBuffer) {
 	const hauling = mape.workforceMode === MAPE_WORKFORCE_MODE.RESIDENTS;
 	const invDt = 1 / dt;
 	const signal = MAPE_WORK_SIGNAL * dt;
+	// Demand is "proportional on what the factory needs and gets" (draft): once a site is
+	// staffed with fresh workforce, its pull falls to zero instead of keep calling for more.
 	for (let i = 0; i < n; i++) {
-		const siteNeed = job[i];
+		const present = mapeWorkPresent(i);
+		const siteNeed = job[i] > 0 ? Math.max(0, job[i] - present) : 0;
 		const haulNeed = hauling ? transportBuffer[i] * invDt : 0;
 		if (siteNeed > 0) {
 			if (hauling && siteNeed + haulNeed <= pop[i]) continue;

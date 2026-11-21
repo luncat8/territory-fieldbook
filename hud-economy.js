@@ -122,11 +122,6 @@ function hudPaintWorkerLegend(refs, item, demand, scale) {
 		return;
 	}
 	refs.scale.className = scale + ' demand';
-	if (item === MAPE_VIEW_ITEM.JOBS) {
-		refs.unit.textContent = 'Job slots / cell';
-		refs.range.textContent = '0 → ' + MAPE_VIEW_JOB_MAX + ' · sqrt';
-		return;
-	}
 	refs.unit.textContent = item === MAPE_VIEW_ITEM.FRESH ? 'Fresh pull / cell' : 'Rest pull / cell';
 	refs.range.textContent = '0 → 1 pull';
 }
@@ -175,7 +170,7 @@ function hudUpdateInspect() {
 	const pct = (mape.settleCount / n * 100).toFixed(1);
 	let text = 'Settlements ' + mape.settleCount + ' (' + pct + '%) · pop ' + Math.round(mape.totalPop) +
 		'\nCell ' + x + ',' + y + ' · ' + TERRAIN_NAME[world.terrain[idx]] +
-		' · pop ' + mape.pop[idx].toFixed(1) + ' · jobs ' + mape.jobNeed[idx].toFixed(0) +
+		' · pop ' + mape.pop[idx].toFixed(1) + ' · need ' + mape.jobNeed[idx].toFixed(0) +
 		' · pull ' + mape.workforce[idx].toFixed(2) + (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID ? ' · rest ' + mape.wfRestPull[idx].toFixed(2) : '') +
 		' · settle ' + world.settleValue[idx].toFixed(2) + ' · waste ' + Math.round(100 * land.disturbed[idx]) + '%';
 	text += hudForestReadout(idx);
@@ -263,9 +258,11 @@ function hudUpdateJobSite() {
 	const el = hudEconomy.jobsiteEl;
 	const panel = $('ui-site-panel');
 	if (!el || !panel) return;
+	// Keep the panel's flex slot reserved (visibility, not display:none) so toggling it never
+	// shifts the canvas on the page; only the content is hidden when no site is selected.
 	const show = (hidden) => {
 		el.hidden = hidden;
-		panel.hidden = hidden;
+		panel.classList.toggle('ui-collapsed', hidden);
 	};
 	const x = input.selX;
 	const y = input.selY;
@@ -288,7 +285,7 @@ function hudUpdateWorkforce() {
 	const el = hudEconomy.statsEl;
 	if (!el) return;
 	const t = mapeJobSummary();
-	let text = 'Jobs ' + t.staffed.toFixed(1) + '/' + Math.round(t.slots) + ' staffed · open ' + t.open.toFixed(1);
+		let text = 'Workforce ' + t.staffed.toFixed(1) + '/' + Math.round(t.slots) + ' staffed · open ' + t.open.toFixed(1);
 	if (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID) {
 		text += '\nfresh ' + t.fresh.toFixed(1) + ' · depleted ' + t.depleted.toFixed(1);
 		text += '\nrested ' + mape.fluidRested.toFixed(1) + ' · spawned ' + mape.fluidSpawned;
