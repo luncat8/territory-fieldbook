@@ -250,7 +250,7 @@ function hudMineSiteText(m) {
 	let text = 'Mine S' + (m + 1) + ' · ' + (fuel ? 'coal' : 'iron') + ' · ' + state;
 	text += '\nCell ' + mape.mineX[m] + ',' + mape.mineY[m] + ' · productivity ' + Math.round(100 * landProductivity(idx)) + '% · disturbed ' + Math.round(100 * land.disturbed[idx]) + '%';
 	text += '\nWorkers ' + present.toFixed(1) + '/' + MAPE_MINE_WORKERS + ' · ' + Math.round(100 * staff) + '% staffed';
-	text += '\nRate ' + (active ? (MAPE_MINE_RATE * staff).toFixed(2) : '0.00') + '/s · deposit left ' + sites.stock[site].toFixed(1);
+	text += '\nRate ' + (active ? (mapeMineRate(m) * staff).toFixed(2) : '0.00') + '/s · deposit left ' + sites.stock[site].toFixed(1);
 	return text;
 }
 

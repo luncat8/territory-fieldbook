@@ -194,6 +194,36 @@ button.ui-chip.on { background: #2c5f6e; border-color: #4f8d9d; color: #f2fbfd; 
 	text-transform: uppercase;
 	color: #7f8fa1;
 }
+#ui-tune-panel {
+	flex: 0 0 252px;
+	display: flex;
+	flex-direction: column;
+	gap: 7px;
+	align-self: flex-start;
+	position: sticky;
+	top: 18px;
+	max-height: calc(100vh - 36px);
+	overflow-y: auto;
+	background: var(--ui-surface);
+	border: 1px solid var(--ui-line);
+	border-radius: var(--ui-radius-sm);
+	padding: 10px 12px;
+}
+.ui-tune-head { display: flex; align-items: center; justify-content: space-between; }
+.ui-tune-head h2 { margin: 0; font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #7f8fa1; }
+#ui-tune-knobs { display: flex; flex-direction: column; gap: 1px; }
+.ui-tune-row { display: grid; grid-template-columns: 96px minmax(0, 1fr) 40px; align-items: center; gap: 6px; padding-left: 9px; font-size: 11.5px; color: var(--ui-text); cursor: pointer; }
+.ui-tune-row.ui-tune-group { padding-left: 0; margin-top: 7px; font-weight: 650; color: #e2edf6; }
+.ui-tune-row.ui-tune-group:first-child { margin-top: 0; }
+.ui-tune-row > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-tune-row > input { width: 100%; height: 16px; margin: 0; accent-color: #66bdc8; cursor: pointer; }
+.ui-tune-row > input:focus-visible { outline: 2px solid var(--ui-accent-line); outline-offset: 1px; }
+.ui-tune-row > output { text-align: right; font: 11px/1.4 ui-monospace, monospace; color: #7f93a6; }
+.ui-tune-row.ui-tune-moved > output { color: #ffd166; }
+#ui-tune-text { width: 100%; min-height: 64px; resize: vertical; padding: 5px 6px; background: #0f151c; color: #c8d2dd; border: 1px solid var(--ui-line); border-radius: var(--ui-radius-sm); font: 11px/1.4 ui-monospace, monospace; }
+#ui-tune-note { min-height: 16px; margin: 0; color: #ffd166; font-size: 11px; }
+#ui-tune-panel .ui-help { margin: 0; }
+#ui-scene-nav button.ui-chip { font-size: 12px; }
 #ui-jobsite { white-space: pre-line; color: #e6edf4; font-size: 12px; }
 .ui-economy-toggles { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: #c7d6e2; }
 .ui-economy-toggles label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
@@ -240,7 +270,8 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 #ui-log li:first-child { color: #d5e2ee; }
 @media (max-width: 960px) {
 	#ui-app { flex-direction: column; }
-	#ui-site-panel { flex: 0 0 auto; width: 100%; }
+	#ui-site-panel, #ui-tune-panel { flex: 0 0 auto; width: 100%; }
+	#ui-tune-panel { position: static; max-height: none; }
 	/* On the stacked layout the slot is full width, so collapse it entirely instead of leaving a gap. */
 	#ui-site-panel.ui-collapsed { display: none; }
 	#ui-app:not(.ui-paired) #ui-mapwrap, #ui-mapwrap { flex: 0 0 auto; max-width: none; width: 100%; }
@@ -260,6 +291,18 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 </head>
 <body>
 <div id="ui-app">
+	<aside id="ui-tune-panel" aria-labelledby="ui-tune-title">
+		<div class="ui-tune-head"><h2 id="ui-tune-title">tuning</h2><button id="ui-tune-close" type="button" class="ui-chip" title="Hide the tuning panel">Hide</button></div>
+		<div id="ui-tune-knobs"></div>
+		<div class="ui-row">
+			<button id="ui-tune-copy" type="button" class="ui-chip" title="Copy the moved multipliers and a map summary to the clipboard">Copy settings</button>
+			<button id="ui-tune-apply" type="button" class="ui-chip" title="Apply the tune: line pasted into the box below">Apply text</button>
+			<button id="ui-tune-reset" type="button" class="ui-chip" title="Set every multiplier back to ×1">Reset all</button>
+		</div>
+		<textarea id="ui-tune-text" rows="4" spellcheck="false" aria-label="Tuning settings text" placeholder="Copied settings appear here. Paste a tune: line and press Apply text to load it."></textarea>
+		<p id="ui-tune-note" aria-live="polite"></p>
+		<p class="ui-help">Multipliers act live on the running map, 0.1× to 10×. A group row scales every kind under it. Double-click a slider for ×1. Settings stay in this browser.</p>
+	</aside>
 	<aside id="ui-site-panel" aria-labelledby="ui-site-panel-title" class="ui-collapsed">
 		<h2 id="ui-site-panel-title">selected site</h2>
 		<div id="ui-jobsite"></div>
@@ -268,6 +311,7 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 		<header id="ui-maphead">
 			<div><div class="ui-kicker" id="ui-map-kicker">Live survey</div><h1 id="ui-map-title">Territory Fieldbook</h1></div>
 			<nav id="ui-scene-nav" aria-label="Economy test scenes">
+				<button id="ui-tune-toggle" type="button" class="ui-chip on" aria-controls="ui-tune-panel" title="Show or hide the tuning panel">Tuning</button>
 				<a id="ui-survey-link" href="?" title="Start a fresh survey in this tab" hidden>Survey</a>
 				<a id="ui-scene-a" href="?scene=a" target="_blank" rel="noopener" title="Open the Catchment test scene in a new tab">Test scene A</a>
 				<a id="ui-scene-b" href="?scene=b" target="_blank" rel="noopener" title="Open the Queue test scene in a new tab">Test scene B</a>
@@ -347,6 +391,7 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 	</aside>
 </div>
 <script src="random.js"></script>
+<script src="tuning.js"></script>
 <script src="world.js"></script>
 <script src="prototype/water-humidity/terrain.js"></script>
 <script src="prototype/water-humidity/simulation.js"></script>
@@ -379,6 +424,7 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 <script src="hud-economy.js"></script>
 <script src="hud-display.js"></script>
 <script src="hud-scenes.js"></script>
+<script src="hud-tune.js"></script>
 <script src="actions.js"></script>
 <script src="main.js"></script>
 </body>

@@ -156,12 +156,16 @@ function mapeStepMines(dt) {
 		const workers = mapeWorkPresent(idx);
 		if (workers < MAPE_MINE_MIN_WORKERS) continue;
 		const staff = workers >= MAPE_MINE_WORKERS ? 1 : workers / MAPE_MINE_WORKERS;
-		const units = sitesExtract(mape.mineSite[m], MAPE_MINE_RATE * staff * dt, -1);
+		const units = sitesExtract(mape.mineSite[m], mapeMineRate(m) * staff * dt, -1);
 		if (units <= 0) continue;
 		mape.minedTotal += mapeProduceStock(mape.mineRes[m], idx, units);
 		// Spoil heaps land beside the shaft; the pit itself keeps the productivity its yield reads.
 		landDisturbRing(idx, MAPE_MINE_WASTE * dt);
 	}
+}
+
+function mapeMineRate(m) {
+	return MAPE_MINE_RATE * (mape.mineRes[m] === MAPE_RES.COAL ? tune.coal : tune.iron);
 }
 
 function mapeFactoryAt(x, y) {
@@ -177,10 +181,10 @@ function mapeStepFactoryBuild(f, idx, dt, staff) {
 	const kind = mape.factoryKind[f];
 	// Wood is the currency of construction: logs hauled to the site, or raw forest
 	// on a sawmill's own footprint (forest is both its material and its working area).
-	let rate = MAPE_BUILD_WOOD_RATE;
+	let rate = MAPE_BUILD_WOOD_RATE * tune.build;
 	let paid = false;
 	if (kind === MAPE_FACTORY_KIND.SAWMILL) {
-		rate = MAPE_BUILD_SAWMILL_RATE;
+		rate = MAPE_BUILD_SAWMILL_RATE * tune.build;
 		const want = rate * staff * dt;
 		if (staff > 0 && economy.biomass[idx] >= want) {
 			economy.biomass[idx] -= want;
@@ -196,7 +200,7 @@ function mapeStepFactoryBuild(f, idx, dt, staff) {
 		}
 	}
 	if (paid) {
-		mape.factoryProgress[f] += staff * dt / MAPE_FACTORY_BUILD_SEC;
+		mape.factoryProgress[f] += staff * tune.build * dt / MAPE_FACTORY_BUILD_SEC;
 		mape.factoryIron[f] = rate * staff;
 		landDisturbAround(idx, MAPE_FACTORY_BUILD_DISTURB * staff * dt);
 	} else {
@@ -248,8 +252,9 @@ function mapeStepFactories(dt) {
 			else mapeStepForestryFactory(f, idx, dt);
 			continue;
 		}
-		const coalWant = MAPE_FACTORY_COAL * staff * dt;
-		const ironWant = MAPE_FACTORY_IRON * staff * dt;
+		const pace = staff * tune.factory;
+		const coalWant = MAPE_FACTORY_COAL * pace * dt;
+		const ironWant = MAPE_FACTORY_IRON * pace * dt;
 		const k = Math.min(1, goods[coalOff + idx] / coalWant, goods[ironOff + idx] / ironWant);
 		if (k < 1) mape.factoryStarved[f] += dt;
 		// An idled plant stops counting as a job site, so the workforce pull moves on to live work.
@@ -265,17 +270,17 @@ function mapeStepFactories(dt) {
 		goods[coalOff + idx] -= coalWant * k;
 		goods[ironOff + idx] -= ironWant * k;
 		mape.massOut += coalWant * k + ironWant * k;
-		const made = MAPE_FACTORY_YIELD * staff * k * dt;
-		const co2 = MAPE_FACTORY_CO2 * staff * k * dt;
+		const made = MAPE_FACTORY_YIELD * pace * k * dt;
+		const co2 = MAPE_FACTORY_CO2 * pace * k * dt;
 		const before = goods[goodsOff + idx];
 		goods[goodsOff + idx] = before + made;
 		goods[co2Off + idx] += co2;
 		mape.massIn += made + co2;
-		landDisturbAround(idx, MAPE_FACTORY_DISTURB * staff * k * dt);
-		mape.factoryCoal[f] = MAPE_FACTORY_COAL * staff * k;
-		mape.factoryIron[f] = MAPE_FACTORY_IRON * staff * k;
-		mape.factoryGoods[f] = MAPE_FACTORY_YIELD * staff * k;
-		mape.factoryCo2[f] = MAPE_FACTORY_CO2 * staff * k;
+		landDisturbAround(idx, MAPE_FACTORY_DISTURB * pace * k * dt);
+		mape.factoryCoal[f] = MAPE_FACTORY_COAL * pace * k;
+		mape.factoryIron[f] = MAPE_FACTORY_IRON * pace * k;
+		mape.factoryGoods[f] = MAPE_FACTORY_YIELD * pace * k;
+		mape.factoryCo2[f] = MAPE_FACTORY_CO2 * pace * k;
 	}
 }
 
@@ -323,7 +328,7 @@ function mapeStepForestryFactory(f, idx, dt) {
 		// Paydown follows every worker on site, not the staffing fraction: one worker fells a
 		// full cell in a few seconds and a full crew cuts several cells per second.
 		const present = mapeWorkPresent(idx);
-		const effort = present * landProductivity(idx) * dt;
+		const effort = present * tune.sawmill * landProductivity(idx) * dt;
 		if (effort <= 0) return;
 		mape.factoryHarvestWork[f] -= effort;
 		if (mape.factoryHarvestWork[f] > 0) return;
@@ -345,7 +350,7 @@ function mapeStepForestryFactory(f, idx, dt) {
 	const staff = Math.min(1, present / MAPE_FACTORY_WORKERS);
 	if (staff <= 0) return;
 	const slot = MAPE_RES.LOGS * world.n + idx;
-	const wanted = MAPE_FORESTRY_INPUT * staff * dt;
+	const wanted = MAPE_FORESTRY_INPUT * staff * (kind === MAPE_FACTORY_KIND.CHARCOAL ? tune.charcoal : tune.wood) * dt;
 	const used = Math.min(mape.goods[slot], wanted);
 	if (used <= 0) {
 		mape.factoryStarved[f] += dt;
@@ -465,7 +470,7 @@ function mapeStepWorkshops(dt) {
 	const stock = mape.goodsView[MAPE_RES.GOODS];
 	for (let k = 0; k < mape.workshopCount; k++) {
 		const idx = mape.workshopCells[k];
-		const units = Math.min(MAPE_WORKSHOP_STOCK - stock[idx], MAPE_WORKSHOP_RATE * landProductivity(idx) * dt);
+		const units = Math.min(MAPE_WORKSHOP_STOCK - stock[idx], MAPE_WORKSHOP_RATE * tune.workshop * landProductivity(idx) * dt);
 		mapeProduceStock(MAPE_RES.GOODS, idx, units);
 	}
 }

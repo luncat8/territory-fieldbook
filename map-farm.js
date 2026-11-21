@@ -134,7 +134,7 @@ function mapeFarmHarvest(f) {
 			if (x < 0 || x >= size) continue;
 			const i = y * size + x;
 			if (mape.farmOwner[i] !== owner) continue;
-			const share = MAPE_FARM_YIELD * mapeFarmCellQuality(i) * landProductivity(i) * w;
+			const share = MAPE_FARM_YIELD * tune.farm * mapeFarmCellQuality(i) * landProductivity(i) * w;
 			if (share <= 0) continue;
 			mapeProduceStock(MAPE_RES.FOOD, i, share);
 			food += share;

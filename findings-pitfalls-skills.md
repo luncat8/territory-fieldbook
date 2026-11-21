@@ -271,3 +271,19 @@ the opposite of "produce less wood". Work now costs `felled / FELL_RATE` (forest
 units), and `FOREST_PER_LOG` changes output only. For any recipe, put the
 workforce rate on the input it physically handles; output-side rates couple
 the yield knob to depletion.
+
+## a live multiplier must scale a rate, not a constant baked at dispatch
+
+Tuning knobs multiply per-second rates where they are spent (`rate * tune.x * dt`), never a
+value frozen into state. Site shipments store an ETA at dispatch; scaling the speed there
+leaves every in-flight load at the old pace and a ×0.1 → ×1 move strands them for minutes.
+Scale the countdown (`eta -= dt * tune.haul`) instead. Construction is the same trap the
+other way: speeding progress alone makes builds cheaper, so the pace multiplies the log
+draw and the progress together and total cost stays authored.
+
+## a stub DOM missing one API fails the whole boot silently
+
+`hud-economy.js` called `classList.toggle`, the dom fixture had no `classList`, and
+`dom_smoke` reported a single `check_boot=fail` — every later check was skipped, not failed,
+and `map_views` hid a stale duplicate check behind the same crash. When boot fails in the
+fixture, grep the boot error for the missing member first and add it to `makeElement`.

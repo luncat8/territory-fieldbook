@@ -27,6 +27,7 @@ The prototype uses **plain JavaScript with minimal HTML and CSS**, and renders w
 - **Forest** reduces the party's observation radius.
 - **Hills** increase it.
 
+
 ---
 
 ## 3. Movement and Time
@@ -256,6 +257,12 @@ i expect after player's party discover coal - deposit cause workers demand. work
 after prototype done next is, add Oxygen to co2 cycle. so o2 is another need and low o2 also limit production speed.
 
 i suggest firstly do all plan with one of engine : diffusion or sites. to choose what should be first think what result will be more easy to get and will be useful as starting for another, or what will be more helpful to solve possible pitfalls that is general for both engines.
+
+#### transportation speed map
+
+so i.e. diffusion of products amount over swamp will be slower
+
+##### deferred: if ships enabled diffusion over deep enough surface water and sea will be faster
 
 #### LLM thoughts: Engine order — diffusion first (P0–P3), then sites (P4), comparison & integration (P5):
 

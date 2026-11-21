@@ -224,7 +224,7 @@ function sitesExtract(i, amount, owner) {
 }
 
 function sitesTimedSpawn(seconds) {
-	if (randomNext() >= SITE_TIMED_CHANCE * seconds) return;
+	if (randomNext() >= SITE_TIMED_CHANCE * tune.spawn * seconds) return;
 	const kind = SITE_TIMED_KINDS[randomInt(SITE_TIMED_KINDS.length)];
 	const idx = worldRandomWalkable();
 	const x = idx % MAP_SIZE;
@@ -267,7 +267,7 @@ function sitesStep(seconds) {
 			continue;
 		}
 		if (state === SITE_STATE.MARKED) {
-			const amount = sites.discover[i] * progress[sites.y[i] * MAP_SIZE + sites.x[i]] * seconds;
+			const amount = sites.discover[i] * tune.discovery * progress[sites.y[i] * MAP_SIZE + sites.x[i]] * seconds;
 			if (randomNext() < amount) {
 				sites.state[i] = SITE_STATE.VISIBLE;
 				sites.version++;

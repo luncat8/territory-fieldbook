@@ -77,7 +77,7 @@ function mapePopulationTransfer(a, b, dt, next) {
 	const pb = mape.pop[b];
 	const attractA = mapePopulationAttract(a);
 	const attractB = mapePopulationAttract(b);
-	const flux = (MAPE_MIGRATE * (pa - pb) * 0.5 + MAPE_MIGRATE_BIAS * (pa + pb) * (attractB - attractA)) * dt;
+	const flux = (MAPE_MIGRATE * (pa - pb) * 0.5 + MAPE_MIGRATE_BIAS * (pa + pb) * (attractB - attractA)) * tune.migration * dt;
 	if (Math.abs(flux) <= 1e-9) return;
 	const src = flux > 0 ? a : b;
 	const dst = flux > 0 ? b : a;
@@ -186,9 +186,9 @@ function mapePopulationGrowth(dt) {
 		let rate = 0;
 		if (feed > neutral) {
 			const room = cap > 0 ? Math.max(0, cap - before) / cap : 0;
-			rate = MAPE_GROWTH * (feed - neutral) / (1 - neutral) * room;
+			rate = MAPE_GROWTH * tune.growth * (feed - neutral) / (1 - neutral) * room;
 		} else if (feed < famine) {
-			rate = -MAPE_DEATH * (famine - feed) / famine;
+			rate = -MAPE_DEATH * tune.famine * (famine - feed) / famine;
 		}
 		const change = before * rate * dt;
 		if (change === 0) continue;

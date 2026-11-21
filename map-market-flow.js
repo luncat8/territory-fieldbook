@@ -163,7 +163,7 @@ function mapeApplyQueueTransfers(i, off) {
 
 function mapeRouteQueues(r, dt) {
 	const off = r * world.n;
-	const fraction = Math.min(MAPE_STEP_FRAC_MAX, MAPE_QUEUE_FLOW_SPEED * dt);
+	const fraction = Math.min(MAPE_STEP_FRAC_MAX, MAPE_QUEUE_FLOW_SPEED * tune.haul * dt);
 	const { requests, room, accepted, land, landCount } = mapeMarketFlow;
 	requests.fill(0);
 	room.fill(-1);

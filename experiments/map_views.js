@@ -86,8 +86,6 @@ run('hud.demandItemRadios[6].click()');
 check('demand_fresh_legend', elements.get('ui-demand-layer').textContent === 'Demand · workforce · fresh' && elements.get('ui-demand-unit').textContent === 'Fresh pull / cell' && elements.get('ui-demand-range').textContent === '0 → 1 pull');
 run('hud.demandItemRadios[7].click()');
 check('demand_depleted_legend', elements.get('ui-demand-layer').textContent === 'Demand · workforce · depleted' && elements.get('ui-demand-unit').textContent === 'Rest pull / cell');
-run('hud.demandItemRadios[8].click()');
-check('demand_depleted_legend', elements.get('ui-demand-layer').textContent === 'Demand · workforce · depleted' && elements.get('ui-demand-unit').textContent === 'Rest pull / cell');
 check('demand_worker_fields', run('renderItemField(MAPE_VIEW_ITEM.FRESH, true) === mape.workforce && renderItemField(MAPE_VIEW_ITEM.DEPLETED, true) === mape.wfRestPull && renderItemField(MAPE_VIEW_ITEM.JOBS, true) === mape.workforce'));
 run('hud.demandItemRadios[0].click()');
 run('hud.viewRadios[VIEW.DEMAND].click()');

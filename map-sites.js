@@ -230,7 +230,7 @@ function mapeSitesArrive(dt) {
 	const n = world.n;
 	const s = mapeSites;
 	for (let k = 0; k < s.shipCount;) {
-		s.shipEta[k] -= dt;
+		s.shipEta[k] -= dt * tune.haul;
 		if (s.shipEta[k] > 0) {
 			k++;
 			continue;

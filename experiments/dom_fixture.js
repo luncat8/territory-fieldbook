@@ -113,7 +113,22 @@ function makeElement(id, isCanvas) {
 			return this.ctx;
 		}
 	};
+	element.classList = makeClassList(element);
 	return element;
+}
+
+function makeClassList(element) {
+	const names = () => (element.className || '').split(' ').filter(Boolean);
+	return {
+		contains: name => names().indexOf(name) >= 0,
+		toggle(name, force) {
+			const on = force === undefined ? names().indexOf(name) < 0 : !!force;
+			const rest = names().filter(n => n !== name);
+			if (on) rest.push(name);
+			element.className = rest.join(' ');
+			return on;
+		}
+	};
 }
 
 const elements = new Map();

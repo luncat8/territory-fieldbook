@@ -49,6 +49,7 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 - keep this map updated when ownership changes:
 	main.js — boot, shared clock, tick order, speeds.
 	random.js — seeded LCG streams for generation, sites, rivals.
+	tuning.js — live playtest multipliers: knob table, group × kind products, shareable `tune:` text.
 	world.js — 64x64 terrain grid, seeded generation, soil baseline and map queries.
 	hydrology.js — survey water cycle, terrain adapter and root-zone moisture. Shares prototype/water-humidity/{terrain,simulation}.js with the lab.
 	events.js — event feed and status line.
@@ -79,6 +80,7 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	hud-economy.js — economy picker, simulation feedback, both legends and inspector.
 	hud-display.js — look radios, overlay controls and paired-map layout.
 	hud-scenes.js — scene controls, readouts and actor tools.
+	hud-tune.js — left tuning panel: sliders, copy/apply settings text, saved knobs.
 	actions.js — player verbs spanning features (move, work, sell, hire, restore, declare).
 	experiments/ — smoke (sim), dom_smoke + dom_fixture (boot/UI), map_views (display),
 	mape_compare (engines), mape_sites (site engine), mape_scenes (scenes), mape_population (settlements), mape_fluid (workforce), mape_fluid_migration (capacity and migration), mape_forestry (logs and forest production), mape_factory (placement scan), mape_farm (farms); never loaded by the page.

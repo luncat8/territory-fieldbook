@@ -82,7 +82,7 @@ function economyHasCargo() {
 }
 
 function economyDepositRate(res) {
-	return DEPOSIT_RATE[res];
+	return DEPOSIT_RATE[res] * tune.extract;
 }
 
 function economyAccountMining(units) {
@@ -143,7 +143,7 @@ function economyForestTarget(i, co2) {
 
 function economyForestRate(i, co2) {
 	if (world.terrain[i] === TERRAIN.WATER) return 0;
-	return BIO_RESPONSE * (economyForestTarget(i, co2) - economy.biomass[i]);
+	return BIO_RESPONSE * tune.forest * (economyForestTarget(i, co2) - economy.biomass[i]);
 }
 
 function economyBiosphere(seconds) {

@@ -14,7 +14,7 @@ function mapeScanStep(dt) {
 	// Scenes are manual testbeds and scanOn is the unit-test escape hatch: the
 	// engine never places where a test measures the map undisturbed.
 	if (dt <= 0 || mapScene.id || !mape.scanOn) return;
-	mape.scanAcc += dt;
+	mape.scanAcc += dt * tune.siting;
 	if (mape.scanAcc < MAPE_SCAN_SEC) return;
 	mape.scanAcc = 0;
 	mapeScanRun();

@@ -32,7 +32,7 @@ function mapeFluidFreeSpace(i) {
 function mapeFluidGenerate(dt, terrain, pop, fresh) {
 	const n = world.n;
 	const water = TERRAIN.WATER;
-	const rate = MAPE_WF_GEN * dt;
+	const rate = MAPE_WF_GEN * tune.labour * dt;
 	for (let i = 0; i < n; i++) {
 		if (terrain[i] === water || pop[i] <= 0) continue;
 		const add = pop[i] * rate;
@@ -44,7 +44,7 @@ function mapeFluidGenerate(dt, terrain, pop, fresh) {
 // Fresh pool advects up the workforce pull, exactly like goods up the demand gradient.
 function mapeFluidAdvect(dt, size, terrain, pull, fresh, freshNext) {
 	const water = TERRAIN.WATER;
-	let frac = MAPE_WF_FLOW * dt;
+	let frac = MAPE_WF_FLOW * tune.walk * dt;
 	if (frac > MAPE_STEP_FRAC_MAX) frac = MAPE_STEP_FRAC_MAX;
 	freshNext.set(fresh);
 	for (let y = 0; y < size; y++) {
@@ -160,7 +160,7 @@ function mapeFluidRestPull(dt, size, terrain) {
 }
 
 function mapeFluidAdvectDepleted(dt, size, terrain, depleted, depletedNext) {
-	let frac = MAPE_WF_RETURN * dt;
+	let frac = MAPE_WF_RETURN * tune.walk * dt;
 	if (frac > MAPE_STEP_FRAC_MAX) frac = MAPE_STEP_FRAC_MAX;
 	depletedNext.set(depleted);
 	for (let y = 0; y < size; y++) {

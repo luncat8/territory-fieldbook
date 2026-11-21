@@ -149,6 +149,14 @@ if (!bootError) {
 		result.surveyLabel = run('hudActionList()[1].label');
 		result.surveyReady = run('hudActionList()[1].enabled');
 
+		const forestSlider = run('hudTune.inputs[TUNE_INDEX.forest]');
+		result.tuneKnobs = run('hudTune.inputs.length');
+		forestSlider.value = String(run('TUNE_LADDER.indexOf(2)'));
+		forestSlider.dispatch('input', {});
+		result.tuneForest = run('tune.forest');
+		result.tuneSummary = run('tuneSummary(hudTuneHeader())');
+		run('tuneReset(); hudTuneSync()');
+
 		// Diffusion vs market pull diverge from tick 0; the coal stock heatmap converges between engines.
 		const engines = result.engineGroup.children.map(item => item.children[0]);
 		result.engineGroup.dispatch('pointerover', { target: engines[0] });
@@ -290,6 +298,7 @@ check('victory_panel', (result.victoryText || '').length > 5);
 check('feed_rendered', result.logItems > 0);
 check('click_moved_party', result.moved === true);
 check('pause_key', result.speedAfterSpace === 0);
+check('tune_panel', result.tuneKnobs === 26 && result.tuneForest === 2 && /\ntune: forest=2$/.test(result.tuneSummary || ''));
 check('all_buttons_safe', (result.buttonsClicked || 0) >= 4);
 check('new_survey_restarts', result.restartState === 'true:0');
 check('test_scene_boot', result.sceneBoots);

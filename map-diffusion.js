@@ -334,7 +334,7 @@ function mapeHaulBudget(i, stock, fraction, pop, work) {
 function mapeTransportSlice(r, size, terrain, demand, goods, next, pop, work, workNext, dt, fast, flowX, flowY) {
 	const off = r * size * size;
 	const water = TERRAIN.WATER;
-	const baseFrac = Math.min(MAPE_STEP_FRAC_MAX, (fast ? MAPE_MARKET_FLOW_SPEED : MAPE_FLOW_SPEED) * dt);
+	const baseFrac = Math.min(MAPE_STEP_FRAC_MAX, (fast ? MAPE_MARKET_FLOW_SPEED : MAPE_FLOW_SPEED) * tune.haul * dt);
 	const gradRef = fast ? MAPE_MARKET_GRAD_REF : MAPE_GRAD_REF;
 	let workTotal = 0;
 	for (let y = 0; y < size; y++) {
@@ -390,7 +390,7 @@ function mapeTransportWorkers(dt) {
 	const next = mape.popNext;
 	const job = mape.jobNeed;
 	const work = mape.workforce;
-	let walkFrac = MAPE_WORK_SPEED * dt;
+	let walkFrac = MAPE_WORK_SPEED * tune.walk * dt;
 	if (walkFrac > MAPE_STEP_FRAC_MAX) walkFrac = MAPE_STEP_FRAC_MAX;
 	const leaveFrac = MAPE_WORK_LEAVE * dt;
 	let moved = false;

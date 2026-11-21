@@ -49,6 +49,7 @@ function hudInit() {
 	hudEconomyInit();
 	hudSceneInit();
 	hudDisplayInit();
+	hudTuneInit();
 	hud.key = '';
 	hud.logVersion = -1;
 	hud.statusVersion = -1;
