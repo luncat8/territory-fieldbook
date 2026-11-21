@@ -23,16 +23,19 @@ function mapeUseLocalStock(r, idx, amount) {
 }
 
 function mapeUseDiffusionStock(dt) {
+	dt *= mape.speedSettlement;
 	const pop = mape.pop;
 	for (let i = 0; i < world.n; i++) {
 		const p = pop[i];
 		if (p <= 0 || mapeIsIndustry(i)) continue;
 		mapeUseLocalStock(MAPE_RES.GOODS, i, p * MAPE_NEED_GOODS * dt);
 		mapeUseLocalStock(MAPE_RES.COAL, i, p * MAPE_NEED_COAL * dt);
+		mapeUseLocalStock(MAPE_RES.LOGS, i, p * MAPE_NEED_WOOD * dt);
 	}
 }
 
 function mapePopulationRate(r) {
+	if (r === MAPE_RES.LOGS) return mape.engine === MAPE_ENGINE.DIFFUSION ? MAPE_NEED_WOOD : MAPE_MARKET_WOOD_USE;
 	if (mape.engine === MAPE_ENGINE.DIFFUSION) return r === MAPE_RES.GOODS ? MAPE_NEED_GOODS : MAPE_NEED_COAL;
 	return r === MAPE_RES.GOODS ? MAPE_MARKET_GOODS_USE : MAPE_MARKET_COAL_USE;
 }
@@ -111,6 +114,7 @@ function mapePopulationClamp() {
 }
 
 function mapePopulationStep(dt) {
+	dt *= mape.speedSettlement;
 	const pop = mape.pop;
 	const satGoods = mape.satGoods;
 	const satCoal = mape.satCoal;

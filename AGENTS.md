@@ -75,6 +75,7 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	input.js — clicks, hover mark, keyboard bindings.
 	hud.js — side panel, view switch, around-list, context actions, feed.
 	hud-economy.js — economy picker, simulation feedback, both legends and inspector.
+	hud-balance.js — balance speed sliders (factories/settlements/mines/sites/workshops) and copy-settings.
 	hud-display.js — look radios, overlay controls and paired-map layout.
 	hud-scenes.js — scene controls, readouts and actor tools.
 	actions.js — player verbs spanning features (move, work, sell, hire, restore, declare).

@@ -4,6 +4,7 @@
 const MAPE_MARKET_STEP = 0.05;
 const MAPE_MARKET_COAL_USE = 0.045;
 const MAPE_MARKET_GOODS_USE = 0.036;
+const MAPE_MARKET_WOOD_USE = 0.03;
 const MAPE_MARKET_RESERVE = 1.5;
 const MAPE_CATCHMENT_STOCK_SECONDS = 9;
 const MAPE_CATCHMENT_RESPONSE = 0.9;
@@ -21,11 +22,13 @@ const MAPE_MARKET_PRESSURE = 0.32;
 const MAPE_MARKET_AMBIENT = 0.3;
 
 function mapeIsMarketItem(r) {
-	return r === MAPE_RES.COAL || r === MAPE_RES.GOODS;
+	return r === MAPE_RES.COAL || r === MAPE_RES.GOODS || r === MAPE_RES.LOGS;
 }
 
 function mapeMarketUseRate(r, i) {
-	return mape.pop[i] * (r === MAPE_RES.COAL ? MAPE_MARKET_COAL_USE : MAPE_MARKET_GOODS_USE);
+	if (r === MAPE_RES.COAL) return mape.pop[i] * MAPE_MARKET_COAL_USE;
+	if (r === MAPE_RES.LOGS) return mape.pop[i] * MAPE_MARKET_WOOD_USE;
+	return mape.pop[i] * MAPE_MARKET_GOODS_USE;
 }
 
 // Population picks the target so a crowded town pulls harder than a hamlet; a flat floor pulled every town alike.
@@ -182,6 +185,7 @@ function mapeUpdateMarketFields(dt) {
 	const queue = mape.engine === MAPE_ENGINE.QUEUE;
 	mapeUpdateMarketSlice(MAPE_RES.COAL, dt, queue);
 	mapeUpdateMarketSlice(MAPE_RES.GOODS, dt, queue);
+	mapeUpdateMarketSlice(MAPE_RES.LOGS, dt, queue);
 }
 
 function mapeMarketUsable(r, i, stock = mape.goods[r * world.n + i]) {
@@ -228,10 +232,12 @@ function mapeUseCatchmentStock(r, i, dt) {
 }
 
 function mapeUseCatchments(dt) {
+	dt *= mape.speedSettlement;
 	for (let k = 0; k < mape.settleCount; k++) {
 		const i = mape.settleCells[k];
 		mapeUseCatchmentStock(MAPE_RES.COAL, i, dt);
 		mapeUseCatchmentStock(MAPE_RES.GOODS, i, dt);
+		mapeUseCatchmentStock(MAPE_RES.LOGS, i, dt);
 	}
 }
 
@@ -243,11 +249,13 @@ function mapeServeQueue(r, i, dt, share) {
 }
 
 function mapeServeQueues(dt) {
+	dt *= mape.speedSettlement;
 	const share = 1 - Math.exp(-dt / MAPE_QUEUE_SERVICE_SECONDS);
 	for (let k = 0; k < mape.settleCount; k++) {
 		const i = mape.settleCells[k];
 		mapeServeQueue(MAPE_RES.COAL, i, dt, share);
 		mapeServeQueue(MAPE_RES.GOODS, i, dt, share);
+		mapeServeQueue(MAPE_RES.LOGS, i, dt, share);
 	}
 }
 

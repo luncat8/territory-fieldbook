@@ -246,14 +246,17 @@ function mapeSitesArrive(dt) {
 // Stock-based satisfaction: households spend the stock deliveries actually left
 // behind, so sat = delivered / need and growth reads it through mapePopulationStep.
 function mapeSitesMetabolism(dt) {
+	dt *= mape.speedSettlement;
 	const pop = mape.pop;
 	const goodsRate = mapePopulationRate(MAPE_RES.GOODS);
 	const coalRate = mapePopulationRate(MAPE_RES.COAL);
+	const woodRate = mapePopulationRate(MAPE_RES.LOGS);
 	for (let i = 0; i < world.n; i++) {
 		const p = pop[i];
 		if (p <= 0 || mapeIsIndustry(i)) continue;
 		mapeUseLocalStock(MAPE_RES.GOODS, i, p * goodsRate * dt);
 		mapeUseLocalStock(MAPE_RES.COAL, i, p * coalRate * dt);
+		mapeUseLocalStock(MAPE_RES.LOGS, i, p * woodRate * dt);
 	}
 }
 
@@ -297,6 +300,7 @@ function mapeSitesSubstep(dt) {
 }
 
 function mapeStepSites(seconds) {
+	seconds *= mape.speedSite;
 	let left = seconds;
 	while (left > 1e-9) {
 		const dt = Math.min(MAPE_SITE_STEP, left);

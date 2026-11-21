@@ -47,6 +47,7 @@ function hudInit() {
 	hudBuildTime();
 	hudBuildViews();
 	hudEconomyInit();
+	hudBalanceInit();
 	hudSceneInit();
 	hudDisplayInit();
 	hud.key = '';

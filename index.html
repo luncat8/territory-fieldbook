@@ -202,6 +202,12 @@ button.ui-chip.on { background: #2c5f6e; border-color: #4f8d9d; color: #f2fbfd; 
 #ui-look .ui-seg { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; font-size: 12px; text-align: center; }
 #ui-display-note { margin: 7px 0 10px; color: #aabac9; font-size: 12px; }
 .ui-help { margin: 9px 0 0; color: #7f93a6; font-size: 11px; }
+#ui-balance { display: flex; flex-direction: column; gap: 6px; }
+.ui-balance-row { display: grid; grid-template-columns: 84px 1fr 42px; align-items: center; gap: 8px; }
+.ui-balance-row label { font-size: 12px; color: #c7d6e2; }
+.ui-balance-row input[type="range"] { width: 100%; accent-color: #66bdc8; }
+.ui-balance-val { font: 600 11px/1.4 ui-monospace, monospace; color: #9fb3c4; text-align: right; }
+#ui-balance-status { margin: 2px 0 0; color: #7f93a6; font-size: 11px; }
 .ui-scene-controls { display: flex; align-items: center; gap: 5px 8px; flex-wrap: wrap; }
 .ui-scene-controls + .ui-scene-controls { margin-top: 6px; }
 #ui-scene-note { margin: 6px 0 0; color: #9eafbf; font-size: 12px; }
@@ -331,6 +337,11 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 			<p id="ui-workforce-note" class="ui-help"></p>
 			<div id="ui-workforce-stats"></div>
 		</section>
+		<section class="ui-block" aria-labelledby="ui-balance-title">
+			<h2 id="ui-balance-title">balance speeds</h2>
+			<div id="ui-balance"></div>
+			<p id="ui-balance-status" class="ui-help"></p>
+		</section>
 		<div id="ui-survey-panel">
 			<section class="ui-block"><h2>party</h2><div id="ui-stats"></div></section>
 			<section class="ui-block"><h2>skills</h2><div id="ui-skills"></div></section>
@@ -372,6 +383,7 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 <script src="input.js"></script>
 <script src="hud.js"></script>
 <script src="hud-economy.js"></script>
+<script src="hud-balance.js"></script>
 <script src="hud-display.js"></script>
 <script src="hud-scenes.js"></script>
 <script src="actions.js"></script>

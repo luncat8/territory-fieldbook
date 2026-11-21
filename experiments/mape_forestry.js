@@ -32,30 +32,33 @@ function place(kind, x, y) {
 	return idx;
 }
 
-function verifySingleSampleSearch() {
+function verifyPatchCut() {
 	main.setup(START_SEED, 'a');
 	world.terrain.fill(TERRAIN.MEADOW);
 	economy.biomass.fill(0);
 	const saw = place(MAPE_FACTORY_KIND.SAWMILL, 20, 20);
 	mape.demandView[MAPE_RES.LOGS].fill(1);
-	const seed = 7319;
-	const width = MAPE_SAWMILL_SEARCH_RADIUS * 2 + 1;
-	randomSeed(seed);
-	const pick = randomInt(width * width);
-	const decoy = (pick + 1) % (width * width);
-	const sampleIdx = (20 + (pick / width | 0) - MAPE_SAWMILL_SEARCH_RADIUS) * world.size +
-		20 + pick % width - MAPE_SAWMILL_SEARCH_RADIUS;
-	const decoyIdx = (20 + (decoy / width | 0) - MAPE_SAWMILL_SEARCH_RADIUS) * world.size +
-		20 + decoy % width - MAPE_SAWMILL_SEARCH_RADIUS;
-	economy.biomass[decoyIdx] = 1;
-	randomSeed(seed);
+	for (let dy = -1; dy <= 1; dy++) {
+		for (let dx = -1; dx <= 1; dx++) economy.biomass[(20 + dy) * world.size + 20 + dx] = 1;
+	}
+	mape.factoryScanAcc[0] = MAPE_SAWMILL_SCAN_SEC;
+	const forestBefore = economy.biomass.reduce((sum, value) => sum + value, 0);
 	mapeStepForestryFactory(0, saw, 0.2, 1);
-	assert.equal(totalStock(MAPE_RES.LOGS), 0, 'a missed sample does not search another forest cell');
-	economy.biomass[sampleIdx] = 1;
-	randomSeed(seed);
+	const cutCells = [];
+	for (let dy = -MAPE_SAWMILL_SEARCH_RADIUS; dy <= MAPE_SAWMILL_SEARCH_RADIUS; dy++) {
+		for (let dx = -MAPE_SAWMILL_SEARCH_RADIUS; dx <= MAPE_SAWMILL_SEARCH_RADIUS; dx++) {
+			const idx = (20 + dy) * world.size + 20 + dx;
+			if (localStock(MAPE_RES.LOGS, idx) > 0) cutCells.push(idx);
+		}
+	}
+	assert.equal(cutCells.length, 9, 'a scan fells every eligible forest cell in the patch');
+	assert.ok(economy.biomass.reduce((sum, value) => sum + value, 0) < forestBefore, 'harvesting removes forest cover');
+	const bare = (20 - MAPE_SAWMILL_SEARCH_RADIUS) * world.size + 20 - MAPE_SAWMILL_SEARCH_RADIUS;
+	assert.equal(localStock(MAPE_RES.LOGS, bare), 0, 'a bare cell in the disc receives no logs');
+	const forestAfterScan = economy.biomass.reduce((sum, value) => sum + value, 0);
 	mapeStepForestryFactory(0, saw, 0.2, 1);
-	assert.ok(localStock(MAPE_RES.LOGS, sampleIdx) > 0, 'the sampled forest cell receives the logs');
-	assert.equal(localStock(MAPE_RES.LOGS, decoyIdx), 0, 'the unselected forest cell is left alone');
+	assert.equal(economy.biomass.reduce((sum, value) => sum + value, 0), forestAfterScan,
+		'no cut before the scan cooldown refills');
 }
 
 function runChain(engine, workforceMode) {
@@ -81,6 +84,7 @@ function runChain(engine, workforceMode) {
 	assert.ok(logPull[saw] > MAPE_SAWMILL_MIN_PULL, 'processor demand reaches the forestry area');
 	const beforeForest = economy.biomass.reduce((sum, value) => sum + value, 0);
 	const beforeLogs = totalStock(MAPE_RES.LOGS);
+	mape.factoryScanAcc[0] = MAPE_SAWMILL_SCAN_SEC;
 	mapeStepForestryFactory(0, saw, 0.2, 1);
 	const cutCells = [];
 	for (let dy = -MAPE_SAWMILL_SEARCH_RADIUS; dy <= MAPE_SAWMILL_SEARCH_RADIUS; dy++) {
@@ -89,7 +93,7 @@ function runChain(engine, workforceMode) {
 			if (localStock(MAPE_RES.LOGS, idx) > 0) cutCells.push(idx);
 		}
 	}
-	assert.equal(cutCells.length, 1, 'one random 5×5 cell receives the logs');
+	assert.ok(cutCells.length > 1, 'a scan fells several cells in the patch, not one sample');
 	assert.ok(economy.biomass.reduce((sum, value) => sum + value, 0) < beforeForest, 'harvesting removes forest cover');
 	assert.ok(totalStock(MAPE_RES.LOGS) > beforeLogs, 'sawmill creates log stock');
 	for (let step = 0; step < Math.round(6 / SIM_STEP_SEC); step++) main.step(SIM_STEP_SEC);
@@ -103,7 +107,7 @@ function runChain(engine, workforceMode) {
 		' ledger=' + mapeLedgerResidual().toExponential(1));
 }
 
-verifySingleSampleSearch();
+verifyPatchCut();
 runChain(MAPE_ENGINE.DIFFUSION, MAPE_WORKFORCE_MODE.FLUID);
 runChain(MAPE_ENGINE.CATCHMENT, MAPE_WORKFORCE_MODE.RESIDENTS);
 

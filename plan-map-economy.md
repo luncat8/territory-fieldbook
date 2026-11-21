@@ -177,8 +177,10 @@ MAPE_POP_SEED_MIN = 8            // seeded settlement persons, low
 MAPE_POP_SEED_MAX = 20           // seeded settlement persons, high
 MAPE_NEED_GOODS = 0.03           // signed reference goods need/person/s
 MAPE_NEED_COAL = 0.02            // signed reference coal need/person/s
+MAPE_NEED_WOOD = 0.02            // signed reference wood need/person/s (diffusion)
 MAPE_MARKET_GOODS_USE = 0.036    // A/B household goods use/person/s
 MAPE_MARKET_COAL_USE = 0.045    // A/B household coal use/person/s
+MAPE_MARKET_WOOD_USE = 0.03      // A/B household wood use/person/s
 MAPE_HUNGRY_POP = 8              // population half-saturation of the import target: pop/(pop+8)
 MAPE_FACTORY_YARD = 4            // half-width of the graded coal pull around an active plant
 MAPE_SETTLE_DISTURB = 0.0024     // disturbance per unit goods consumed, spread around the cell
@@ -419,6 +421,18 @@ at all. Charcoal works turn logs into coal at `0.8`, so the supply chain is
 towns alive; it cannot make them grow on its own, because a coal-only town tops
 out at `0.71` against a neutral line of `0.82`. Goods are the growth input.
 
+### Wood demand
+
+Settlements also need wood — `MAPE_NEED_WOOD = 0.02/person/s` in Diffusion,
+`MAPE_MARKET_WOOD_USE = 0.03/person/s` in A/B — as a construction and heating
+material. Wood is a market commodity like coal and goods: settlements inject
+log demand, the field routes logs to them, and they consume what arrives (the
+ledger stays balanced because consumption only spends stock that exists). This
+demand is what pulls a sawmill's output: a mill only fells where log demand
+reaches it, so a wood-demanding town gives the local mill a market and starts
+the `forest -> sawmill -> logs -> town` loop without a charcoal or wood works
+first. Wood does not feed satisfaction; it is a material the town spends.
+
 Growth also fades as a town nears its room, so a supplied town settles at a
 steady size instead of piling everyone onto one cell. Landfill waste lowers
 `settleValue` and therefore both the subsistence share and the carrying
@@ -651,9 +665,13 @@ has no anchor and uses the town-weighted centre alone.
 
 ### 3. Sawmill: an area producer, not a point
 
-The sawmill already samples a forest cell inside `MAPE_SAWMILL_SEARCH_RADIUS = 2`
-each tick and misses cost that tick, so sparseness lowers output. The build plan
-makes that area explicit rather than accidental:
+The sawmill works the disc of `MAPE_SAWMILL_SEARCH_RADIUS = 2` around its site.
+It does not sample one random cell per tick: on its own scan clock
+(`MAPE_SAWMILL_SCAN_SEC`, a cooldown so a mill does not scan every step) it fells
+**every eligible cell** in the 5×5 disc, splitting the tick's rate budget evenly
+across them. A miss no longer costs a tick — sparseness still lowers output
+because fewer cells are eligible — and the area model is explicit rather than
+accidental:
 
 - site score includes `mapeForestCover(x, y)`, the mean biomass over the 5×5
   search radius, with a hard floor of `0.45`. Measured on the seeded map: cover
@@ -663,6 +681,9 @@ makes that area explicit rather than accidental:
 - once active, `MAPE_SAWMILL_RATE * (1 + 0.15 * cover)` scales output with how
   well the surrounding area is still wooded, so a mill in deep forest out-earns
   one on the edge;
+- a cell is eligible when its biomass is above `MAPE_SAWMILL_MIN_FOREST` and its
+  log demand reaches `MAPE_SAWMILL_MIN_PULL`; the cut converts forest to logs at
+  that cell, so logs appear across the patch, not on one sampled tile;
 - felling removes `0.025` biomass per log and CO2 feeds regrowth, so a mill
   works an *area* that regrows around it rather than a single cell that empties.
 
@@ -888,6 +909,15 @@ mapeSetEngine(mode)            // change the routing strategy on the live map
 Switching field strategies resets the coal and goods traces and rebuilds their
 demand from current stock and settlements (two simulated seconds of signal
 warmup, no clock advance).
+
+The **balance speeds** panel (`hud-balance.js`) gives each subsystem its own
+clock multiplier — factories, settlements, mines, sites and workshops — so a
+playtest can speed one part up or stop it without touching the others. Each
+subsystem scales its own `dt` (`mapeStepFactories`, `mapePopulationStep`,
+`mapeStepMines`, `mapeStepWorkshops`, `mapeStepSites` and the settlement
+consumption paths), so 1 stays the live rate. A **Copy settings** button writes
+the current line (`balance: factories 1.0 · settlements 1.0 · …`) to the
+clipboard for sharing a working balance.
 Inventory, market funds, residents, worker demand, mines, deposit stock, party
 progress and atmosphere do not reset. Tests start from identical layouts when
 comparing curves; live switches preserve the consequences of earlier ticks.

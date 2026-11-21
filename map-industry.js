@@ -9,6 +9,7 @@ const MAPE_WORKSHOP_RATE = 0.9;
 const MAPE_WORKSHOP_STOCK = 4;
 const MAPE_SAWMILL_RATE = 1.1;
 const MAPE_SAWMILL_SEARCH_RADIUS = 2;
+const MAPE_SAWMILL_SCAN_SEC = 1.0;
 const MAPE_SAWMILL_MIN_FOREST = 0.08;
 const MAPE_SAWMILL_MIN_PULL = 0.015;
 const MAPE_SAWMILL_FOREST_PER_LOG = 0.025;
@@ -39,6 +40,7 @@ function mapeAddFactory(x, y, state, kind = MAPE_FACTORY_KIND.GENERAL) {
 	mape.factoryKind[f] = kind;
 	mape.factoryProgress[f] = state === MAPE_FACTORY_STATE.ACTIVE ? 1 : 0;
 	mape.factoryStarved[f] = 0;
+	mape.factoryScanAcc[f] = 0;
 	mape.factoryCoal[f] = 0;
 	mape.factoryIron[f] = 0;
 	mape.factoryGoods[f] = 0;
@@ -141,6 +143,7 @@ function mapeDepositState(x, y) {
 }
 
 function mapeStepMines(dt) {
+	dt *= mape.speedMine;
 	const size = world.size;
 	for (let m = 0; m < mape.mineCount; m++) {
 		if (!mapeMineActive(m)) continue;
@@ -203,6 +206,7 @@ function mapeStepFactoryBuild(f, idx, dt, staff) {
 }
 
 function mapeStepFactories(dt) {
+	dt *= mape.speedFactory;
 	const size = world.size;
 	const n = world.n;
 	const goods = mape.goods;
@@ -290,19 +294,48 @@ function mapeForestCover(x, y) {
 	return count > 0 ? sum / count : 0;
 }
 
-function mapeSampleForestCutCell(x, y) {
-	// A miss costs this tick, so sparse forest lowers effective sawmill output.
+// Forest is an area: one scan fells every eligible cell in the 5×5 disc, splitting the
+// tick's rate budget evenly across them. A mill scans on its own clock (MAPE_SAWMILL_SCAN_SEC),
+// not every step, so a patch is cleared in a batch instead of one random sample per tick.
+function mapeSawmillCutPatch(x, y, budget) {
+	if (budget <= 0) return 0;
 	const size = world.size;
 	const radius = MAPE_SAWMILL_SEARCH_RADIUS;
-	const width = radius * 2 + 1;
-	const sample = randomInt(width * width);
-	const cx = x + sample % width - radius;
-	const cy = y + (sample / width | 0) - radius;
-	if (cx < 0 || cy < 0 || cx >= size || cy >= size) return -1;
-	const idx = cy * size + cx;
-	if (world.terrain[idx] === TERRAIN.WATER || economy.biomass[idx] < MAPE_SAWMILL_MIN_FOREST ||
-		mape.demandView[MAPE_RES.LOGS][idx] < MAPE_SAWMILL_MIN_PULL) return -1;
-	return idx;
+	const terrain = world.terrain;
+	const biomass = economy.biomass;
+	const demand = mape.demandView[MAPE_RES.LOGS];
+	let count = 0;
+	for (let dy = -radius; dy <= radius; dy++) {
+		for (let dx = -radius; dx <= radius; dx++) {
+			const cx = x + dx, cy = y + dy;
+			if (cx < 0 || cy < 0 || cx >= size || cy >= size) continue;
+			const ci = cy * size + cx;
+			if (terrain[ci] === TERRAIN.WATER) continue;
+			if (biomass[ci] < MAPE_SAWMILL_MIN_FOREST) continue;
+			if (demand[ci] < MAPE_SAWMILL_MIN_PULL) continue;
+			count++;
+		}
+	}
+	if (count === 0) return 0;
+	const perCell = budget / count;
+	let produced = 0;
+	for (let dy = -radius; dy <= radius; dy++) {
+		for (let dx = -radius; dx <= radius; dx++) {
+			const cx = x + dx, cy = y + dy;
+			if (cx < 0 || cy < 0 || cx >= size || cy >= size) continue;
+			const ci = cy * size + cx;
+			if (terrain[ci] === TERRAIN.WATER) continue;
+			if (biomass[ci] < MAPE_SAWMILL_MIN_FOREST) continue;
+			if (demand[ci] < MAPE_SAWMILL_MIN_PULL) continue;
+			const units = Math.min(perCell, biomass[ci] / MAPE_SAWMILL_FOREST_PER_LOG);
+			if (units <= 0) continue;
+			biomass[ci] -= units * MAPE_SAWMILL_FOREST_PER_LOG;
+			mapeProduceStock(MAPE_RES.LOGS, ci, units);
+			landDisturbRing(ci, 0.00015 * units);
+			produced += units;
+		}
+	}
+	return produced;
 }
 
 function mapeStepForestryFactory(f, idx, dt, staff) {
@@ -310,19 +343,19 @@ function mapeStepForestryFactory(f, idx, dt, staff) {
 	if (staff <= 0) return;
 	const kind = mape.factoryKind[f];
 	if (kind === MAPE_FACTORY_KIND.SAWMILL) {
-		const cell = mapeSampleForestCutCell(mape.factoryX[f], mape.factoryY[f]);
-		if (cell < 0) return;
-		const pull = mape.demandView[MAPE_RES.LOGS][cell];
+		const acc = mape.factoryScanAcc[f] + dt;
+		if (acc < MAPE_SAWMILL_SCAN_SEC) {
+			mape.factoryScanAcc[f] = acc;
+			return;
+		}
+		mape.factoryScanAcc[f] = 0;
+		const pull = mape.demandView[MAPE_RES.LOGS][idx];
 		const demandScale = Math.min(1, pull / (MAPE_SAWMILL_MIN_PULL * 2));
 		// A mill in deep forest out-earns one on the edge: cover scales the cut.
 		const cover = mapeForestCover(mape.factoryX[f], mape.factoryY[f]);
-		const units = Math.min(MAPE_SAWMILL_RATE * (1 + 0.15 * cover) * staff * landProductivity(idx) * demandScale * dt,
-			economy.biomass[cell] / MAPE_SAWMILL_FOREST_PER_LOG);
-		if (units <= 0) return;
-		economy.biomass[cell] -= units * MAPE_SAWMILL_FOREST_PER_LOG;
-		mape.factoryGoods[f] = units / dt;
-		mapeProduceStock(MAPE_RES.LOGS, cell, units);
-		landDisturbRing(cell, 0.00015 * units);
+		const budget = MAPE_SAWMILL_RATE * (1 + 0.15 * cover) * staff * landProductivity(idx) * demandScale * acc;
+		const produced = mapeSawmillCutPatch(mape.factoryX[f], mape.factoryY[f], budget);
+		mape.factoryGoods[f] = produced / acc;
 		return;
 	}
 	const slot = MAPE_RES.LOGS * world.n + idx;
@@ -442,6 +475,7 @@ function mapeSeedWorkshops() {
 }
 
 function mapeStepWorkshops(dt) {
+	dt *= mape.speedWorkshop;
 	const stock = mape.goodsView[MAPE_RES.GOODS];
 	for (let k = 0; k < mape.workshopCount; k++) {
 		const idx = mape.workshopCells[k];

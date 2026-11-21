@@ -35,6 +35,7 @@ const MAPE_STORAGE_CAP = 96;
 const MAPE_WORKSHOP_CAP = 4;
 const MAPE_NEED_GOODS = 0.03;
 const MAPE_NEED_COAL = 0.02;
+const MAPE_NEED_WOOD = 0.02;
 // Subsistence is what the land gives without trade. MAX is the ceiling at perfect ground;
 // NEUTRAL is the intake a town needs before it grows, so own ground never reaches it: the seeded
 // map holds its people on a deficit and imports are the only path to growth. Measured on the
@@ -82,6 +83,12 @@ const mape = {
 	fixedResidents: false,
 	scanOn: true,
 	scanAcc: 0,
+	// Balance speeds: each subsystem advances on its own clock, 1 = live rate.
+	speedFactory: 1,
+	speedSettlement: 1,
+	speedMine: 1,
+	speedSite: 1,
+	speedWorkshop: 1,
 	viewItem: MAPE_RES.GOODS,
 	viewItemDemand: MAPE_RES.GOODS,
 	pop: null,
@@ -132,6 +139,7 @@ const mape = {
 	factoryKind: new Uint8Array(MAPE_FACTORY_CAP),
 	factoryProgress: new Float32Array(MAPE_FACTORY_CAP),
 	factoryStarved: new Float32Array(MAPE_FACTORY_CAP),
+	factoryScanAcc: new Float32Array(MAPE_FACTORY_CAP),
 	factoryCoal: new Float32Array(MAPE_FACTORY_CAP),
 	factoryIron: new Float32Array(MAPE_FACTORY_CAP),
 	factoryGoods: new Float32Array(MAPE_FACTORY_CAP),
@@ -226,7 +234,7 @@ function mapeReset() {
 	for (const field of ['wfFresh', 'wfFreshNext', 'wfDepleted', 'wfDepletedNext', 'wfRestPull', 'wfRestPullNext', 'wfMigration', 'wfBalance', 'wfWanted', 'jobFilled', 'jobVacant', 'wfDonor', 'wfTaker']) mape[field].fill(0);
 	for (const field of ['fluidRested', 'fluidTired', 'fluidSpent', 'fluidSpawned', 'fluidGenerated']) mape[field] = 0;
 	for (const field of ['usedGoods', 'usedCoal', 'satGoods', 'satCoal', 'jobNeed', 'cellExport', 'money',
-		'factoryState', 'factoryKind', 'factoryProgress', 'factoryStarved', 'factoryCoal', 'factoryIron', 'factoryGoods', 'factoryCo2', 'mineUnlocked']) mape[field].fill(0);
+		'factoryState', 'factoryKind', 'factoryProgress', 'factoryStarved', 'factoryScanAcc', 'factoryCoal', 'factoryIron', 'factoryGoods', 'factoryCo2', 'mineUnlocked']) mape[field].fill(0);
 	mape.factoryCount = 0;
 	mape.mineCount = 0;
 	mape.storageCount = 0;
@@ -406,6 +414,7 @@ function mapeRebuildSettlements() {
 }
 
 function mapeRecoverMoney(seconds) {
+	seconds *= mape.speedSettlement;
 	const cells = mape.settleCells;
 	const money = mape.money;
 	const pop = mape.pop;

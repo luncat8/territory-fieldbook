@@ -98,6 +98,7 @@ function mapeInjectDemand(dt, marketsOnly) {
 	const coalOff = MAPE_RES.COAL * n;
 	const ironOff = MAPE_RES.IRON * n;
 	const goodsOff = MAPE_RES.GOODS * n;
+	const logsOff = MAPE_RES.LOGS * n;
 	const co2Off = MAPE_RES.CO2 * n;
 	for (let i = 0; i < n; i++) {
 		const t = terrain[i];
@@ -106,6 +107,7 @@ function mapeInjectDemand(dt, marketsOnly) {
 		if (p > 0 && local) {
 			demand[goodsOff + i] += p * MAPE_NEED_GOODS * gain;
 			demand[coalOff + i] += p * MAPE_NEED_COAL * gain;
+			demand[logsOff + i] += p * MAPE_NEED_WOOD * gain;
 		}
 		if (marketsOnly) continue;
 		if (p > 0) demand[co2Off + i] -= p * MAPE_NEED_COAL * gain;
