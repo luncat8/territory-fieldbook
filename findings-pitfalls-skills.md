@@ -251,3 +251,14 @@ gated on a consumer's signal, the rule must allow one consumer as soon as the
 producer stands (its own demand pulls the first cut); keep the scarcity reserve
 for every later build. Diagnose by printing the gate variable the producer
 waits on, not just what was placed.
+
+## a household commodity has two sides in every engine — demand and use
+
+Adding an item the towns consume touches demand injection, use rates, local use,
+catchment/queue serve, Sites hold, Sites orders, Sites metabolism and the
+`used*`/`sat*` arrays. A sawmill-chain draft that made logs a market item
+removed logs from Sites household holds and orders but kept Sites consumption:
+towns ate logs nobody ordered, and only the Sites engine showed it. Grep every
+existing site of the item (`MAPE_RES.LOGS`, `MAPE_NEED_*`) and change the
+demand and use sides as a pair; a four-engine "households pull without a
+producer" gate catches the missing side.
