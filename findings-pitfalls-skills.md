@@ -262,3 +262,12 @@ towns ate logs nobody ordered, and only the Sites engine showed it. Grep every
 existing site of the item (`MAPE_RES.LOGS`, `MAPE_NEED_*`) and change the
 demand and use sides as a pair; a four-engine "households pull without a
 producer" gate catches the missing side.
+
+## charge labour in input units, so a yield constant stays a pure yield
+
+The sawmill charged cut work per log produced (`logs / RATE`). Halving the
+forest→log yield then left logs/s unchanged and silently doubled forest draw —
+the opposite of "produce less wood". Work now costs `felled / FELL_RATE` (forest
+units), and `FOREST_PER_LOG` changes output only. For any recipe, put the
+workforce rate on the input it physically handles; output-side rates couple
+the yield knob to depletion.
