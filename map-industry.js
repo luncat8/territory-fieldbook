@@ -8,7 +8,9 @@ const MAPE_FACTORY_IDLE_SEC = 40;
 const MAPE_WORKSHOP_RATE = 0.9;
 const MAPE_WORKSHOP_STOCK = 4;
 const MAPE_SAWMILL_RATE = 1.1;
-const MAPE_SAWMILL_SEARCH_SEC = 2;
+const MAPE_SAWMILL_SEARCH_SEC = 1;
+// Half-cell cuts at twice the cadence: same logs/s, smaller haul bursts, and no bald cells.
+const MAPE_SAWMILL_CUT_SHARE = 0.5;
 const MAPE_SAWMILL_SEARCH_RADIUS = 2;
 const MAPE_SAWMILL_MIN_FOREST = 0.08;
 const MAPE_SAWMILL_MIN_PULL = 0.015;
@@ -312,7 +314,7 @@ function mapeStepForestryFactory(f, idx, dt, staff) {
 	if (staff <= 0 || dt <= 0) return;
 	const kind = mape.factoryKind[f];
 	if (kind === MAPE_FACTORY_KIND.SAWMILL) {
-		// Charge each whole-cell harvest as future work, rather than multiplying output by tick frequency.
+		// Charge each cut as future work, rather than multiplying output by tick frequency.
 		const effort = staff * landProductivity(idx) * dt;
 		if (effort <= 0) return;
 		mape.factoryHarvestWork[f] -= effort;
@@ -323,9 +325,10 @@ function mapeStepForestryFactory(f, idx, dt, staff) {
 		const pull = mape.demandView[MAPE_RES.LOGS][cell];
 		const demandScale = Math.min(1, pull / (MAPE_SAWMILL_MIN_PULL * 2));
 		const cover = mapeForestCover(mape.factoryX[f], mape.factoryY[f]);
-		const units = economy.biomass[cell] / MAPE_SAWMILL_FOREST_PER_LOG;
+		const felled = economy.biomass[cell] * MAPE_SAWMILL_CUT_SHARE;
+		const units = felled / MAPE_SAWMILL_FOREST_PER_LOG;
 		mape.factoryHarvestWork[f] += units / (MAPE_SAWMILL_RATE * (1 + 0.15 * cover) * demandScale);
-		economy.biomass[cell] = 0;
+		economy.biomass[cell] -= felled;
 		mape.factoryGoods[f] = units / dt;
 		mapeProduceStock(MAPE_RES.LOGS, cell, units);
 		landDisturbRing(cell, 0.00015 * units);
