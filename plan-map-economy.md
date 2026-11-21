@@ -48,7 +48,9 @@ workers physically walk to jobs); see **Workforce models**.
 Deferred to follow-up after 4.1a: oxygen as a population/factory need and low-O2
 production throttle (closing the full CO2↔O2 constraint), multi-product recipes
 beyond one, player-built factories, caravan agents, larger maps, rival
-map-economy actions.
+map-economy actions, victory stability checks (total population not declining
+over a rolling window, no unmanaged factory/mine cell above a disturbance
+floor) — not needed at this dev stage.
 
 ## Engine order: shared field foundation, then sites
 
@@ -710,12 +712,24 @@ of one build — before it lets a works consume logs, and it prefers a `SAWMILL`
 first whenever regional logs are below that reserve. Wood has to exist before
 wood can be spent.
 
+**The bootstrap exception:** a sawmill only cuts where log demand reaches it
+(`MAPE_SAWMILL_MIN_PULL`), and log demand comes only from charcoal and wood
+works — so a region with no consumer could never start its chain: mills below
+the reserve, works above it, and logs never move. Once a region stands a mill,
+its first works may site below the reserve: the building works injects the log
+demand that pulls the first cut, and the standing mill replenishes what the
+build draws. The reserve still gates every later build, so the chain runs
+mill first, consumer second, then alternates with need.
+
 ### 6. Test gate
 
-`experiments/mape_factory.js` (pending) must show:
+`experiments/mape_factory.js` must show:
 
 - a region with unmet goods and no logs builds nothing, then starts within one
   scan of logs arriving;
+- on the seeded survey the scan starts the wood chain: a sawmill first, then a
+  log consumer within one scan of the mill standing (the cut is demand-gated,
+  so without the consumer nothing flows);
 - build time halves when staffing doubles;
 - two deposits 10 cells apart place a general factory within 3 cells of their
   weighted centroid, and moving the towns does not move it more than 3 cells;
@@ -1109,12 +1123,11 @@ Gate: site engine matches diffusion qualitatively (supplied settlements grow,
 factories build in `10–30 s` between demand and mines, forests grow near CO2
 emitters, exact conservation `< 1e-6`). Divergences recorded in findings.
 
-### Phase 5 — Selectable engine comparison and victory integration
+### Phase 5 — Selectable engine comparison
 
 Deliverable: enable HUD `sites` once shipments can switch without loss, `+10%`
-player influence boost on growth, victory stability checks (total population not
-declining over last `60 s`, no unmanaged factory/mine cell with `d ≥ 0.25`), and
-extend `experiments/mape_compare.js` to compare sites on identical seeds.
+player influence boost on growth, and extend `experiments/mape_compare.js` to
+compare sites on identical seeds.
 
 Gate: runtime switches preserve the stock ledger, all engines pass `smoke` and
 `dom_smoke`, comparison metrics are logged.
