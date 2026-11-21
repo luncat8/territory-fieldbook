@@ -60,7 +60,7 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	map-industry.js — mine/factory pools, deposit locks, workshops and forestry production.
 	map-factory-scan.js — engine factory placement scan: region need, site choice and kind selection.
 	map-farm.js — farm fields: clearing to farmland, one worker per cell, batch harvest and food.
-	map-diffusion.js — shared field tick, signed diffusion, gradient goods/worker flow.
+	map-diffusion.js — shared field tick, signed diffusion, stable pass count per diffusion speed, gradient goods/worker flow.
 	map-sites.js — discrete Site engine: delivered-price orders, SoA shipment pool, margin siting.
 	map-market-flow.js — land stencil, catchment reach and joint intake admission.
 	map-market-demand.js — bounded A/B pull, stock feedback and household use.
@@ -83,7 +83,7 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	hud-tune.js — left tuning panel: sliders, copy/apply settings text, saved knobs.
 	actions.js — player verbs spanning features (move, work, sell, hire, restore, declare).
 	experiments/ — smoke (sim), dom_smoke + dom_fixture (boot/UI), map_views (display),
-	mape_compare (engines), mape_sites (site engine), mape_scenes (scenes), mape_population (settlements), mape_fluid (workforce), mape_fluid_migration (capacity and migration), mape_forestry (logs and forest production), mape_factory (placement scan), mape_farm (farms); never loaded by the page.
+	mape_compare (engines), mape_sites (site engine), mape_scenes (scenes), mape_population (settlements), mape_fluid (workforce), mape_fluid_migration (capacity and migration), mape_forestry (logs and forest production), mape_factory (placement scan), mape_farm (farms), mape_diffusion_speed (diffusion speed stability and reach); never loaded by the page.
 - new code goes to its owner, never appended "because the file is already there". no owner exists -> new file + header + map entry.
 - file > ~500 lines = defect. split by feature within the same plan.
 - moves are pure moves: contiguous ranges, snap to enclosing declarations, no behavior change.

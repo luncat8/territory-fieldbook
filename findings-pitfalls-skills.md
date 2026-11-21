@@ -171,13 +171,26 @@ it hides the effort of finding a sparse patch. For search friction, sample one c
 fixed patch and let an ineligible result consume the attempt. This keeps per-tick work constant
 and makes output probability track forest coverage.
 
-## a diffusion field's halo must be shorter than the spacing of its sources
+## a fading pull's reach is an outcome — tune the rates, never a distance
 
-The town pull relaxed toward ambient at `0.025/s`, i.e. a ~10-cell halo, while seeded towns
-sat 2–5 cells apart: the halos overlapped into one flat sheet (town/background contrast
-1.02–1.17) and every town read the same pull regardless of population. Measure the contrast,
-not the peak: sort land cells, compare the town median to the background median. Spacing sets
-the budget — halo reach must stay well under the nearest-neighbour distance.
+Demand fields here have no cutoff: a signal diffuses (`D`, cells²/s) and fades (`k`, /s), and
+how far it carries is `sqrt(D / k)`. The town pull once faded at `0.025/s` (~10 cells) while
+seeded towns sat 2–5 cells apart: neighbouring pulls merged into one flat sheet (town/background
+contrast 1.02–1.17) and every town read the same. The fix was a faster fade (`0.8/s`, ~5 cells
+at today's `D`), not a radius. Measure the contrast, not the peak: sort land cells, compare the
+town median to the background median. Write reach as a measured consequence ("about five cells
+at D = 24"), never as a rule — a later speed change moves it on purpose, and comments that call
+it a fixed halo invite someone to clamp the field to keep it.
+
+## explicit diffusion breaks silently when its speed is a per-pass mix
+
+The A/B pull mixed `0.2 · dt / 0.05` per Jacobi pass and the signed kernel mixed
+`0.72 · 0.25 · dt / 0.2`. Both were fine at today's numbers and both were one tuning step from
+exploding: per-pass mix above `0.25` oscillates, and a 0.2 s A/B step blew the 0–1 pull to
+`3e38`. A hard-coded even pass count was also load-bearing — an odd count leaves the result in
+the scratch buffer. Configure a coefficient in cells²/s and derive passes from it
+(`mapeDiffusePasses`): speed or step changes then cost passes, never stability. Fade with
+`exp(−k · dt)` for the same reason.
 
 ## never scale a physical need by the signal that decides where supply goes
 
@@ -287,3 +300,20 @@ draw and the progress together and total cost stays authored.
 `dom_smoke` reported a single `check_boot=fail` — every later check was skipped, not failed,
 and `map_views` hid a stale duplicate check behind the same crash. When boot fails in the
 fixture, grep the boot error for the missing member first and add it to `makeElement`.
+
+## a scan that only tries the best region freezes the whole map
+
+The placement scan picked the single neediest region and returned when that region had no legal
+cell for its kind. On the seeded survey the first farm took the region centre and cleared its
+forest; every later scan chose the same region, failed the cover floor at the same centroid,
+and the map built one farm in ten minutes. Rank the regions and fall through to the next,
+skipping anchors that describe the same towns. Let a mill search wider for forest than a works
+searches for its centroid — the town centre is where cover is thinnest.
+
+## a demand floor gates where, not how much
+
+The sawmill cut wherever log pull cleared a tiny floor, and works keep the pull high near them,
+so one crew of 32 out-cut a dozen works and the scan read the piles as surplus and kept siting
+consumers to the cap. A local stock check — uncollected logs in the cutting patch hold the crew
+— ties output to what haulage takes away. Count only free stock as surplus: a works' input
+buffer on its own cell is spoken for.

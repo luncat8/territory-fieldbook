@@ -10,9 +10,11 @@ const MAPE_CATCHMENT_STOCK_SECONDS = 9;
 const MAPE_CATCHMENT_RESPONSE = 0.9;
 const MAPE_CATCHMENT_STRENGTH = 5;
 const MAPE_CATCHMENT_DECAY = 0.8;
+const MAPE_CATCHMENT_DIFFUSE = 24;
 const MAPE_QUEUE_STOCK_SECONDS = 12;
 const MAPE_QUEUE_RESPONSE = 1.6;
 const MAPE_QUEUE_DECAY = 0.8;
+const MAPE_QUEUE_DIFFUSE = 16;
 const MAPE_QUEUE_SECONDS = 0.25;
 const MAPE_QUEUE_SERVICE_SECONDS = 0.1;
 const MAPE_QUEUE_COOLING = 0.32;
@@ -149,7 +151,8 @@ function mapeMarketDecay(queue) {
 	return queue ? MAPE_QUEUE_DECAY : MAPE_CATCHMENT_DECAY;
 }
 
-// Halos fade within ~4 cells; a wider reach flooded the whole map at 2% town density.
+// The pull fades toward ambient over time; how far it carries is sqrt(D / decay), so a diffusion
+// speed change moves the reach with it. Measured: ~5 cells keeps 2–5-cell town spacing readable.
 function mapeDriftMarketSlice(off, dt, queue) {
 	const { land, landCount } = mapeMarketFlow;
 	const { demand, goods, localPressure, marketFill } = mape;
@@ -168,10 +171,11 @@ function mapeDriftMarketSlice(off, dt, queue) {
 function mapeUpdateMarketSlice(r, dt, queue) {
 	const off = r * world.n;
 	const { demand, demandNext } = mape;
-	const mix = 0.2 * dt / MAPE_MARKET_STEP;
+	const rate = queue ? MAPE_QUEUE_DIFFUSE : MAPE_CATCHMENT_DIFFUSE;
+	const passes = mapeDiffusePasses(rate, dt);
+	const mix = passes > 0 ? rate * dt / passes : 0;
 	mapePullMarketSlice(r, dt, queue);
-	// More Jacobi passes give town signals time to reach lanes before stock piles up at a mine.
-	for (let pass = 0, pairs = queue ? 2 : 3; pass < pairs; pass++) {
+	for (let pass = 0; pass < passes; pass += 2) {
 		mapeMarketJacobi(demand, demandNext, off, mix);
 		if (queue) mapeMarketPinQueues(demandNext, off);
 		mapeMarketJacobi(demandNext, demand, off, mix);

@@ -3,7 +3,7 @@
 
 const MAPE_WF_GEN = 0.05;
 const MAPE_WF_TIRE = 0.02;
-const MAPE_WF_DIFFUSE = 0.35;
+const MAPE_WF_DIFFUSE = 0.875;
 const MAPE_WF_FLOW = 1.8;
 const MAPE_WF_GRAD_REF = 0.03;
 const MAPE_WF_SPEND = 1.0;
@@ -139,8 +139,9 @@ function mapeDepletedPass(src, dst, size, terrain, mix) {
 }
 
 function mapeFluidDiffuse(dt, size, terrain, depleted, depletedNext) {
-	const edgeMix = MAPE_WF_DIFFUSE * 0.25 * (dt / MAPE_MAX_STEP);
-	for (let p = 0; p < MAPE_DIFFUSE_PASSES; p++) {
+	const passes = mapeDiffusePasses(MAPE_WF_DIFFUSE, dt);
+	const edgeMix = passes > 0 ? MAPE_WF_DIFFUSE * dt / passes : 0;
+	for (let p = 0; p < passes; p++) {
 		const src = (p & 1) === 0 ? depleted : depletedNext;
 		const dst = (p & 1) === 0 ? depletedNext : depleted;
 		mapeDepletedPass(src, dst, size, terrain, edgeMix);

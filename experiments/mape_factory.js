@@ -150,6 +150,37 @@ const outB = mape.factoryGoods[sB];
 check('sawmill_output_rises_with_cover', outB > outA,
 	'cover0.5=' + outA.toFixed(3) + ' cover1.0=' + outB.toFixed(3));
 
+// Gate 4c: the neediest region with no legal cell for its kind does not stall the scan — a
+// smaller region with forest gets the mill; a second scan does not stack a second mill there.
+blank();
+town(10, 10, 20);
+town(11, 10, 20);
+for (let y = 44; y <= 52; y++) {
+	for (let x = 44; x <= 52; x++) economy.biomass[cell(x, y)] = 1;
+}
+town(48, 42, 12);
+mapeScanRun();
+const fbOk = mape.factoryCount === 1 && mape.factoryKind[0] === MAPE_FACTORY_KIND.SAWMILL;
+check('blocked_region_falls_back', fbOk && Math.abs(mape.factoryX[0] - 48) <= MAPE_SAWMILL_SNAP && mape.factoryY[0] >= 42,
+	'count=' + mape.factoryCount + ' site=' + (fbOk ? mape.factoryX[0] + ',' + mape.factoryY[0] : '-'));
+check('sawmill_walks_to_forest', fbOk && mapeForestCover(mape.factoryX[0], mape.factoryY[0]) >= 0.8,
+	'cover=' + (fbOk ? mapeForestCover(mape.factoryX[0], mape.factoryY[0]).toFixed(2) : '-'));
+mapeScanRun();
+check('one_mill_building_per_region', mape.factoryCount === 1, 'count=' + mape.factoryCount);
+
+// Gate 4d: the live survey, every system on, brings a sawmill online and a log works beside it.
+main.setup(START_SEED, '');
+for (let k = 0; k < Math.round(150 / SIM_STEP_SEC); k++) main.step(SIM_STEP_SEC);
+let liveMills = 0;
+let liveWorks = 0;
+for (let f = 0; f < mape.factoryCount; f++) {
+	if (mape.factoryState[f] !== MAPE_FACTORY_STATE.ACTIVE) continue;
+	const kind = mape.factoryKind[f];
+	if (kind === MAPE_FACTORY_KIND.SAWMILL) liveMills++;
+	if (kind === MAPE_FACTORY_KIND.CHARCOAL || kind === MAPE_FACTORY_KIND.WOOD) liveWorks++;
+}
+check('live_survey_runs_sawmills', liveMills >= 1 && liveWorks >= 1, 'mills=' + liveMills + ' works=' + liveWorks);
+
 // Gate 5: on the seeded map no ORE mine is bound, so GENERAL is never chosen
 // even after a full minute of live scans — and the default survey must start
 // its wood chain: a sawmill first, then a log consumer to pull the first cut.

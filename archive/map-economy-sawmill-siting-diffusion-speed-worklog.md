@@ -1,0 +1,18 @@
+# sawmill siting, region fallback and diffusion speed worklog (plan-map-economy)
+
+plan: `plan-map-economy.md` — Factory build plan §1/§2/§3/§5, Forestry supply chain, Diffusion speed and stability (new), Transport speed map (new, planned), Phase 6
+review: on the default survey (`main.step`, Catchment A, Fluid) the scan built one farm at t=5 s and then nothing for 600 s. Every scan picked the same neediest region; the farm sat on its centroid (spacing 4 blocks the whole ±2 snap box) and had cleared its forest, so the mill failed the cover floor and the scan returned. No sawmill ever spawned
+review: the worklog/plan/comment wording "halo held to ~4 cells" read like a strict demand distance. The code has no demand cutoff — fields diffuse and fade — but two things would break when diffusion speed changes: per-pass mix was hard-coded (`0.2·dt/0.05` for A/B, `0.72·0.25·dt/0.2` signed), which is unstable above 0.25 (a 0.2 s A/B step blew the pull to 3e38), and an even pass count was load-bearing (an odd one leaves the result in scratch)
+changed: `map-factory-scan.js` — regions ranked by score and tried in turn, skipping anchors within 6 cells of a tried one; one build per kind per region at a time; a region with plants staffed below 50% waits; only free logs (not on plant cells) count toward the reserve; sawmill searches 6 cells for forest and scores cover ×10; near snap box widens once to 5 when full (feature)
+changed: `map-industry.js` — `MAPE_SAWMILL_YARD_LOGS = 6`: uncollected logs in the cutting patch hold the crew (balance)
+changed: `hud-economy.js` — sawmill inspector shows the yard and when the crew waits for haulage (feature)
+changed: `map-diffusion.js`, `map-fluid.js`, `map-market-demand.js` — diffusion speeds are coefficients in cells²/s; `mapeDiffusePasses` derives an even pass count with per-pass mix ≤ `MAPE_MIX_MAX = 0.2`; fade uses `exp(−k·dt)`; CO2 stock pass reads the mixed stock on later passes. Shipped behaviour unchanged: 1.8 → 2 passes, 24 → 6, 16 → 4, 0.875 → 2 (fix)
+changed: `experiments/mape_diffusion_speed.js` (new) — passes bounded and even, 50× speed stable and conservative, variance ×4 at 4×D, reach ×2 at 4×D, water wall at speed, A/B pull bounded on a 0.2 s step (fails on the old code: 2.9e38)
+changed: `experiments/mape_factory.js` — blocked region falls back, mill walks to forest, one mill building per region, live survey with `main.step` runs a mill and a works by 150 s
+changed: `experiments/mape_forestry.js` — harvest cadence clears the yard each step (test intent kept: crew sets the pace); new full-yard check
+changed: `plan-map-economy.md`, `findings-pitfalls-skills.md`, `AGENTS.md` — constants, the rules above, halo wording replaced by fade/reach-as-outcome, transport speed map design
+validation: full suite 17/17 exit 0 (mape_sites also passes; it failed at baseline on a −1.3e-6 live-map residual); `node --check`, `git diff --check` clean
+evidence: default survey 600 s before → after: built 0/0/0/0/2 → 0/8/10/6/8 (general/saw/charcoal/wood/farm), satGoods 0.09 → 0.15, satCoal 0.01 → 0.03–0.07, ledger ≤ 2e-8; Diffusion and Queue engines also run mills; seeds 1–3 similar
+decisions: the transport speed map is only planned (user asked for a plan entry); its design reuses the pass rule, so a road faster than meadow costs passes, not stability
+pitfalls: Sites engine builds mills now but its charcoal works still stall in construction (pre-existing: 19 works stuck before this change); `map-diffusion.js` was already over 500 lines (516 → 533) — split it in a separate pure-move plan
+next: the map reaches the 32-plant cap in ~200 s; decide whether cap, staffing floor or the threshold should pace build-out. Then implement Phase 6 transport speed map

@@ -172,8 +172,29 @@ function verifyHarvestCadence(dt, workers) {
 	const saw = place(MAPE_FACTORY_KIND.SAWMILL, 20, 20);
 	mape.wfFresh[saw] = workers;
 	randomSeed(7319);
-	for (let step = 0; step < Math.round(120 / dt); step++) mapeStepForestryFactory(0, saw, dt);
-	return totalStock(MAPE_RES.LOGS);
+	// Haulers clear the yard every step, so the crew alone sets the pace.
+	let cut = 0;
+	for (let step = 0; step < Math.round(120 / dt); step++) {
+		mapeStepForestryFactory(0, saw, dt);
+		cut += totalStock(MAPE_RES.LOGS);
+		mape.goodsView[MAPE_RES.LOGS].fill(0);
+	}
+	return cut;
+}
+
+// Logs nobody hauls away fill the yard; a full yard holds the crew whatever the log pull says.
+function verifyFullYardHolds() {
+	main.setup(START_SEED, 'a');
+	world.terrain.fill(TERRAIN.MEADOW);
+	economy.biomass.fill(1);
+	mape.demandView[MAPE_RES.LOGS].fill(1);
+	const saw = place(MAPE_FACTORY_KIND.SAWMILL, 20, 20);
+	mape.wfFresh[saw] = 16;
+	randomSeed(7319);
+	for (let step = 0; step < Math.round(60 / 0.2); step++) mapeStepForestryFactory(0, saw, 0.2);
+	const yard = totalStock(MAPE_RES.LOGS);
+	assert.ok(yard >= MAPE_SAWMILL_YARD_LOGS && yard < MAPE_SAWMILL_YARD_LOGS + 1 / MAPE_SAWMILL_FOREST_PER_LOG + 1e-9, 'a full yard stops cutting yard=' + yard);
+	console.log('full_yard_logs=' + yard.toFixed(2));
 }
 
 verifySingleSampleSearch();
@@ -184,6 +205,7 @@ const full = verifyHarvestCadence(0.2, 16);
 assert.equal(coarse, fine, 'different engine steps produce the same cuts');
 assert.ok(half < coarse, 'lower staffing slows cutting');
 assert.ok(full > coarse, 'a full crew cuts several cells per second');
+verifyFullYardHolds();
 console.log('harvest_1worker_120s=' + coarse + ' dt005=' + fine + ' half=' + half + ' full_crew16=' + full);
 for (const engine of [MAPE_ENGINE.DIFFUSION, MAPE_ENGINE.CATCHMENT, MAPE_ENGINE.QUEUE, MAPE_ENGINE.SITES]) verifyHouseholdLogs(engine);
 runChain(MAPE_ENGINE.DIFFUSION, MAPE_WORKFORCE_MODE.FLUID);

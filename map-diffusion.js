@@ -2,12 +2,14 @@
 // edit for: diffusion and decay constants, advection speed, workforce recruitment, scaling kernel
 
 const MAPE_MAX_STEP = 0.2;
-const MAPE_DIFFUSE = 0.72;
-const MAPE_DIFFUSE_PASSES = 2;
+// Diffusion speeds are coefficients in cells²/s; a field fades by its decay rate, and its reach
+// sqrt(D / decay) is a result of the two, never a cutoff. Passes come from mapeDiffusePasses.
+const MAPE_DIFFUSE = 1.8;
+const MAPE_MIX_MAX = 0.2;
 const MAPE_DECAY = 0.008;
 const MAPE_DEMAND_GAIN = 8.0;
 const MAPE_STOCK_SIGNAL = 0.25;
-const MAPE_CO2_DIFFUSE = 0.45;
+const MAPE_CO2_DIFFUSE = 0.5625;
 const MAPE_FLOW_SPEED = 1.8;
 const MAPE_GRAD_REF = 0.02;
 const MAPE_TRANSPORT_BASE = 0.5;
@@ -220,12 +222,21 @@ function mapeDiffuseAllPass(src, dst, off, size, edgeMix, keep) {
 	return loss * decay;
 }
 
-function mapeDiffuseSlice(field, scratch, off, size, terrain, landOnly, mix, decayRate, dt) {
-	const edgeMix = mix * 0.25 * (dt / MAPE_MAX_STEP);
-	const keep = decayRate > 0 ? 1 - decayRate * dt : 1;
+// Explicit 4-neighbour mixing turns unstable above 0.25 per pass, so a faster coefficient or a
+// longer step buys more passes instead of a bigger mix. Ping-pong buffers ask for an even count
+// so the last pass lands in the field.
+function mapeDiffusePasses(rate, dt, multiple = 2) {
+	const total = rate * dt;
+	return total > 0 ? multiple * Math.ceil(total / (multiple * MAPE_MIX_MAX)) : 0;
+}
+
+function mapeDiffuseSlice(field, scratch, off, size, terrain, landOnly, rate, decayRate, dt) {
+	const passes = mapeDiffusePasses(rate, dt);
+	const edgeMix = passes > 0 ? rate * dt / passes : 0;
+	const keep = decayRate > 0 ? Math.exp(-decayRate * dt) : 1;
 	let loss = 0;
-	for (let p = 0; p < MAPE_DIFFUSE_PASSES; p++) {
-		const k = p + 1 === MAPE_DIFFUSE_PASSES ? keep : 1;
+	for (let p = 0; p < passes; p++) {
+		const k = p + 1 === passes ? keep : 1;
 		const src = (p & 1) === 0 ? field : scratch;
 		const dst = (p & 1) === 0 ? scratch : field;
 		loss += landOnly
@@ -262,21 +273,27 @@ function mapeApplyTransfer(next, srcIdx, dstIdx, amount, dstMax) {
 	return moved;
 }
 
+// Pairwise transfers stay conservative; later passes read the already-mixed stock.
 function mapeDiffuseCo2Stock(goods, next, off, size, dt) {
+	const passes = mapeDiffusePasses(MAPE_CO2_DIFFUSE, dt, 1);
+	const edgeMix = passes > 0 ? MAPE_CO2_DIFFUSE * dt / passes : 0;
+	for (let pass = 0; pass < passes; pass++) mapeCo2Pass(pass === 0 ? goods : next, next, off, size, edgeMix);
+}
+
+function mapeCo2Pass(src, next, off, size, edgeMix) {
 	const end = size - 1;
-	const edgeMix = MAPE_CO2_DIFFUSE * 0.25 * (dt / MAPE_MAX_STEP);
 	for (let y = 0; y < size; y++) {
 		const row = off + y * size;
 		for (let x = 0; x < size; x++) {
 			const p = row + x;
-			const cur = goods[p];
+			const cur = src[p];
 			if (x < end) {
-				const d = cur - goods[p + 1];
+				const d = cur - src[p + 1];
 				if (d > MAPE_EPS) mapeApplyTransfer(next, p, p + 1, d * edgeMix, 0);
 				else if (d < -MAPE_EPS) mapeApplyTransfer(next, p + 1, p, -d * edgeMix, 0);
 			}
 			if (y < end) {
-				const d = cur - goods[p + size];
+				const d = cur - src[p + size];
 				if (d > MAPE_EPS) mapeApplyTransfer(next, p, p + size, d * edgeMix, 0);
 				else if (d < -MAPE_EPS) mapeApplyTransfer(next, p + size, p, -d * edgeMix, 0);
 			}
@@ -511,6 +528,6 @@ function mapeKernelStep(size, rCount, terrain, demand, demandNext, goods, goodsN
 if (typeof module !== 'undefined') {
 	module.exports = {
 		mapeStepDiffusion, mapeWarmDemand, mapeKernelStep,
-		MAPE_DIFFUSE, MAPE_DIFFUSE_PASSES, MAPE_DECAY, MAPE_FLOW_SPEED
+		mapeDiffusePasses, MAPE_DIFFUSE, MAPE_MIX_MAX, MAPE_DECAY, MAPE_FLOW_SPEED
 	};
 }

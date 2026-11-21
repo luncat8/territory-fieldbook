@@ -191,10 +191,12 @@ MAPE_SETTLE_DISTURB = 0.00048    // disturbance per unit goods consumed, spread 
 MAPE_SAT_SCALE = 4                // satisfaction response timescale in seconds
 MAPE_DEMAND_GAIN = 8.0           // demand signal scale for unmet need rates
 MAPE_STOCK_SIGNAL = 0.25       // negative demand per stock unit per s
-MAPE_DIFFUSE = 0.72              // 4-neighbour mix per pass (2 passes / 0.2 s tick)
-MAPE_DIFFUSE_PASSES = 2          // signed field Jacobi passes (D = 1.8 cells²/s)
-MAPE_DECAY = 0.008               // signed demand decay per s (reach sqrt(D/decay) = 15 cells)
-MAPE_CO2_DIFFUSE = 0.45          // atmospheric CO2 pairwise diffusion mix per tick
+MAPE_DIFFUSE = 1.8               // signed demand and workforce pull diffusion coefficient, cells²/s
+MAPE_MIX_MAX = 0.2               // per-pass mix ceiling; passes = what a coefficient and step need
+MAPE_DECAY = 0.008               // signed demand fade per s (resulting reach sqrt(D/decay) ≈ 15 cells)
+MAPE_CO2_DIFFUSE = 0.5625        // atmospheric CO2 pairwise stock diffusion, cells²/s
+MAPE_CATCHMENT_DIFFUSE = 24      // A: import pull diffusion, cells²/s
+MAPE_QUEUE_DIFFUSE = 16          // B: import pull diffusion, cells²/s
 MAPE_FLOW_SPEED = 1.8            // max goods advection rate /s up normalized gradient
 MAPE_GRAD_REF = 0.02             // Michaelis-Menten half-saturation for demand gradient
 MAPE_WORK_SIGNAL = 3.2           // workforce demand gain per unmet worker per s
@@ -223,6 +225,11 @@ MAPE_FACTORY_BUILD_SEC = 20      // construction duration on 1x (10-30 s = 10-30
 MAPE_BUILD_WOOD_RATE = 0.10      // logs/s consumed per builder (sawmill: forest biomass)
 MAPE_BUILD_SAWMILL_RATE = 0.02   // biomass/s felled per builder on its own footprint
 MAPE_FACTORY_SNAP = 2            // cells: centroid snapped to the best buildable cell nearby
+MAPE_FACTORY_SNAP_WIDE = 5       // cells: second snap box when the near one is full (> spacing)
+MAPE_SAWMILL_SNAP = 6            // cells: a mill searches this far from the centroid for forest
+MAPE_SAWMILL_COVER_WEIGHT = 10   // mill site score per unit forest cover
+MAPE_SCAN_ANCHOR_GAP = 6         // cells: anchors this close to a tried one are the same region
+MAPE_SCAN_STAFF_MIN = 0.5        // a region whose plants are staffed below this share builds nothing
 MAPE_FACTORY_POP_WEIGHT = 0.35   // workforce weight against the deposit stock weight of 1
 MAPE_REGION_REACH = 12           // cells: settlements whose unmet need forms a region
 MAPE_SAWMILL_MIN_COVER = 0.45    // minimum forest cover in the search radius to site a mill
@@ -243,6 +250,7 @@ MAPE_SAWMILL_SEARCH_RADIUS = 2   // half-width of the one-sample 5×5 patch
 MAPE_SAWMILL_SEARCH_SEC = 2      // full-staff productive seconds per visit, hit or miss
 MAPE_SAWMILL_MIN_FOREST = 0.08   // minimum forest cover to cut
 MAPE_SAWMILL_MIN_PULL = 0.015    // no harvest below this log-demand floor
+MAPE_SAWMILL_YARD_LOGS = 6       // logs lying in the cutting patch that hold the crew
 MAPE_SAWMILL_FOREST_PER_LOG = 0.3 // forest cover consumed per log; a full cell yields cover/0.3, a float amount
 MAPE_FARM_RADIUS = 2             // half-width of the farmland field: a 5×5 square
 MAPE_FARM_TILL_SEC = 2           // worker-seconds per clearing visit, hit or miss
@@ -261,7 +269,7 @@ LAND_MINE_DISTURB_PER_UNIT = 0.00025 // disturbed fraction per extracted unit
 MAPE_WORKFORCE_PER_UNIT = 0.4    // transport effort / workforce per unit moved (diffusion)
 MAPE_WF_GEN = 0.05               // fluid model: fresh workforce per resident per second
 MAPE_WF_TIRE = 0.02              // fluid model: fresh → depleted rate /s (balance subject)
-MAPE_WF_DIFFUSE = 0.35           // fluid model: depleted spread mix (slower than goods)
+MAPE_WF_DIFFUSE = 0.875          // fluid model: depleted spread, cells²/s (slower than goods)
 MAPE_WF_FLOW = 1.8               // fluid model: fresh advection rate /s up the pull
 MAPE_WF_GRAD_REF = 0.03          // fluid model: Michaelis-Menten half saturation for advection
 MAPE_WF_SPEND = 1.0              // fluid model: fresh consumed per need per second by jobs
@@ -327,8 +335,7 @@ land stencil, catchment reach and queue scratch are built once per layout.
 ## Diffusion engine (Phases 1–3)
 
 The shared tick runs at 0.05 s in the survey. The signed reference kernel can
-also step in chunks of up to 0.2 s (`MAPE_MAX_STEP`) with proportionally scaled
-mixing; `mapeWarmDemand` relaxes the signed fields over 8 s at boot without
+also step in chunks of up to 0.2 s (`MAPE_MAX_STEP`); `mapeWarmDemand` relaxes the signed fields over 8 s at boot without
 moving stocks or people:
 
 1. **Demand injection.** Cells with `pop > 0` inject `GOODS` and `COAL`
@@ -337,9 +344,12 @@ moving stocks or people:
    factories inject `IRON` demand; active factories inject `COAL` and
    `IRON` demand and negative `CO2` demand. Water cells stay at 0.
 2. **Stock feedback (checkbox, on by default).** Each land cell subtracts `stock * MAPE_STOCK_SIGNAL * dt` from its item’s demand field at that cell (stock is the cell total). Switching off removes only this source. Existing signals continue to diffuse and decay.
-3. **Demand diffusion.** `MAPE_DIFFUSE_PASSES = 2` symmetric zero-flux Jacobi
-   passes per substep (`MAPE_DIFFUSE = 0.72`, `D = 1.8 cells²/s`,
-   `MAPE_DECAY = 0.008/s`, reach `15 cells`, subnormal clamp `1e-12`). `COAL`,
+3. **Demand diffusion.** Symmetric zero-flux Jacobi passes with coefficient
+   `MAPE_DIFFUSE = 1.8 cells²/s` and fade `MAPE_DECAY = 0.008/s` (subnormal
+   clamp `1e-12`). Demand is not a distance field with a cutoff: a signal
+   spreads and fades over time, and how far it carries — `sqrt(D / decay)`,
+   about 15 cells here — is a result of the two rates. See **Diffusion speed
+   and stability** for how a coefficient becomes passes. `COAL`,
    `IRON`, `GOODS` and `workforce` diffuse over walkable 4-neighbours only;
    `CO2` demand and pairwise `CO2` stock diffuse across all cells including water.
 4. **Gradient goods and worker transport.** For `COAL`, `IRON`, `GOODS`, stock
@@ -374,6 +384,36 @@ moving stocks or people:
    legends; these layers have no transport flow. Inspectors show cover and signed
    growth in percentage points/s. Terrain shading follows live cover.
 7. **Population growth, migration and workforce update.**
+
+### Diffusion speed and stability
+
+Every diffusing field — signed demand, workforce pull, rest pull, depleted
+workforce, CO2 stock and the A/B import pull — is configured by a coefficient
+`D` in cells²/s plus, where it fades, a decay rate per second. Neither names a
+distance. A step of `dt` needs a total mix of `D · dt`; explicit 4-neighbour
+mixing is unstable above `0.25` per pass, so `mapeDiffusePasses(D, dt)` splits
+the step into the fewest passes that keep each one at or below
+`MAPE_MIX_MAX = 0.2`. Ping-pong fields round the count up to an even number so
+the last pass lands in the field, never in the scratch buffer; the pairwise
+CO2 stock pass works in place and accepts any count. Fade multiplies by
+`exp(−decay · dt)`, so a fast fade on a long step cannot go negative.
+
+Consequences that keep future tuning safe:
+
+- raising a speed, or lengthening the step, costs passes, never stability: 50×
+  the shipped coefficient on a `0.2 s` step stays positive, conservative and
+  blocked by water;
+- variance grows as `2 D t`, so four times `D` spreads four times as wide, and
+  the fade reach `sqrt(D / decay)` doubles with it. Reach-based remarks in this
+  plan (A/B pull about five cells, signed demand about fifteen) are measured
+  outcomes of the current rates, not limits any code enforces;
+- the only absolute thresholds read on a diffused field are the sawmill's log
+  pull floor and the view ramps; retune them when a speed change moves the
+  field level, nothing else depends on the field's size.
+
+`experiments/mape_diffusion_speed.js` gates all of the above. A per-cell
+transport speed map (see **Transport speed map**) plugs into the same rule:
+the pass count follows the fastest edge.
 
 ## Population dynamics
 
@@ -596,6 +636,17 @@ The scan runs every `MAPE_SCAN_SEC = 5 s`; a candidate must also clear
 `MAPE_FACTORY_THRESHOLD` and have `MAPE_FACTORY_CAP - factoryCount` room left
 (32 today). One build starts per scan.
 
+Regions are tried neediest first. When the best region cannot build — its
+centre already taken by an earlier plant, its forest cleared by a farm, its
+kind already under construction — the scan moves to the next region instead of
+waiting: anchors closer than `MAPE_SCAN_ANCHOR_GAP = 6` cells to a tried one
+describe the same towns and are skipped. A single stuck region used to freeze
+industry on the whole map (the seeded survey built one farm and then nothing
+for ten minutes). A region also waits when the plants it already has are
+staffed below `MAPE_SCAN_STAFF_MIN = 0.5` of their slots: another plant would
+only split a crew the towns cannot fill. Each region builds at most one plant
+of a kind at a time.
+
 **Construction consumes wood, not iron.** The doc's older `MAPE_FACTORY_BUILD_IRON`
 scheme is replaced by:
 
@@ -652,7 +703,9 @@ less, so `C` slides toward the town — but never past the point where the
 deposits stop being reachable.
 
 `C` is then snapped to the best buildable cell within `MAPE_FACTORY_SNAP = 2`
-cells, scored
+cells; if that box holds no legal cell the search widens once to
+`MAPE_FACTORY_SNAP_WIDE = 5`, because spacing 4 lets one plant at the centre
+fill a 5×5 box on its own. Cells are scored
 
 ```
 site = w_stock * Σ_d stock_d/(1+d_d)      // closer to deposits is better
@@ -669,7 +722,11 @@ cells from another factory, outside a settlement cell, and clear of existing
 sites.
 
 A plant with no deposit input — a pure assembly plant turning logs into goods —
-has no anchor and uses the town-weighted centre alone.
+has no anchor and uses the town-weighted centre alone. A sawmill starts from the
+same centre but walks out to its forest: it searches `MAPE_SAWMILL_SNAP = 6`
+cells around it and adds `MAPE_SAWMILL_COVER_WEIGHT · cover` to the score, so it
+lands in the densest stand near the towns rather than on the edge of town where
+cover rarely clears the floor.
 
 ### 3. Sawmill: an area producer, not a point
 
@@ -697,7 +754,13 @@ disc evenly and turns a mill into a clear-cutter; batch harvest belongs to farms
 - felling converts cover at `MAPE_SAWMILL_FOREST_PER_LOG = 0.3` — a full cell
   yields `cover / 0.3` logs, a float amount, never a whole item — and CO2 feeds
   regrowth, so a mill works an *area* that regrows around it rather than a
-  single cell that empties.
+  single cell that empties;
+- a full yard holds the crew: when `MAPE_SAWMILL_YARD_LOGS = 6` logs already lie
+  in the 5×5 patch, the visit is spent waiting. The log-pull floor only says
+  that demand reaches the patch, not how much; on its own it let one crew of 32
+  out-cut a dozen works (`~6 logs/s` against `0.55 logs/s` per works). Logs that
+  nobody hauls away are the market saying no, so the mill now runs at the pace
+  its consumers take logs.
 
 A full multi-cell footprint (several forest cells owned by one mill) is noted as
 the follow-up if the area model proves too abstract: it changes the site
@@ -743,7 +806,9 @@ for charcoal and wood works, so a plant that eats the region's last log starves
 the next build. The scan reserves `MAPE_BUILD_LOG_RESERVE = 8` logs — the cost
 of one build — before it lets a works consume logs, and it prefers a `SAWMILL`
 first whenever regional logs are below that reserve. Wood has to exist before
-wood can be spent.
+wood can be spent. Only *free* logs count: stock on a plant's own cell is a
+works' input buffer or a site's build material, already spoken for. Counting
+it read every works' ~15-log buffer as surplus and kept siting more works.
 
 **The bootstrap exception:** a sawmill only cuts where log demand reaches it
 (`MAPE_SAWMILL_MIN_PULL`), and log demand comes only from charcoal and wood
@@ -762,12 +827,17 @@ mill first, consumer second, then alternates with need.
   scan of logs arriving;
 - on the seeded survey the scan starts the wood chain: a sawmill first, then a
   log consumer within one scan of the mill standing (the cut is demand-gated,
-  so without the consumer nothing flows);
+  so without the consumer nothing flows); with every system running
+  (`main.step`), a mill and a log works are online within 150 s;
+- the neediest region with no legal cell for its kind does not stall the scan:
+  a smaller region with forest gets the mill, inside its forest, and a second
+  scan does not stack another mill while the first is building;
 - build time halves when staffing doubles;
 - two deposits 10 cells apart place a general factory within 3 cells of their
   weighted centroid, and moving the towns does not move it more than 3 cells;
 - a sawmill is never placed below `0.45` forest cover (the seeded map's p75),
-  and its output rises with cover;
+  and its output rises with cover; a full yard stops the cut
+  (`experiments/mape_forestry.js`);
 - a `GENERAL` plant is never chosen while no mine is bound to an `ORE` deposit
   (the seeded map's state), because it would build and then starve;
 - at `MAPE_FACTORY_CAP` no further builds start;
@@ -830,18 +900,24 @@ and the towns of one seed still differ. Household use debits the shared stock
 ledger, and the last 1.5 units of settlement goods are reserved for player
 supply purchases. Iron, CO2 and workforce keep the shared field rules.
 
-The field outside the settlements relaxes back to the ambient fill at
-`MAPE_CATCHMENT_DECAY` (`0.8/s`), which holds a town halo to about four cells.
-Town density matters: at the seeded 2% density the nearest neighbour is 2–5
-cells, so a longer halo floods the whole map and every town reads the same.
-An active plant also advertises a graded coal pull over `MAPE_FACTORY_YARD`
-(half-width 4, `1 − ring/5`), because a single pinned cell loses its coal to a
-larger town halo next door.
+The field outside the settlements fades back toward the ambient fill at
+`MAPE_CATCHMENT_DECAY` (`0.8/s`) while it diffuses; with the A coefficient that
+fade leaves a town's pull readable about five cells out (`sqrt(24 / 0.8)`), a
+measured outcome rather than a cutoff — change either rate and the reach moves
+with it. The rate was tuned against town density: at the seeded 2% density the
+nearest neighbour is 2–5 cells, and a ten-cell fade merged neighbouring towns
+into one flat sheet so every town read the same. An active plant also
+advertises a graded coal pull over `MAPE_FACTORY_YARD` (half-width 4,
+`1 − ring/5`): that yard is the plant's intake area, stamped as a source shape
+like a town's catchment, and the stamp then diffuses and fades like any other
+pull. A single pinned cell lost its coal to a larger town pull next door.
 
 - **A · Catchment:** relax the town's signal toward hungry pull times
   `1 / (1 + stock / max(1, 9 × rate))` at `0.9/s`. Stock is the total reachable
-  in four cardinal steps. Apply that signal over the same reach with falloff,
-  then spread it with six Jacobi passes per 0.05 s (`D ≈ 24 cells²/s`). The
+  in four cardinal steps — the intake catchment, where households fetch from,
+  not a demand limit. Apply that signal over the same catchment with falloff,
+  then spread it with `MAPE_CATCHMENT_DIFFUSE = 24 cells²/s` (six passes per
+  0.05 s today). The
   3x3 filtered demand steers uncapped, conservative uphill hauling at up to
   `6.5 cells/s`. After hauling, the town consumes its need,
   `rate × dt`, proportionally from reachable stock; the need is fixed, because
@@ -849,8 +925,8 @@ larger town halo next door.
   uptake, so towns hoarded coal and the field died.
 - **B · Queue:** the target senses falloff-weighted stock within four steps
   and cools further as the settlement fills its short intake buffer. The
-  center relaxes at `1.6/s` and holds its value through four Jacobi passes
-  (`D ≈ 16 cells²/s`). Eight-neighbor uphill transfer can use diagonal routes
+  center relaxes at `1.6/s` and holds its value through every pass of
+  `MAPE_QUEUE_DIFFUSE = 16 cells²/s` (four passes per 0.05 s today). Eight-neighbor uphill transfer can use diagonal routes
   without cutting water corners. Intake room is `0.25 × rate`; service uses
   `min(rate × dt, stock × (1 − exp(−dt / 0.1)))` before arrivals. Service
   doesn't slow merely because import pull is cool. Competing shipments use
@@ -861,6 +937,80 @@ larger town halo next door.
   can also turn on **Stock cools tiles** for A/B: stock locally suppresses
   pull while the field recovers toward the ambient level (at least 0.3), so
   stock can disperse without a settlement.
+
+## Transport speed map
+
+Status: planned, not implemented (draft 4.1a "transportation speed map"). It
+changes how fast stock, pull and people cross a cell, so the amount of products
+spreads slower over swamp and routes bend around slow ground.
+
+**Data.** `transport.speed`, a `Float32Array(n)` multiplier per cell owned by a
+new `map-transport.js` (`// owns: per-cell transport speed and edge
+conductance`). `1` is meadow, the reference every current rate is tuned on;
+`0` blocks. Built at setup from terrain and rebuilt only when an input changes:
+
+| terrain | speed | why |
+| --- | --- | --- |
+| meadow | 1.0 | reference ground |
+| desert | 0.8 | open but rough |
+| forest | 0.6 | cover slows carts |
+| hills | 0.5 | climbs |
+| swamp | 0.25 | the draft's example: products cross it slowly |
+| water | 0 | blocked, exactly as today |
+
+Later inputs multiply in: standing surface water from hydrology (a flooded
+cell is slow), heavy disturbance, and roads or caravans above `1`. Ships that
+make deep water and sea faster than land stay deferred, as in the draft.
+
+**Edges, not cells.** Every transfer runs over an edge with conductance
+`c = 2 · s_i · s_j / (s_i + s_j)`, the harmonic mean: symmetric, so pairwise
+transfers stay exactly conservative; a slow cell slows both entering and
+leaving it; and `c = 0` whenever either side is blocked, which replaces the
+scattered `terrain !== WATER` checks with one rule. Conductances are
+precomputed once per rebuild (right and down edge per cell, `2n` floats).
+
+**Where it applies.**
+
+- *Stock haulage* (coal, iron, goods, logs, food in every field engine): the
+  uphill split becomes `g_k · c_k / (Σ g · c + ref)`, so goods move slowly
+  through swamp and prefer a faster route with a comparable gradient. Transport
+  effort per unit moved scales by `1 / c`, so slow ground also costs more
+  labour.
+- *Pull diffusion* (signed demand, A/B import pull, workforce pull): the same
+  conductance weights each edge of the Jacobi pass. If pull crossed a swamp at
+  full speed while goods crawled, the gradient would point straight across it
+  and stock would queue in the mud; with matching conductance the pull itself
+  bends along the fast route, and its reach over slow ground shrinks by about
+  `sqrt(c)`.
+- *Workforce* (residents walking, fresh and depleted pools): the same table to
+  start with; a separate walking table is a later split if carts and people
+  should differ.
+- *Catchment and scan distances*: the A/B intake catchment and the factory
+  scan's walk field become travel-time budgets (step cost `1 / s`), so four
+  meadow steps reach as far as one swamp step.
+- *Sites*: shipment eta and haul cost read the same travel time once the site
+  engine has a path field; until then it keeps euclidean distance and the
+  divergence is listed with the others.
+- *Not applied*: CO2 moves in the air; waste leachate and hydrology keep their
+  own rules.
+
+**Stability.** Pass counts already follow the coefficient (**Diffusion speed and
+stability**); with conductance they follow `D · max(c) · dt`. Speeds at or below
+`1` add no passes; a road at `3` triples them on its own instead of breaking
+the field. Haul fractions keep `MAPE_STEP_FRAC_MAX` by dividing the base
+fraction by `max(c)` when it exceeds `1`.
+
+**Display.** An amount-side `transport speed` layer with a fixed 0–1 legend
+(roads above `1` saturate), and the cell inspector lists speed beside terrain.
+The tuning panel gets one multiplier per terrain row.
+
+**Gate** (`experiments/mape_transport.js`): an all-`1` speed map reproduces
+today's results to the ledger tolerance; a swamp strip between a mine and a
+town delays first arrival by roughly the strip's extra travel time and, with a
+meadow detour open, most stock takes the detour; ledger residual stays below
+`1e-6`; water at `c = 0` matches the current water barrier bit for bit; a road
+at `50×` stays positive and bounded; pull reach across swamp drops by about
+`sqrt(c)`.
 
 ## Economy test scenes
 
@@ -1132,7 +1282,8 @@ A felled cell is bare until it regrows on the forest model. Logs are stocked at
 the sampled cut cell, then transported by the existing log demand gradient.
 Charcoal works consume logs for coal plus CO2; wood works consume logs for
 goods. Per-cell log stock cools the signed demand field, so a supply pile
-decreases the sawmill's incentive to cut. The amount and demand maps include
+decreases the sawmill's incentive to cut, and `MAPE_SAWMILL_YARD_LOGS = 6`
+uncollected logs in the patch stop the visit outright. The amount and demand maps include
 logs, and the factory inspector reports staffing and recipe rates.
 
 Households consume `MAPE_NEED_LOGS = 0.005` logs/person/s for timber upkeep,
@@ -1339,6 +1490,15 @@ compare sites on identical seeds.
 
 Gate: runtime switches preserve the stock ledger, all engines pass `smoke` and
 `dom_smoke`, comparison metrics are logged.
+
+### Phase 6 — Transport speed map
+
+Deliverable: `map-transport.js` speed table and edge conductances, wired into
+haulage, pull diffusion, workforce movement, catchment and scan distances, plus
+the display layer and tuning rows (see **Transport speed map**).
+
+Gate: the `experiments/mape_transport.js` checks listed in that section, and the
+full suite unchanged with an all-`1` speed map.
 
 ## Manual pass list
 

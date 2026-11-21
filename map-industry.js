@@ -16,6 +16,7 @@ const MAPE_SAWMILL_SEARCH_SEC = 2;
 const MAPE_SAWMILL_SEARCH_RADIUS = 2;
 const MAPE_SAWMILL_MIN_FOREST = 0.08;
 const MAPE_SAWMILL_MIN_PULL = 0.015;
+const MAPE_SAWMILL_YARD_LOGS = 6;
 const MAPE_SAWMILL_FOREST_PER_LOG = 0.3;
 const MAPE_FORESTRY_INPUT = 0.55;
 const MAPE_CHARCOAL_YIELD = 0.8;
@@ -305,6 +306,18 @@ function mapeForestCover(x, y) {
 	return count > 0 ? sum / count : 0;
 }
 
+// Logs still lying in the cutting patch: nobody hauled them away, so nobody needs more yet.
+function mapeSawmillYardLogs(x, y) {
+	const size = world.size;
+	const radius = MAPE_SAWMILL_SEARCH_RADIUS;
+	const logs = mape.goodsView[MAPE_RES.LOGS];
+	let sum = 0;
+	for (let cy = Math.max(0, y - radius); cy <= Math.min(size - 1, y + radius); cy++) {
+		for (let cx = Math.max(0, x - radius); cx <= Math.min(size - 1, x + radius); cx++) sum += logs[cy * size + cx];
+	}
+	return sum;
+}
+
 function mapeSampleForestCutCell(x, y) {
 	// A miss costs search effort; never scan the rest of the patch.
 	const size = world.size;
@@ -333,6 +346,8 @@ function mapeStepForestryFactory(f, idx, dt) {
 		mape.factoryHarvestWork[f] -= effort;
 		if (mape.factoryHarvestWork[f] > 0) return;
 		mape.factoryHarvestWork[f] += MAPE_SAWMILL_SEARCH_SEC;
+		// The log-pull floor alone let one crew out-cut a dozen works; a full yard holds the crew.
+		if (mapeSawmillYardLogs(mape.factoryX[f], mape.factoryY[f]) >= MAPE_SAWMILL_YARD_LOGS) return;
 		const cell = mapeSampleForestCutCell(mape.factoryX[f], mape.factoryY[f]);
 		if (cell < 0) return;
 		const pull = mape.demandView[MAPE_RES.LOGS][cell];

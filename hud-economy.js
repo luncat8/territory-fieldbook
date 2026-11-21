@@ -215,7 +215,9 @@ function hudFactorySiteText(f, idx) {
 		return text;
 	}
 	if (kind === MAPE_FACTORY_KIND.SAWMILL) {
+		const yard = mapeSawmillYardLogs(mape.factoryX[f], mape.factoryY[f]);
 		text += '\nLogs +' + mape.factoryGoods[f].toFixed(2) + '/s · cuts only along log demand';
+		text += '\nYard ' + yard.toFixed(1) + '/' + MAPE_SAWMILL_YARD_LOGS + ' logs' + (yard >= MAPE_SAWMILL_YARD_LOGS ? ' · full, crew waits for haulage' : '');
 		return text;
 	}
 	if (kind === MAPE_FACTORY_KIND.FARM) {
