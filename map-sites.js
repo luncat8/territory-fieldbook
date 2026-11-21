@@ -72,6 +72,7 @@ function mapeSitesHouseholdHold(r, i) {
 	if (p <= 0 || mapeIsIndustry(i)) return 0;
 	if (r === MAPE_RES.GOODS) return p * MAPE_MARKET_GOODS_USE * MAPE_SITE_HOLD_SEC + MAPE_MARKET_RESERVE;
 	if (r === MAPE_RES.COAL) return p * MAPE_MARKET_COAL_USE * MAPE_SITE_HOLD_SEC;
+	if (r === MAPE_RES.LOGS) return p * MAPE_NEED_LOGS * MAPE_SITE_HOLD_SEC;
 	return 0;
 }
 
@@ -200,6 +201,7 @@ function mapeSitesOrders() {
 		const i = mape.settleCells[k];
 		mapeSitesOrderItem(MAPE_RES.GOODS, i, mapeSitesHouseholdHold(MAPE_RES.GOODS, i));
 		mapeSitesOrderItem(MAPE_RES.COAL, i, mapeSitesHouseholdHold(MAPE_RES.COAL, i));
+		mapeSitesOrderItem(MAPE_RES.LOGS, i, mapeSitesHouseholdHold(MAPE_RES.LOGS, i));
 	}
 	for (let f = 0; f < mape.factoryCount; f++) {
 		const st = mape.factoryState[f];
@@ -254,6 +256,7 @@ function mapeSitesMetabolism(dt) {
 		if (p <= 0 || mapeIsIndustry(i)) continue;
 		mapeUseLocalStock(MAPE_RES.GOODS, i, p * goodsRate * dt);
 		mapeUseLocalStock(MAPE_RES.COAL, i, p * coalRate * dt);
+		mapeUseLocalStock(MAPE_RES.LOGS, i, p * MAPE_NEED_LOGS * dt);
 	}
 }
 

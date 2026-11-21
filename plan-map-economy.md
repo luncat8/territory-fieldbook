@@ -177,6 +177,7 @@ MAPE_POP_SEED_MIN = 8            // seeded settlement persons, low
 MAPE_POP_SEED_MAX = 20           // seeded settlement persons, high
 MAPE_NEED_GOODS = 0.03           // signed reference goods need/person/s
 MAPE_NEED_COAL = 0.02            // signed reference coal need/person/s
+MAPE_NEED_LOGS = 0.005           // household timber upkeep/person/s, every engine
 MAPE_MARKET_GOODS_USE = 0.036    // A/B household goods use/person/s
 MAPE_MARKET_COAL_USE = 0.045    // A/B household coal use/person/s
 MAPE_HUNGRY_POP = 8              // population half-saturation of the import target: pop/(pop+8)
@@ -651,18 +652,19 @@ has no anchor and uses the town-weighted centre alone.
 
 ### 3. Sawmill: an area producer, not a point
 
-The sawmill already samples a forest cell inside `MAPE_SAWMILL_SEARCH_RADIUS = 2`
-each tick and misses cost that tick, so sparseness lowers output. The build plan
-makes that area explicit rather than accidental:
+The sawmill samples one cell inside `MAPE_SAWMILL_SEARCH_RADIUS = 2` per
+work visit and clears all eligible biomass in that cell. Visits cost
+`MAPE_SAWMILL_SEARCH_SEC = 2` full-staff productive seconds; successful cuts
+also charge the harvest work before another visit. The area is explicit:
 
 - site score includes `mapeForestCover(x, y)`, the mean biomass over the 5×5
   search radius, with a hard floor of `0.45`. Measured on the seeded map: cover
   runs `0.00 … 0.58` with median `0.33` and p75 `0.45`, so a floor of `0.45`
   leaves the wooded quarter — 25% of land — legal and rejects the rest. (A floor
   of `0.35` would have admitted 46% of the map, which is not a forest);
-- once active, `MAPE_SAWMILL_RATE * (1 + 0.15 * cover)` scales output with how
-  well the surrounding area is still wooded, so a mill in deep forest out-earns
-  one on the edge;
+- once active, `MAPE_SAWMILL_RATE = 1.1` logs per full-staff productive second,
+  multiplied by `(1 + 0.15 * cover)` and demand scale, sets the work charged for
+  a whole-cell harvest. Deep forest shortens the cooldown, not the batch size;
 - felling removes `0.025` biomass per log and CO2 feeds regrowth, so a mill
   works an *area* that regrows around it rather than a single cell that empties.
 
@@ -1083,14 +1085,30 @@ total population stays bounded.
 Sawmills, charcoal works, and wood works are active staffed job sites sharing the
 same factory pool, demand field, storage, and workforce models. Each sawmill
 samples exactly one uniformly random cell in its centered 5×5 patch per
-production step. Water, insufficient forest cover, or log pull below the floor
-ends that attempt without resampling, so sparse forest lowers effective output.
-Harvest rate scales with staffing, local productivity, and demand pull. Logs are
+work visit. Water, biomass below `0.08`, or log pull below `0.015` ends that
+attempt without resampling and costs two productive work seconds. A valid
+visit clears all biomass in the selected cell into logs at `0.025` biomass/log.
+The mill then owes `logs / (1.1 * (1 + 0.15 * cover) * demandScale)` work seconds
+in addition to the search cost; `demandScale = min(1, pull / 0.03)`. Staffing
+fraction × local productivity pays down this work over simulation time. No
+workers or zero productivity means no visits or cooldown progress. One full
+biomass cell yields 40 logs and takes roughly 34–38 seconds at full staffing
+and strong demand before another visit. Cooldown ticks do not sample or scan
+forest cover, and no unused work accumulates for later bursts. Logs are
 stocked at the sampled cut cell, then transported by the existing log demand
 gradient. Charcoal works consume logs for coal plus CO2; wood works consume logs
 for goods. Per-cell log stock cools the signed demand field, so a supply pile
 decreases the sawmill's incentive to cut. The amount and demand maps include
 logs, and the factory inspector reports staffing and recipe rates.
+
+Households consume `MAPE_NEED_LOGS = 0.005` logs/person/s for timber upkeep,
+independently of coal/goods satisfaction and population growth. This need
+injects signed log demand in every engine, so sawmills can work before any
+processor is built. Logs retain the existing signed stock-feedback/transport
+path in Diffusion and A/B; A/B households consume delivered local logs rather
+than using the coal/goods catchment or queue model. Sites reserves and orders
+ten seconds of household logs, then consumes delivered stock at the same rate.
+Industry cells do not add household log use or demand.
 
 ### Phase 3 — Factories, mines and forest CO2 loop (diffusion)
 
@@ -1140,8 +1158,10 @@ Gate: runtime switches preserve the stock ledger, all engines pass `smoke` and
   Click it (Inspect tool) — the workforce block shows state, staffing and rates;
   the global row shows staffed/open slots. Esc clears the selection.
 - In a scene, place a sawmill near sparse forest plus charcoal and wood works down-gradient.
-  One cell in the surrounding 5×5 patch is tried per step; misses should pause
-  cutting, while sampled forest with converter demand yields routed logs and products.
+  Each visit tries one cell in the surrounding 5×5 patch; a hit clears only
+  that cell, then waits for harvest work. Misses cost search time. Halving
+  staffing lengthens the wait; pause stops it. Compare Diffusion/A/B and check
+  that a nearby settlement pulls logs even without a converter.
 - The workforce segment opens on **Fluid field**: fresh workforce gathers at the
   mine, depleted pool returns to settlements, and a hamlet founds itself
   where depleted piles on high-value land (meadow or water-adjacent, never swamp).
