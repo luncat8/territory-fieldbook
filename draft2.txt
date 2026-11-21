@@ -263,6 +263,13 @@ Easier path to a working full loop: one 4-connected cell pass handles coal, iron
 Direct foundation for sites: the pop/demand/goods/workforce/money arrays, factory/mine/storage pools, settlement markets, deposit unlock rules, construction timer, waste, ledger, views, HUD inspector, scenario scripts, and atmospheric CO2 diffusion all carry straight into P4; sites swaps only goods routing and factory placement scoring.
 Solves shared pitfalls early: catches town-to-settlement market balance, water-isolated regions, cold-start supply, duplicate builds during the 20 s build lag, settlement waste vs land.js recovery, conservation residuals, and tick budget without confounding every pass with two half-built engines.
 
+
+#### demand and money. TODO add to plan
+
+factories (fab, sawmill, mine, etc) constantly create demand on work force that is proportional on what factory need and get.
+to more easy adjust probably better to introduce money and factories will place what they will to pay as demand. this will allow profitable factories hire more workers.
+
+
 ### factory
 
 charcoal factory make coal from forest. charcoal surname for coal, not separate item.
@@ -279,14 +286,47 @@ to control how menu log really need - we can use same demand field: if gradient 
 
 i suggest make it cut more forest in the selected cell in one tick. because we choose random cell, it is better to cut all available forest in SELECTED cell -> wood, and make in maybe not every tick to save performance. this is subject of balance industry. 
 
+##### deferred: sawmill cut not all (but almost all to faster regrowth) in random cell, replant random cell
+
+look how forest working and how it is regrowth itself.  think about speed of natural regrowth from zero,
+- special case with low speed of forest spawn in cells without forest vs growth from some low level of existing forest.
+we have fast forest growth because it is easy and fun to see and debug climate.
+
+
 #### build factory
 
 think good and make plan about how factories will be spawned, depends of supply , resources and demand and workforces. i suggest to not build all just at settlement but if factory use heavy resources and more lite product then it should be located average locations of few deposits (forest has area for example and sawmill is not point producer but produce over multiple cells) . 
 typically workforce build factory from wood, sawmill from forest. build time ~ workforce.
 
+
 #### settlements
 
-settlements probably need some demand of wood. this may push sawmill industry.
+demands, effect, purpose:
+- wood. big amount need to growth and some constant use, this may push sawmill industry.
+- food, keep population, 
+
+settlement is a harvester
+
+without farm, sawmill, fishery, etc. settlement work as harvester: using workforce to pick random cell around and harvest small amount slowly.
+need to make list what possible to pick: food in forest, water, wood, all work same mechanics: harvested placed on map as amount.
+
+#### farm
+
+settlements demand food -> spawn farm
+
+farm construction site need forest OR wood
+at construction stage also work as sawmill but cut all forest to zero (same mechanics, random cells) and establish farmland in cells
+
+farm produce food and small waste outside of its range. what if farms tiled without gaps: nothing special, as always it push waste to random neighbour cell outside rang
+
+farm Harvest all at once: 8s looks ok freq.
+food amount in cell depends on optimal environment (humidity) (at harvest time, for optimize). 1 worker per cell looks good.
+
+- more workers -> more cells to use.
+- farm produce always. it demand workers max depends on food demand.
+
+- Settlements demand logs: x per person per simulation second, giving sawmills customers before processors exist.
+- Sawmills clear the selected cell: all its eligible forest becomes logs; other cells remain untouched.
 
 #### CO2
 

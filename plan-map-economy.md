@@ -234,11 +234,12 @@ MAPE_MINE_WASTE = 0.0016         // spoil /s on the ring of an active mine shaft
 LAND_WASTE_SOURCE_SHARE = 0.55   // share of a source's waste kept on its own cell
 LAND_WASTE_SPREAD = 0.0012       // landfill leachate mix per second over walkable land
 MAPE_MINE_RATE = 2.4             // resource extracted/s at full staff and productivity
-MAPE_SAWMILL_RATE = 1.1          // logs cut/s at full staff when demand is saturated
+MAPE_SAWMILL_FELL_RATE = 0.0275  // forest cover felled/s at full staff when demand is saturated
 MAPE_SAWMILL_SEARCH_RADIUS = 2   // half-width of the one-sample 5×5 patch
+MAPE_SAWMILL_SEARCH_SEC = 2      // full-staff productive seconds per visit, hit or miss
 MAPE_SAWMILL_MIN_FOREST = 0.08   // minimum forest cover to cut
 MAPE_SAWMILL_MIN_PULL = 0.015    // no harvest below this log-demand floor
-MAPE_SAWMILL_FOREST_PER_LOG = 0.025 // forest cover consumed per log
+MAPE_SAWMILL_FOREST_PER_LOG = 0.05 // forest cover consumed per log (a full cell gives 20)
 MAPE_FORESTRY_INPUT = 0.55       // logs consumed/s per staffed charcoal/wood works
 MAPE_CHARCOAL_YIELD = 0.8        // coal per log; remaining carbon returns as CO2
 MAPE_WOOD_YIELD = 1.0            // goods per log
@@ -653,19 +654,25 @@ has no anchor and uses the town-weighted centre alone.
 ### 3. Sawmill: an area producer, not a point
 
 The sawmill samples one cell inside `MAPE_SAWMILL_SEARCH_RADIUS = 2` per
-work visit and clears all eligible biomass in that cell. Visits cost
+work visit and fells all of that cell's forest. Visits cost
 `MAPE_SAWMILL_SEARCH_SEC = 2` full-staff productive seconds; successful cuts
-also charge the harvest work before another visit. The area is explicit:
+also charge harvest work per forest felled before another visit. Labour is
+counted in forest, not logs, so `MAPE_SAWMILL_FOREST_PER_LOG` is a pure
+conversion yield: changing it changes wood output without changing how fast a
+mill strips its stand. A felled cell regrows from zero on the forest model.
+A whole-patch batch cut on a fixed clock was rejected for forest: it strips the
+disc evenly and turns a mill into a clear-cutter; batch harvest belongs to farms
+(see **Farm: a field worked by its workforce**). The area is explicit:
 
 - site score includes `mapeForestCover(x, y)`, the mean biomass over the 5×5
   search radius, with a hard floor of `0.45`. Measured on the seeded map: cover
   runs `0.00 … 0.58` with median `0.33` and p75 `0.45`, so a floor of `0.45`
   leaves the wooded quarter — 25% of land — legal and rejects the rest. (A floor
   of `0.35` would have admitted 46% of the map, which is not a forest);
-- once active, `MAPE_SAWMILL_RATE = 1.1` logs per full-staff productive second,
-  multiplied by `(1 + 0.15 * cover)` and demand scale, sets the work charged for
-  a whole-cell harvest. Deep forest shortens the cooldown, not the batch size;
-- felling removes `0.025` biomass per log and CO2 feeds regrowth, so a mill
+- once active, `MAPE_SAWMILL_FELL_RATE = 0.0275` cover per full-staff productive
+  second, multiplied by `(1 + 0.15 * cover)` and demand scale, sets the work
+  charged for a cut. Deep forest shortens the cooldown, not the batch size;
+- felling removes `0.05` biomass per log and CO2 feeds regrowth, so a mill
   works an *area* that regrows around it rather than a single cell that empties.
 
 A full multi-cell footprint (several forest cells owned by one mill) is noted as
@@ -1086,14 +1093,15 @@ Sawmills, charcoal works, and wood works are active staffed job sites sharing th
 same factory pool, demand field, storage, and workforce models. Each sawmill
 samples exactly one uniformly random cell in its centered 5×5 patch per
 work visit. Water, biomass below `0.08`, or log pull below `0.015` ends that
-attempt without resampling and costs two productive work seconds. A valid
-visit clears all biomass in the selected cell into logs at `0.025` biomass/log.
-The mill then owes `logs / (1.1 * (1 + 0.15 * cover) * demandScale)` work seconds
+attempt without resampling and costs one productive work second. A valid
+visit fells all biomass in the selected cell into logs at `0.05` biomass/log.
+The mill then owes `felled / (0.0275 * (1 + 0.15 * cover) * demandScale)` work seconds
 in addition to the search cost; `demandScale = min(1, pull / 0.03)`. Staffing
 fraction × local productivity pays down this work over simulation time. No
-workers or zero productivity means no visits or cooldown progress. One full
-biomass cell yields 40 logs and takes roughly 34–38 seconds at full staffing
-and strong demand before another visit. Cooldown ticks do not sample or scan
+workers or zero productivity means no visits or cooldown progress. A cut in a
+full biomass cell yields 20 logs and takes roughly 34–38 seconds at full staffing
+and strong demand before another visit (≈0.55 logs/s per mill); the felled cell
+is bare until it regrows. Cooldown ticks do not sample or scan
 forest cover, and no unused work accumulates for later bursts. Logs are
 stocked at the sampled cut cell, then transported by the existing log demand
 gradient. Charcoal works consume logs for coal plus CO2; wood works consume logs
@@ -1109,6 +1117,170 @@ path in Diffusion and A/B; A/B households consume delivered local logs rather
 than using the coal/goods catchment or queue model. Sites reserves and orders
 ten seconds of household logs, then consumes delivered stock at the same rate.
 Industry cells do not add household log use or demand.
+
+### Farm: a field worked by its workforce
+
+Status: planned; nothing below is in the code yet. The sawmill is a forager — it
+takes one random cell at a time and the stand keeps its shape. A farm owns a
+field: its workforce decides how many cells are worked, it produces whenever it
+is staffed, and it brings the crop in from the whole field at once. Food demand
+sets how many workers the farm asks for, so the field grows and shrinks with
+the towns it feeds. Towns gain a hauled good that lifts them above the
+subsistence line.
+
+**Food as a household commodity.** `MAPE_RES.FOOD = 5`, `MAPE_R = 6`; the view
+item ids after the resources move up by one. Households use
+`MAPE_NEED_FOOD = 0.03` food/person/s in Diffusion and `MAPE_MARKET_FOOD_USE =
+0.036` in A/B and Sites. Food is a market item (`mapeIsMarketItem`) served by the
+catchment and queue models, and Sites reserves and orders it like goods. Every
+household commodity touches the same list, so food follows it in full:
+demand injection (`mapeInjectDemand`), use rates (`mapeMarketUseRate`,
+`mapePopulationRate`), local use (`mapeUseDiffusionStock`, catchment/queue
+serve, Sites metabolism), Sites hold and orders, `usedFood`/`satFood` arrays
+and `mapeRecordUse`.
+
+`mapeSubsistence` stays as the town's own ground. Delivered food enters the
+same imports term as goods and coal:
+`imports = 0.45·satFood + 0.40·satGoods + 0.15·satCoal` (growth and attraction).
+With no farm on the map `satFood = 0`, so imports never decide famine and the
+no-supply baseline (seeded map holds its population over 600 s) must hold. The
+weights are the balance subject.
+
+**Kind and owner.** `MAPE_FACTORY_KIND.FARM = 4` ('Farm') in the shared factory
+pool, staffed through `jobNeed` and inspected like any factory. Runtime lives in
+`map-farm.js` (`map-industry.js` is at the size limit);
+`mapeStepForestryFactory` dispatches the kind to `mapeStepFarm`, and the build
+step dispatches a farm site to `mapeStepFarmBuild`.
+
+**Field and farmland.** The field is the centered 5×5 square
+(`MAPE_FARM_RADIUS = 2`). A cell is *farmland* once the farm has cleared it;
+`mape.farmOwner` (`Uint8Array(n)`, `0` = none, else `f + 1`) records the owner,
+so tiled farms never share a cell. A cell can be cleared when it is not water,
+swamp, settlement or industry, is unowned and has `disturbed <
+MAPE_FARM_MAX_DISTURB = 0.2`. Its quality is
+`q = (1 − d) · max(0, 1 − |soil − MAPE_FARM_SOIL_OPTIMUM| / 0.3)` with optimum
+`0.6` on `hydrology.soil` — wetter than the forest optimum `0.5`, so river
+plains farm best. A farmland cell whose disturbance reaches `0.2` drops out of
+the field. Farmland grows no forest: `economy.js` owns a `tilled` mask set
+through `economyTill(i, on)`, and a tilled cell's forest target is `0`. Released
+farmland clears the mask and regrows on the ordinary forest model.
+
+**Clearing: sawmill mechanics, felled to zero.** Clearing uses the sawmill's
+work-visit rule: each visit samples one random cell of the field and costs
+`MAPE_FARM_TILL_SEC = 2` full-staff productive seconds; a cell that cannot be
+cleared (or is already farmland) is a miss. A hit fells **all** forest on the
+cell to zero, owes the same felling work as a sawmill
+(`felled / MAPE_SAWMILL_FELL_RATE`), converts the cover to logs at
+`MAPE_SAWMILL_FOREST_PER_LOG`, stocks them on the farm cell, and marks the cell
+farmland. No log-pull gate: a farm clears for its field, not for the log market.
+Clearing runs:
+
+- during construction, with the build crew;
+- while active, with the workers the field cannot use (see below), so a farm
+  that gets more workers than its farmland can hold expands its field.
+
+**Construction pays in forest or wood.** The farm build is the ordinary
+log-paid build (`MAPE_BUILD_WOOD_RATE` from logs on the site cell). Because
+clearing stocks its logs on the farm cell, a wooded site pays for itself from
+its own field and opens with farmland already cleared; an open meadow site has
+nothing to fell and needs hauled logs, while its visits still till farmland.
+Cuts are paid after the fact, as at the sawmill, so the first full-forest hit
+(20 logs) covers the whole build (`0.1 × 4 × 20 s = 8` logs) at once, and
+meadow cells, costing only the visit, till fast.
+Logs left over after the build join the log market by gradient.
+
+**Workforce sets the worked area.** `MAPE_FARM_WORKERS_PER_CELL = 0.4`; a full
+25-cell field needs `10` workers. Each active tick:
+
+```
+cap     = farmlandCells(f) / MAPE_FARM_WORKERS_PER_CELL   // workers the field can hold
+present = mapeWorkPresent(idx)
+worked  = min(present, cap) / MAPE_FARM_WORKERS_PER_CELL   // cells tended now
+spare   = max(0, present − cap) / MAPE_FARM_WORKERS_PER_CELL
+```
+
+`worked` cell-seconds accumulate in `factoryCrop[f]`; `spare` crew pays down the
+clearing work in `factoryHarvestWork[f]`, so extra workers turn into new
+farmland. `farmlandCells(f)` is cached at each harvest pass, keeping the tick
+O(1).
+
+**Food demand sets the job need.** A farm's advertised need is not the flat
+`MAPE_FACTORY_WORKERS`:
+
+```
+need = MAPE_FARM_MIN_WORKERS + (MAPE_FARM_MAX_WORKERS − MAPE_FARM_MIN_WORKERS)
+       · min(1, foodPull[idx] / MAPE_FARM_FULL_PULL)
+```
+
+with `MIN = 1`, `MAX = 10` and `FULL_PULL = 0.06`, read once per harvest pass
+into `factoryNeed[f]`. `mapeFactoryWorkers` takes the factory index so job
+slots, staffing, fluid credit and the inspector all read the same need. The
+minimum crew means a farm always produces; local food stock cools the pull, so
+a glutted region shrinks its farms' crews, their worked area and output without
+any on/off gate. Farms never idle.
+
+**Harvest: the whole field in one pass.** On its own sim-time clock
+(`factoryClock[f]`, `MAPE_FARM_SEASON_SEC = 20`) the farm makes one pass over its
+25 cells and brings in the crop at once. The worked share
+`w = min(1, (factoryCrop / season) / farmlandCells)` is split evenly over the
+farmland, and every farmland cell receives `MAPE_FARM_YIELD · q · w` food
+(`3` per quality-1 cell per season at full staff) stocked on that cell. Output
+follows the workforce through `w`; the batch size follows the field. The same
+pass recounts farmland, refreshes `factoryNeed`, and releases one lowest-quality
+farmland cell when `farmlandCells > ceil(averageWorked) + 1`, so an undermanned
+field shrinks gradually and the forest takes the released cell back.
+
+**Waste outside the field.** Each harvest puts
+`MAPE_FARM_WASTE_PER_FOOD = 0.0004 · food` disturbance on **one random cell of
+the ring just outside the field** (Chebyshev distance `3`, 24 cells), through
+`landDisturb`. The field itself stays clean. Tiled farms change nothing: the
+ring cell may be a neighbour's farmland, which then drifts toward the `0.2`
+line like any other disturbed cell. An off-map or water pick drops that
+season's waste.
+
+**Budget.** A meadow field of 25 cells at `q ≈ 0.6` with a full crew of 10
+yields ~45 food per season, ~2.25 food/s — about 60 people at the market rate; a
+minimum crew of 1 keeps ~0.2 food/s. Per farm per tick: two multiply-adds and
+an occasional clearing sample; per season: one 25-cell pass plus one ring pick.
+A 32-plant cap keeps this far below one field-diffusion step.
+
+**Placement.** `map-factory-scan.js` adds `mapeScanUnmetFood` to the town loop;
+the region score sums unmet goods and food. When unmet food exceeds unmet goods
+the kind is `FARM`, ahead of the wood rules. A farm site is legal only where the
+mean *potential* quality over the 5×5 field (forest counts: it will be cleared)
+is at least `MAPE_FARM_MIN_FIELD = 0.35`; it sits at the town-weighted centre
+snapped to the best legal field. Sites scores the region by margin with field
+quality as the site term. First cut: the scene **Farm** tool places a farm site
+by hand; the scan joins after a playtest.
+
+**View and inspector.** Amount and demand pickers gain `food`. A farm marker
+outlines its 5×5 field and tints farmland cells, filled by season progress, so
+field growth and the batch harvest are visible. The inspector reads
+`Farm F3 · active · field 14/25 · worked 9.5 · crew 4.1/6.0 · season 62% · last harvest 21 food`
+(the last harvest is stored in `factoryGoods[f]` as food/s over the season).
+
+**Data.** `factoryCrop`, `factoryClock`, `factoryNeed` (`Float32Array(cap)`),
+`mape.farmOwner` (`Uint8Array(n)`), `economy.tilled` (`Uint8Array(n)`); all
+cleared in `mapeReset` and on farm removal (owned cells released).
+
+**Experiment gates** (`experiments/mape_farm.js`):
+
+- clearing: a hit sets the cell's forest to `0`, stocks `cover / 0.05` logs on
+  the farm cell and marks it farmland; misses cost `2` work seconds; a tilled
+  cell grows no forest, a released one regrows;
+- a wooded site completes its build from its own felled logs; a meadow site
+  stalls without hauled logs while tilling farmland;
+- worked area: doubling the crew up to the field cap doubles the harvest; crew
+  above the cap clears new farmland; a cell owned by another farm is never
+  cleared;
+- need: zero food pull advertises `MIN` workers and still harvests; pull at or
+  above `FULL_PULL` advertises `MAX`; local food stock lowers the need;
+- harvest: no food between passes; at the pass every farmland cell receives
+  `YIELD · q · w` in the same tick, and only farmland; `dt = 0.2` and
+  `dt = 0.05` give identical harvests over `120 s`;
+- waste lands on exactly one ring cell per harvest and never inside the field;
+- households pull food without any farm in all four engines;
+- ledger residual `< 1e-6`; seeded-map no-supply population unchanged over `600 s`.
 
 ### Phase 3 — Factories, mines and forest CO2 loop (diffusion)
 
@@ -1158,10 +1330,16 @@ Gate: runtime switches preserve the stock ledger, all engines pass `smoke` and
   Click it (Inspect tool) — the workforce block shows state, staffing and rates;
   the global row shows staffed/open slots. Esc clears the selection.
 - In a scene, place a sawmill near sparse forest plus charcoal and wood works down-gradient.
-  Each visit tries one cell in the surrounding 5×5 patch; a hit clears only
-  that cell, then waits for harvest work. Misses cost search time. Halving
+  Each visit tries one cell in the surrounding 5×5 patch; a hit fells all of
+  that cell's forest (it goes bare and regrows), then waits for harvest work. Misses cost search time. Halving
   staffing lengthens the wait; pause stops it. Compare Diffusion/A/B and check
   that a nearby settlement pulls logs even without a converter.
+- In a scene, place a farm site at a forest edge next to a town: random field
+  cells go bare and turn to farmland while the build eats their logs. Once
+  active, every season the whole field drops food at once and it moves toward
+  the town. Add a second town: the crew and the farmland grow; glut the farm
+  cell with food: the crew falls to one and the worst cells regrow forest. A
+  waste speck appears just outside the outline each season, never inside.
 - The workforce segment opens on **Fluid field**: fresh workforce gathers at the
   mine, depleted pool returns to settlements, and a hamlet founds itself
   where depleted piles on high-value land (meadow or water-adjacent, never swamp).

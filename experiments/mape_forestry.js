@@ -58,8 +58,8 @@ function verifySingleSampleSearch() {
 	randomSeed(seed);
 	mape.factoryHarvestWork[0] = 0;
 	mapeStepForestryFactory(0, saw, 0.2, 1);
-	assert.equal(localStock(MAPE_RES.LOGS, sampleIdx), 1 / MAPE_SAWMILL_FOREST_PER_LOG, 'all selected biomass becomes logs');
-	assert.equal(economy.biomass[sampleIdx], 0, 'the selected cell is cleared');
+	assert.equal(localStock(MAPE_RES.LOGS, sampleIdx), 1 / MAPE_SAWMILL_FOREST_PER_LOG, 'the whole cell converts at the log yield');
+	assert.equal(economy.biomass[sampleIdx], 0, 'the selected cell is felled to zero');
 	assert.equal(economy.biomass[decoyIdx], 1, 'unselected forest stays intact');
 	const work = mape.factoryHarvestWork[0];
 	const rng = random.seed;
@@ -68,7 +68,8 @@ function verifySingleSampleSearch() {
 	mapeStepForestryFactory(0, saw, 0.2, 0.5);
 	assert.ok(Math.abs(mape.factoryHarvestWork[0] - (work - 0.1 * landProductivity(saw))) < 1e-9, 'half staff pays half the work');
 	assert.equal(random.seed, rng, 'cooldown does not sample cells');
-	assert.equal(totalStock(MAPE_RES.LOGS), 40, 'cooldown produces no extra logs');
+	assert.ok(mape.factoryHarvestWork[0] > 0.8 / MAPE_SAWMILL_FELL_RATE, 'work is charged per forest felled, not per log');
+	assert.equal(totalStock(MAPE_RES.LOGS), 1 / MAPE_SAWMILL_FOREST_PER_LOG, 'cooldown produces no extra logs');
 	assert.equal(localStock(MAPE_RES.LOGS, decoyIdx), 0, 'the unselected forest cell is left alone');
 }
 
@@ -166,8 +167,8 @@ verifySingleSampleSearch();
 const coarse = verifyHarvestCadence(0.2, 1);
 const fine = verifyHarvestCadence(0.05, 1);
 const half = verifyHarvestCadence(0.2, 0.5);
-assert.equal(coarse, fine, 'different engine steps produce the same whole-cell harvests');
-assert.ok(half < coarse, 'lower staffing slows whole-cell harvesting');
+assert.equal(coarse, fine, 'different engine steps produce the same cuts');
+assert.ok(half < coarse, 'lower staffing slows cutting');
 console.log('harvest_dt_0.2=' + coarse + ' harvest_dt_0.05=' + fine + ' harvest_half_staff=' + half);
 for (const engine of [MAPE_ENGINE.DIFFUSION, MAPE_ENGINE.CATCHMENT, MAPE_ENGINE.QUEUE, MAPE_ENGINE.SITES]) verifyHouseholdLogs(engine);
 runChain(MAPE_ENGINE.DIFFUSION, MAPE_WORKFORCE_MODE.FLUID);
