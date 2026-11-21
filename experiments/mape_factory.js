@@ -149,18 +149,25 @@ check('sawmill_output_rises_with_cover', outB > outA,
 	'cover0.5=' + outA.toFixed(3) + ' cover1.0=' + outB.toFixed(3));
 
 // Gate 5: on the seeded map no ORE mine is bound, so GENERAL is never chosen
-// even after a full minute of live scans.
+// even after a full minute of live scans — and the default survey must start
+// its wood chain: a sawmill first, then a log consumer to pull the first cut.
 main.setup(START_SEED, '');
 mape.scanOn = true;
 for (let k = 0; k < 1200; k++) mapeStep(0.05);
 let built = 0;
 let general = 0;
+let sawmills = 0;
+let works = 0;
 for (let f = 0; f < mape.factoryCount; f++) {
 	if (mape.factoryState[f] === MAPE_FACTORY_STATE.GONE) continue;
 	built++;
 	if (mape.factoryKind[f] === MAPE_FACTORY_KIND.GENERAL) general++;
+	else if (mape.factoryKind[f] === MAPE_FACTORY_KIND.SAWMILL) sawmills++;
+	else works++;
 }
 check('no_general_without_ore_mine', general === 0, 'built=' + built + ' general=' + general);
+check('survey_starts_wood_chain', sawmills >= 1 && works >= 1,
+	'sawmills=' + sawmills + ' works=' + works);
 
 // Gate 6: at MAPE_FACTORY_CAP no further builds start.
 blank();
