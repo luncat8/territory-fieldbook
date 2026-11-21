@@ -7,7 +7,7 @@ const HUD_SCENE_TOOL_NOTE = [
 	'Click an empty cell on either map to add a settlement and watch the routes change.',
 	'Click a mine, settlement or factory to remove it without deleting the coal already on the map.',
 	'Click an empty cell on either map to add an active factory and watch its staffing and rates.',
-	'Each visit tests one random cell in the 5×5 patch and clears its forest if logs are wanted. Workforce pays for the harvest before the next visit.',
+	'Each visit tests one random cell in the 5×5 patch and fells half its forest if logs are wanted. Workforce pays for the cut before the next visit.',
 	'Consumes transported logs to make coal.',
 	'Consumes transported logs to make goods.'
 ];
