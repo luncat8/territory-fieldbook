@@ -29,6 +29,7 @@ function mapeUseDiffusionStock(dt) {
 		if (p <= 0 || mapeIsIndustry(i)) continue;
 		mapeUseLocalStock(MAPE_RES.GOODS, i, p * MAPE_NEED_GOODS * dt);
 		mapeUseLocalStock(MAPE_RES.COAL, i, p * MAPE_NEED_COAL * dt);
+		mapeUseLocalStock(MAPE_RES.LOGS, i, p * MAPE_NEED_LOGS * dt);
 	}
 }
 

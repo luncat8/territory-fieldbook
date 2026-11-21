@@ -232,6 +232,7 @@ function mapeUseCatchments(dt) {
 		const i = mape.settleCells[k];
 		mapeUseCatchmentStock(MAPE_RES.COAL, i, dt);
 		mapeUseCatchmentStock(MAPE_RES.GOODS, i, dt);
+		mapeUseLocalStock(MAPE_RES.LOGS, i, mape.pop[i] * MAPE_NEED_LOGS * dt);
 	}
 }
 
@@ -248,6 +249,7 @@ function mapeServeQueues(dt) {
 		const i = mape.settleCells[k];
 		mapeServeQueue(MAPE_RES.COAL, i, dt, share);
 		mapeServeQueue(MAPE_RES.GOODS, i, dt, share);
+		mapeUseLocalStock(MAPE_RES.LOGS, i, mape.pop[i] * MAPE_NEED_LOGS * dt);
 	}
 }
 

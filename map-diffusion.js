@@ -108,6 +108,7 @@ function mapeInjectDemand(dt, marketsOnly) {
 			demand[coalOff + i] += p * MAPE_NEED_COAL * gain;
 		}
 		if (marketsOnly) continue;
+		if (p > 0 && !mapeIsIndustry(i)) demand[MAPE_RES.LOGS * n + i] += p * MAPE_NEED_LOGS * gain;
 		if (p > 0) demand[co2Off + i] -= p * MAPE_NEED_COAL * gain;
 		const uptake = economyForestRate(i, goods[co2Off + i]) * BIO_CARBON_PER_COVER;
 		demand[co2Off + i] += uptake * gain;

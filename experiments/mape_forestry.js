@@ -54,7 +54,21 @@ function verifySingleSampleSearch() {
 	economy.biomass[sampleIdx] = 1;
 	randomSeed(seed);
 	mapeStepForestryFactory(0, saw, 0.2, 1);
-	assert.ok(localStock(MAPE_RES.LOGS, sampleIdx) > 0, 'the sampled forest cell receives the logs');
+	assert.equal(totalStock(MAPE_RES.LOGS), 0, 'a miss charges search time before retrying');
+	randomSeed(seed);
+	mape.factoryHarvestWork[0] = 0;
+	mapeStepForestryFactory(0, saw, 0.2, 1);
+	assert.equal(localStock(MAPE_RES.LOGS, sampleIdx), 1 / MAPE_SAWMILL_FOREST_PER_LOG, 'all selected biomass becomes logs');
+	assert.equal(economy.biomass[sampleIdx], 0, 'the selected cell is cleared');
+	assert.equal(economy.biomass[decoyIdx], 1, 'unselected forest stays intact');
+	const work = mape.factoryHarvestWork[0];
+	const rng = random.seed;
+	mapeStepForestryFactory(0, saw, 0.2, 0);
+	assert.equal(mape.factoryHarvestWork[0], work, 'no workers means no harvest work');
+	mapeStepForestryFactory(0, saw, 0.2, 0.5);
+	assert.ok(Math.abs(mape.factoryHarvestWork[0] - (work - 0.1 * landProductivity(saw))) < 1e-9, 'half staff pays half the work');
+	assert.equal(random.seed, rng, 'cooldown does not sample cells');
+	assert.equal(totalStock(MAPE_RES.LOGS), 40, 'cooldown produces no extra logs');
 	assert.equal(localStock(MAPE_RES.LOGS, decoyIdx), 0, 'the unselected forest cell is left alone');
 }
 
@@ -81,6 +95,7 @@ function runChain(engine, workforceMode) {
 	assert.ok(logPull[saw] > MAPE_SAWMILL_MIN_PULL, 'processor demand reaches the forestry area');
 	const beforeForest = economy.biomass.reduce((sum, value) => sum + value, 0);
 	const beforeLogs = totalStock(MAPE_RES.LOGS);
+	mape.factoryHarvestWork[0] = 0;
 	mapeStepForestryFactory(0, saw, 0.2, 1);
 	const cutCells = [];
 	for (let dy = -MAPE_SAWMILL_SEARCH_RADIUS; dy <= MAPE_SAWMILL_SEARCH_RADIUS; dy++) {
@@ -103,7 +118,58 @@ function runChain(engine, workforceMode) {
 		' ledger=' + mapeLedgerResidual().toExponential(1));
 }
 
+function verifyHouseholdLogs(engine) {
+	main.setup(START_SEED, 'a', 0, engine);
+	world.terrain.fill(TERRAIN.MEADOW);
+	mapeSetWorkforceMode(MAPE_WORKFORCE_MODE.RESIDENTS);
+	mapeInit(engine, true);
+	const town = 20 * world.size + 20;
+	mapePlaceSettlement(town, 20, false);
+	mapeRebuildSettlements();
+	mapeSyncCells();
+	mapeWarmDemand();
+	assert.ok(mape.demandView[MAPE_RES.LOGS][town] > MAPE_SAWMILL_MIN_PULL, 'households pull logs without processors');
+	mapeProduceStock(MAPE_RES.LOGS, town, 1);
+	const before = localStock(MAPE_RES.LOGS, town);
+	if (engine === MAPE_ENGINE.DIFFUSION) mapeUseDiffusionStock(1);
+	if (engine === MAPE_ENGINE.CATCHMENT) mapeUseCatchments(1);
+	if (engine === MAPE_ENGINE.QUEUE) mapeServeQueues(1);
+	if (engine === MAPE_ENGINE.SITES) {
+		assert.equal(mapeSitesHouseholdHold(MAPE_RES.LOGS, town), 20 * MAPE_NEED_LOGS * MAPE_SITE_HOLD_SEC);
+		mapeSitesMetabolism(1);
+	}
+	assert.ok(Math.abs(before - localStock(MAPE_RES.LOGS, town) - 20 * MAPE_NEED_LOGS) < 1e-9, 'household log consumption is population-scaled');
+	assert.ok(Math.abs(mapeLedgerResidual()) < 1e-6, 'household log consumption balances');
+	economy.biomass.fill(1);
+	const saw = place(MAPE_FACTORY_KIND.SAWMILL, 22, 20);
+	mapeSyncCells();
+	mapeWarmDemand();
+	randomSeed(7319);
+	const logs = totalStock(MAPE_RES.LOGS);
+	mapeStepForestryFactory(0, saw, 0.2, 1);
+	assert.ok(totalStock(MAPE_RES.LOGS) > logs, 'household demand alone starts sawmill production');
+}
+
+function verifyHarvestCadence(dt, staff) {
+	main.setup(START_SEED, 'a');
+	world.terrain.fill(TERRAIN.MEADOW);
+	land.disturbed.fill(0);
+	economy.biomass.fill(1);
+	mape.demandView[MAPE_RES.LOGS].fill(1);
+	const saw = place(MAPE_FACTORY_KIND.SAWMILL, 20, 20);
+	randomSeed(7319);
+	for (let step = 0; step < Math.round(120 / dt); step++) mapeStepForestryFactory(0, saw, dt, staff);
+	return totalStock(MAPE_RES.LOGS);
+}
+
 verifySingleSampleSearch();
+const coarse = verifyHarvestCadence(0.2, 1);
+const fine = verifyHarvestCadence(0.05, 1);
+const half = verifyHarvestCadence(0.2, 0.5);
+assert.equal(coarse, fine, 'different engine steps produce the same whole-cell harvests');
+assert.ok(half < coarse, 'lower staffing slows whole-cell harvesting');
+console.log('harvest_dt_0.2=' + coarse + ' harvest_dt_0.05=' + fine + ' harvest_half_staff=' + half);
+for (const engine of [MAPE_ENGINE.DIFFUSION, MAPE_ENGINE.CATCHMENT, MAPE_ENGINE.QUEUE, MAPE_ENGINE.SITES]) verifyHouseholdLogs(engine);
 runChain(MAPE_ENGINE.DIFFUSION, MAPE_WORKFORCE_MODE.FLUID);
 runChain(MAPE_ENGINE.CATCHMENT, MAPE_WORKFORCE_MODE.RESIDENTS);
 

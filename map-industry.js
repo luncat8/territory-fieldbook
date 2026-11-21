@@ -8,6 +8,7 @@ const MAPE_FACTORY_IDLE_SEC = 40;
 const MAPE_WORKSHOP_RATE = 0.9;
 const MAPE_WORKSHOP_STOCK = 4;
 const MAPE_SAWMILL_RATE = 1.1;
+const MAPE_SAWMILL_SEARCH_SEC = 2;
 const MAPE_SAWMILL_SEARCH_RADIUS = 2;
 const MAPE_SAWMILL_MIN_FOREST = 0.08;
 const MAPE_SAWMILL_MIN_PULL = 0.015;
@@ -39,6 +40,7 @@ function mapeAddFactory(x, y, state, kind = MAPE_FACTORY_KIND.GENERAL) {
 	mape.factoryKind[f] = kind;
 	mape.factoryProgress[f] = state === MAPE_FACTORY_STATE.ACTIVE ? 1 : 0;
 	mape.factoryStarved[f] = 0;
+	mape.factoryHarvestWork[f] = 0;
 	mape.factoryCoal[f] = 0;
 	mape.factoryIron[f] = 0;
 	mape.factoryGoods[f] = 0;
@@ -269,8 +271,8 @@ function mapeStepFactories(dt) {
 	}
 }
 
-// Forest is an area, not a point: a sawmill works the disc of MAPE_SAWMILL_SEARCH_RADIUS
-// around its site, so site choice and output both read this cover figure.
+// The centered square is shared by site scoring and harvest sampling.
+// Out-of-map and water cells lower cover rather than shrinking the denominator.
 function mapeForestCover(x, y) {
 	const size = world.size;
 	const radius = MAPE_SAWMILL_SEARCH_RADIUS;
@@ -291,7 +293,7 @@ function mapeForestCover(x, y) {
 }
 
 function mapeSampleForestCutCell(x, y) {
-	// A miss costs this tick, so sparse forest lowers effective sawmill output.
+	// A miss costs search effort; never scan the rest of the patch.
 	const size = world.size;
 	const radius = MAPE_SAWMILL_SEARCH_RADIUS;
 	const width = radius * 2 + 1;
@@ -307,19 +309,23 @@ function mapeSampleForestCutCell(x, y) {
 
 function mapeStepForestryFactory(f, idx, dt, staff) {
 	mape.factoryCoal[f] = mape.factoryIron[f] = mape.factoryGoods[f] = mape.factoryCo2[f] = 0;
-	if (staff <= 0) return;
+	if (staff <= 0 || dt <= 0) return;
 	const kind = mape.factoryKind[f];
 	if (kind === MAPE_FACTORY_KIND.SAWMILL) {
+		// Charge each whole-cell harvest as future work, rather than multiplying output by tick frequency.
+		const effort = staff * landProductivity(idx) * dt;
+		if (effort <= 0) return;
+		mape.factoryHarvestWork[f] -= effort;
+		if (mape.factoryHarvestWork[f] > 0) return;
+		mape.factoryHarvestWork[f] += MAPE_SAWMILL_SEARCH_SEC;
 		const cell = mapeSampleForestCutCell(mape.factoryX[f], mape.factoryY[f]);
 		if (cell < 0) return;
 		const pull = mape.demandView[MAPE_RES.LOGS][cell];
 		const demandScale = Math.min(1, pull / (MAPE_SAWMILL_MIN_PULL * 2));
-		// A mill in deep forest out-earns one on the edge: cover scales the cut.
 		const cover = mapeForestCover(mape.factoryX[f], mape.factoryY[f]);
-		const units = Math.min(MAPE_SAWMILL_RATE * (1 + 0.15 * cover) * staff * landProductivity(idx) * demandScale * dt,
-			economy.biomass[cell] / MAPE_SAWMILL_FOREST_PER_LOG);
-		if (units <= 0) return;
-		economy.biomass[cell] -= units * MAPE_SAWMILL_FOREST_PER_LOG;
+		const units = economy.biomass[cell] / MAPE_SAWMILL_FOREST_PER_LOG;
+		mape.factoryHarvestWork[f] += units / (MAPE_SAWMILL_RATE * (1 + 0.15 * cover) * demandScale);
+		economy.biomass[cell] = 0;
 		mape.factoryGoods[f] = units / dt;
 		mapeProduceStock(MAPE_RES.LOGS, cell, units);
 		landDisturbRing(cell, 0.00015 * units);
