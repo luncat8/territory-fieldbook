@@ -277,8 +277,7 @@ to control how menu log really need - we can use same demand field: if gradient 
 
 #### sawmill-like factories that work with map cells around
 
-i suggest make it cut more forest in one tick. because we choose random cell, it is better to cut all available in cell forest -> wood, and make in maybe not every tick to save performance. this is subject of balance industry. 
-
+i suggest make it cut more forest in the selected cell in one tick. because we choose random cell, it is better to cut all available forest in SELECTED cell -> wood, and make in maybe not every tick to save performance. this is subject of balance industry. 
 
 #### build factory
 
@@ -295,8 +294,16 @@ CO2 O2 gas diffusion dont blocked by water
 
 #### settings panel
 
-add special panel with sliders to play with (all) fabs, settlements, sites, mines, etc. speed. and button to copy result settings to clipboard so i can paste to chat to tell what is good working
+add special panel (left) with sliders to easy adjust and play with speed of
+- all renewable growth mult - forest, farm, fish
+- all mines of not renewable - production global mult
+- all fabs mult
 
+- each type separate
+
+- settlements
+- sites
+etc. . and button to copy result settings to clipboard so i can paste to chat to tell what is good working
 
 ### waste view map
 
