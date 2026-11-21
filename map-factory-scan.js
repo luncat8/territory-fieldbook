@@ -189,7 +189,9 @@ function mapeScanRun() {
 	// hauled surplus of both on hand — no ORE-bound mine means it is never chosen
 	// (it would build and then starve). Otherwise wood has to exist before wood can
 	// be spent: below the reserve only a sawmill may be sited, above it the log-fed
-	// works the region is shorter of, ties toward coal.
+	// works the region is shorter of, ties toward coal. Exception: a mill cuts only
+	// where log demand reaches it and demand comes from the works, so a region's
+	// first works sites below the reserve — it pulls the first cut.
 	const deposits = coalStock > 0 && ironStock > 0 ? mapeScanDepositFields() : null;
 	let hasIron = false;
 	let hasCoal = false;
@@ -199,9 +201,20 @@ function mapeScanRun() {
 			else hasCoal = true;
 		}
 	}
+	let mills = 0;
+	let works = 0;
+	for (let f = 0; f < mape.factoryCount; f++) {
+		if (mape.factoryState[f] === MAPE_FACTORY_STATE.GONE) continue;
+		const dx = mape.factoryX[f] - ax;
+		const dy = mape.factoryY[f] - ay;
+		if (dx * dx + dy * dy > reach2) continue;
+		if (mape.factoryKind[f] === MAPE_FACTORY_KIND.SAWMILL) mills++;
+		else if (mape.factoryKind[f] !== MAPE_FACTORY_KIND.GENERAL) works++;
+	}
 	const general = deposits && hasIron && hasCoal;
+	const firstWorks = mills > 0 && works === 0;
 	const kind = general ? MAPE_FACTORY_KIND.GENERAL
-		: logs < MAPE_BUILD_LOG_RESERVE ? MAPE_FACTORY_KIND.SAWMILL
+		: logs < MAPE_BUILD_LOG_RESERVE && !firstWorks ? MAPE_FACTORY_KIND.SAWMILL
 			: coal >= unmet ? MAPE_FACTORY_KIND.CHARCOAL : MAPE_FACTORY_KIND.WOOD;
 	// 4. Where it sits. Sites scores the region disc by margin instead of the centroid.
 	if (mape.engine === MAPE_ENGINE.SITES) {
