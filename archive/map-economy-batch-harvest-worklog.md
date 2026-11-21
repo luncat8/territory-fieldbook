@@ -12,3 +12,18 @@ validation: manual visual pass not run; checklist is in the plan
 decision: logs stay on their existing signed transport path in A/B; no new satisfaction axis or coal substitution
 decision: upfront whole-cell output is paid before another visit, preserving workforce limits without partial cuts or per-frame allocations
 next: playtest burst haulage and forest depletion around towns; tune household use/search cost before changing factory siting
+
+# Half-cell sawmill cuts; farm plan
+plan: `plan-map-economy.md` §3 Sawmill, Forestry supply chain, Farm: a seasonal field harvester
+review: previous entry ok; its plan figures (40 logs, 34–38 s per cut) updated with the change
+changed: `map-industry.js` — feature: `MAPE_SAWMILL_CUT_SHARE = 0.5`, `MAPE_SAWMILL_SEARCH_SEC` 2 → 1
+changed: `hud-scenes.js`, `experiments/mape_forestry.js` — tool help and half-cut gates
+changed: `plan-map-economy.md` — sawmill numbers; farm design section, gates and manual pass item
+changed: `findings-pitfalls-skills.md` — household commodity demand/use pairing
+validation: node --check; mape_forestry, mape_factory, dom_smoke pass; 120 s harvest 150 logs at dt 0.2 and 0.05 (was 160), half staff 80; ledger <7e-13
+decision: half cuts at twice the cadence keep logs/s, halve haul bursts and never bare a cell
+decision: compared draft 2fd5ecc — its whole-patch batch cut rejected for forest, reused as the farm's season harvest with a staff-weighted clock instead of its sim-time scan clock
+decision: 2fd5ecc logs-as-market-item (need ×4) not taken: rebalances the measured map and drops Sites log orders while keeping use; its touch list is the farm's food checklist
+decision: 2fd5ecc per-subsystem dt multipliers are the right shape for the draft settings panel; take them with the panel, adding forest/farm growth sliders
+pitfalls: dropping one side of a household commodity is silent outside Sites — see findings
+next: implement farm first cut (FOOD resource, household use in four engines, map-farm.js, scene tool), then the settings panel
