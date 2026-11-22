@@ -189,7 +189,7 @@ function hudUpdateInspect() {
 	}
 	if (mapeMarketEngine() && mapeIsSettlement(idx)) {
 		text += '\nImport pull · coal ' + Math.round(100 * mapeMarketPull(MAPE_RES.COAL, idx)) +
-			'% · goods ' + Math.round(100 * mapeMarketPull(MAPE_RES.GOODS, idx)) + '%';
+			'% · goods ' + Math.round(100 * mapeMarketPull(MAPE_RES.GOODS, idx)) + '% · intake ' + mapeCatchmentCells(idx) + ' cells';
 	}
 	const lock = mapeDepositState(x, y);
 	if (lock >= 0) text += '\nDeposit ' + hudMineText(lock, idx);
