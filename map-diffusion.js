@@ -10,7 +10,7 @@ const MAPE_MIX_MAX = 0.15;
 const MAPE_DECAY = 0.008;
 const MAPE_DEMAND_GAIN = 8.0;
 const MAPE_STOCK_SIGNAL = 0.25;
-const MAPE_CO2_DIFFUSE = 0.5625;
+const MAPE_CO2_DIFFUSE = 0.9;
 const MAPE_FLOW_SPEED = 3.6;
 const MAPE_GRAD_REF = 0.02;
 const MAPE_TRANSPORT_BASE = 0.5;
@@ -117,22 +117,24 @@ function mapeInjectDemand(dt, marketsOnly) {
 		if (p > 0) demand[co2Off + i] -= p * MAPE_NEED_COAL * gain;
 		const uptake = economyForestRate(i, goods[co2Off + i]) * BIO_CARBON_PER_COVER;
 		demand[co2Off + i] += uptake * gain;
+		demand[co2Off + i] -= land.disturbed[i] * MAPE_WASTE_CO2 * gain;
 	}
 	for (let f = 0; f < mape.factoryCount; f++) {
 		const st = mape.factoryState[f];
 		if (st === MAPE_FACTORY_STATE.GONE) continue;
 		const idx = mape.factoryY[f] * size + mape.factoryX[f];
 		const kind = mape.factoryKind[f];
-		if (kind !== MAPE_FACTORY_KIND.GENERAL) {
-			if (marketsOnly) continue;
-			if (st === MAPE_FACTORY_STATE.BUILDING) {
-				// Construction hauls logs to the site; a sawmill fells its own footprint instead.
-				if (kind !== MAPE_FACTORY_KIND.SAWMILL) demand[MAPE_RES.LOGS * n + idx] += MAPE_BUILD_WOOD_RATE * gain;
-			} else if (kind === MAPE_FACTORY_KIND.CHARCOAL || kind === MAPE_FACTORY_KIND.WOOD) {
-				demand[MAPE_RES.LOGS * n + idx] += MAPE_FORESTRY_INPUT * gain;
+			if (kind !== MAPE_FACTORY_KIND.GENERAL) {
+				if (marketsOnly) continue;
+				if (st === MAPE_FACTORY_STATE.BUILDING) {
+					// Construction hauls logs to the site; a sawmill fells its own footprint instead.
+					if (kind !== MAPE_FACTORY_KIND.SAWMILL) demand[MAPE_RES.LOGS * n + idx] += MAPE_BUILD_WOOD_RATE * gain;
+				} else if (kind === MAPE_FACTORY_KIND.CHARCOAL || kind === MAPE_FACTORY_KIND.WOOD) {
+					demand[MAPE_RES.LOGS * n + idx] += MAPE_FORESTRY_INPUT * gain;
+					if (kind === MAPE_FACTORY_KIND.CHARCOAL) demand[co2Off + idx] -= mape.factoryCo2[f] * gain;
+				}
+				continue;
 			}
-			continue;
-		}
 		if (st === MAPE_FACTORY_STATE.BUILDING) {
 			if (!marketsOnly) demand[MAPE_RES.LOGS * n + idx] += MAPE_BUILD_WOOD_RATE * gain;
 		} else if (st === MAPE_FACTORY_STATE.ACTIVE || st === MAPE_FACTORY_STATE.IDLE) {
@@ -170,6 +172,23 @@ function mapeDiffuseFields(dt, marketsOnly) {
 	}
 }
 
+// Waste dumps outgassen: disturbed ground releases CO2 in proportion to the waste it holds,
+// and the release is real mass (ledger: goods up, massIn up).
+function mapeEmitWasteCo2(dt) {
+	const n = world.n;
+	const disturbed = land.disturbed;
+	const goods = mape.goods;
+	const off = MAPE_RES.CO2 * n;
+	const rate = MAPE_WASTE_CO2 * dt;
+	for (let i = 0; i < n; i++) {
+		const d = disturbed[i];
+		if (d <= 0) continue;
+		const emit = d * rate;
+		goods[off + i] += emit;
+		mape.massIn += emit;
+	}
+}
+
 function mapeHaulBudget(i, stock, fraction, pop, work) {
 	const staff = pop[i] / (pop[i] + work[i] + MAPE_TRANSPORT_REF_POP);
 	return stock * fraction * (MAPE_TRANSPORT_BASE + (1 - MAPE_TRANSPORT_BASE) * staff);
@@ -190,7 +209,7 @@ function mapeTransportSlice(r, size, terrain, demand, goods, next, pop, work, wo
 			if (stock <= MAPE_EPS || terrain[i] === water) continue;
 			const budget = fast ? mapeMarketUsable(r, i, stock) * baseFrac : mapeHaulBudget(i, stock, baseFrac, pop, work);
 			if (budget <= 0) continue;
-			const effort = mapePushUpGradient(x, y, i, p, size, terrain, demand, next, budget, gradRef, 0, null, flowX, flowY, false, cond);
+			const effort = mapePushUpGradient(x, y, i, p, size, demand, next, budget, gradRef, 0, null, flowX, flowY, false, cond);
 			if (effort <= 0) continue;
 			workNext[i] += effort;
 			workTotal += effort;
@@ -246,7 +265,7 @@ function mapeTransportWorkers(dt) {
 			const idle = curPop - job[i];
 			if (idle <= MAPE_EPS || terrain[i] === water) continue;
 			const budget = idle * (curPop >= MAPE_SETTLE_MIN ? leaveFrac : walkFrac);
-			if (mapePushUpGradient(x, y, i, i, size, terrain, work, next, budget, MAPE_WORK_GRAD_REF, MAPE_POP_CAP, disturbed, null, null, false, transport) > 0) moved = true;
+			if (mapePushUpGradient(x, y, i, i, size, work, next, budget, MAPE_WORK_GRAD_REF, MAPE_POP_CAP, disturbed, null, null, false, transport) > 0) moved = true;
 		}
 	}
 	if (!moved) return;
@@ -270,6 +289,7 @@ function mapeDiffusionTick(dt) {
 	const catchment = mape.engine === MAPE_ENGINE.CATCHMENT;
 	if (catchment || queues) mapeUpdateMarketFields(dt);
 	if (queues) mapeServeQueues(dt);
+	mapeEmitWasteCo2(dt);
 	goodsNext.set(goods);
 	workScratch.fill(0);
 	mape.flowX.fill(0);
@@ -285,7 +305,7 @@ function mapeDiffusionTick(dt) {
 		const guide = fast ? mapeFilterMarketDemand(r) : mape.demand;
 		mape.transportWork += mapeTransportSlice(r, size, terrain, guide, goods, goodsNext, mape.pop, mape.workforce, workScratch, dt, fast, mape.flowX, mape.flowY, transport);
 	}
-	mapeDiffuseCo2Stock(goods, goodsNext, MAPE_RES.CO2 * n, size, dt);
+	mapeDiffuseCo2Stock(goods, goodsNext, MAPE_RES.CO2 * n, size, dt, mape.flowX, mape.flowY);
 	goods.set(goodsNext);
 	if (catchment) mapeUseCatchments(dt);
 	if (mape.engine === MAPE_ENGINE.DIFFUSION) mapeUseDiffusionStock(dt);
