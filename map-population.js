@@ -169,6 +169,19 @@ function mapePopulationStep(dt) {
 // but keeps its people. Only waste (which lowers land value) can push a town below famine.
 // Growth also fades as a town nears its room, so supplied towns settle at a steady size
 // instead of piling everyone onto the same few cells.
+// Player influence lifts growth by a fixed share of the growth rate: the fieldbook's presence
+// makes a town's own ground attract a few more people. Balanced later; the share is the knob.
+const MAPE_INFLUENCE_GROWTH = 0.10;
+
+function mapePlayerInfluence(i) {
+	const fields = territory.fields;
+	const n = world.n;
+	const player = fields[i];
+	let total = player;
+	for (let f = 1; f < FACTION_COUNT; f++) total += fields[f * n + i];
+	return total > 0 ? player / total : 0;
+}
+
 function mapePopulationGrowth(dt) {
 	const pop = mape.pop;
 	const terrain = world.terrain;
@@ -184,10 +197,11 @@ function mapePopulationGrowth(dt) {
 		const cap = settlement && mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID
 			? Math.max(before, mapeFluidCapacity(i))
 			: Math.max(before, mapePopCapacity(i));
+		const influence = 1 + MAPE_INFLUENCE_GROWTH * mapePlayerInfluence(i);
 		let rate = 0;
 		if (feed > neutral) {
 			const room = cap > 0 ? Math.max(0, cap - before) / cap : 0;
-			rate = MAPE_GROWTH * tune.growth * (feed - neutral) / (1 - neutral) * room;
+			rate = MAPE_GROWTH * tune.growth * (feed - neutral) / (1 - neutral) * room * influence;
 		} else if (feed < famine) {
 			rate = -MAPE_DEATH * tune.famine * (famine - feed) / famine;
 		}

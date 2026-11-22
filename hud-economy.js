@@ -4,7 +4,8 @@
 const HUD_ENGINE_NOTE = [
 	'Stock pushes down demand at its cell. The signed signal spreads across land.',
 	'Settlements draw from nearby stock. As their catchments fill, the flow bends toward hungrier towns.',
-	'A short queue meters arrivals. Stock in the queue and on nearby tiles both ease the pull.'
+	'A short queue meters arrivals. Stock in the queue and on nearby tiles both ease the pull.',
+	'Discrete shipments leave the depot for a settlement, then are hauled in. No continuous pull field.'
 ];
 
 const MAPE_WORKFORCE_NOTE = [
@@ -55,7 +56,6 @@ function hudBuildEngine() {
 	host.textContent = '';
 	const group = hudMakeSeg('ui-engine-mode', 'economy engine', MAPE_ENGINE_NAME, mape.engine, hudEconomy.radios, hudSetEngine, false);
 	for (let k = 0; k < hudEconomy.radios.length; k++) hudEconomy.radios[k].disabled = !mapeEngineAvailable(k);
-	group.children[MAPE_ENGINE.SITES].title = 'Discrete shipments are not available.';
 	host.appendChild(group);
 	hudSyncEngine();
 }

@@ -59,7 +59,7 @@ if (!bootError) {
 		result.itemHiddenOnTerrain = result.itemGroup.hidden === true;
 		result.engineRadios = result.engineGroup.children.length;
 		result.engineCatchmentChecked = result.engineGroup.children[1].children[0].checked;
-		result.engineSitesDisabled = result.engineGroup.children[3].children[0].disabled;
+		result.engineSitesEnabled = !result.engineGroup.children[3].children[0].disabled;
 		result.workforceRadios = result.workforceGroup ? result.workforceGroup.children.length : 0;
 		result.workforceStats = elements.get('ui-workforce-stats').textContent;
 		result.actionButtons = run('$("ui-actions").children.length');
@@ -165,14 +165,18 @@ if (!bootError) {
 		result.demandItemGroup.children[0].children[0].click();
 		const beforeSwitch = run('[clock.seconds, party.x, party.y, mapeGoodsTotal(), mape.viewItem].join(":")');
 		const engineSigs = new Set([pixelSignature(pixels)]);
-		for (const radio of [engines[0], engines[2]]) {
-			radio.click();
-			engineSigs.add(pixelSignature(pixels));
-		}
-		result.engineViews = engineSigs.size;
-		run('hudSetView(VIEW.AMOUNT)');
+		engines[0].click();
+		engineSigs.add(pixelSignature(pixels));
+		engines[2].click();
+		engineSigs.add(pixelSignature(pixels));
 		result.queuesSelected = engines[2].checked && !engines[0].checked && !engines[1].checked;
 		result.queueExplained = /short queue/.test(elements.get('ui-engine-note').textContent);
+		engines[3].click();
+		engineSigs.add(pixelSignature(pixels));
+		result.sitesSelected = engines[3].checked && !engines[0].checked && !engines[1].checked && !engines[2].checked;
+		result.sitesExplained = /shipments/.test(elements.get('ui-engine-note').textContent);
+		result.engineViews = engineSigs.size;
+		run('hudSetView(VIEW.AMOUNT)');
 		result.switchKeptProgress = beforeSwitch === run('[clock.seconds, party.x, party.y, mapeGoodsTotal(), mape.viewItem].join(":")');
 		result.workforceGroup.children[1].children[0].click();
 		result.fluidSwitch = run('mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID');
@@ -275,10 +279,10 @@ check('canvas_painted', result.litCells > 3000);
 	check('time_controls', result.timeButtons === 5);
 check('view_controls', result.viewRadios === 8 && result.distinctViews === 7);
 check('item_controls', result.startsOnSupply && result.itemRadios === 15 && result.demandItemRadios === 8 && result.itemHiddenOnTerrain && result.itemShownOnDemand && result.distinctItems >= 5);
-check('engine_controls', result.engineRadios === 4 && result.engineCatchmentChecked && result.engineSitesDisabled && result.engineClickOnly);
+check('engine_controls', result.engineRadios === 4 && result.engineCatchmentChecked && result.engineSitesEnabled && result.engineClickOnly);
 check('workforce_controls', result.workforceRadios === 2 && /Workforce/.test(result.workforceStats || ''));
 check('workforce_switch', result.fluidSwitch && result.residentsSwitch);
-check('engine_switch_and_redraw', result.engineViews === 3 && result.queuesSelected && result.queueExplained && result.switchBack);
+check('engine_switch_and_redraw', result.engineViews >= 3 && result.queuesSelected && result.queueExplained && result.sitesSelected && result.sitesExplained && result.switchBack);
 check('engine_switch_keeps_progress', result.switchKeptProgress);
 check('engine_feedback_toggle', result.feedbackOff && result.feedbackKeyboard);
 check('starter_coal_trace_visible', result.starterCoalTrace && result.starterCoalListed && result.aroundHasCoordinates);

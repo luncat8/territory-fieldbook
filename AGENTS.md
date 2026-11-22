@@ -170,8 +170,9 @@ Before all topics has minimal implementation Do not try to implement 100% of som
   pools; tire/rest/spawn constants are the balance subjects). Factory
   build/recipe runtime, sawmill → logs → charcoal/wood works supply and the
   generic factory placement scan + idle rule exist (Phase 3). Site engine
-  (map-sites.js: orders, shipments, margin siting) runs as `SITES`; its HUD
-  switch stays disabled until Phase 5.
+  (map-sites.js: orders, shipments, margin siting) runs as `SITES` and its HUD
+  switch is live (Phase 5); `+10%` player-influence growth boost and victory
+  stability checks (population steady, industry under control) are in.
 
 ## housekeeping
 

@@ -15,6 +15,7 @@ for (const [, file] of html.matchAll(/<script src="([^"]+)"><\/script>/g)) {
 
 const modes = [MAPE_ENGINE.DIFFUSION, MAPE_ENGINE.CATCHMENT, MAPE_ENGINE.QUEUE];
 const keys = ['diffusion', 'catchment', 'queue'];
+const sitesMode = MAPE_ENGINE.SITES;
 const r = MAPE_RES.COAL;
 const center = 32 * world.size + 32;
 const donors = [center - 1, center + 1, center - world.size, center + world.size];
@@ -138,18 +139,19 @@ function verifyLiveSwitch() {
 	assert.ok(mapeRecruit(town, 20));
 	assert.ok(mapeUnlockMine(0));
 	const save = snapshot();
-	for (const mode of [MAPE_ENGINE.QUEUE, MAPE_ENGINE.DIFFUSION, MAPE_ENGINE.CATCHMENT]) {
+	for (const mode of [MAPE_ENGINE.QUEUE, MAPE_ENGINE.DIFFUSION, MAPE_ENGINE.CATCHMENT, MAPE_ENGINE.SITES]) {
 		const field = mape.demandView[r].slice();
 		assert.ok(mapeSetEngine(mode));
 		assert.equal(mape.engine, mode);
 		assert.notDeepEqual(mape.demandView[r], field);
 		assert.deepEqual(snapshot(), save);
 		assert.equal(mapeSetEngine(mode), false);
-		assert.equal(mapeSetEngine(MAPE_ENGINE.SITES), false);
-		assert.equal(mapeSetEngine(-1), false);
 		assert.deepEqual(snapshot(), save);
 		verifyLedger();
 	}
+	assert.equal(mapeSetEngine(-1), false);
+	assert.equal(mapeSetEngine(99), false);
+	assert.deepEqual(snapshot(), save);
 }
 
 function benchRealMap(mode) {
@@ -191,4 +193,8 @@ for (let i = 0; i < modes.length; i++) {
 	const tickMs = benchRealMap(mode);
 	console.log(`engine=${keys[i]} hungry_d=${on.hungry.toFixed(3)} cooled_d_2s=${on.afterTwo.toFixed(3)} fixed_d_2s=${off.afterTwo.toFixed(3)} cooled_d_10s=${on.afterTen.toFixed(3)} donor_drop_first_tick_units=${on.moved.toFixed(3)} first_tick_used_units=${on.firstUse.toFixed(3)} used_10s_units=${on.uptake.toFixed(3)} local_10s_units=${on.local.toFixed(3)} seeded_map_ms_per_tick=${tickMs.toFixed(3)}`);
 }
+// Sites: discrete shipments instead of a continuous pull field. Same seed, same layout, so the
+// mine unlock and haulage still have to carry the served towns; the demand field is not its proxy.
+const sitesTickMs = benchRealMap(sitesMode);
+console.log(`engine=sites seeded_map_ms_per_tick=${sitesTickMs.toFixed(3)}`);
 console.log('mape_compare_checks=pass');

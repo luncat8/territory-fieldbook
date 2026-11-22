@@ -1250,7 +1250,7 @@ seeding (~2% of map, pop 8…20), locked mine indexing, settlement market action
 (replacing towns across `economy.js`, `sites.js`, `actions.js`, `hud.js`), static
 preview gradients on `demand`/`goods`/`workforce`, stub `mapeStep` (lock sync +
 market fund recovery, no field dynamics), four new render views + item selector +
-markers, HUD cell inspector and engine switch (`Sites` disabled pending Phase 5).
+markers, HUD cell inspector and engine switch (Sites enabled in Phase 5).
 
 Gate: all nine views and four items render non-empty readable fields, settlements
 seed at ~2% of map (~82 cells, pop 8…20, none on water), deposit unlock triggers
@@ -1268,7 +1268,7 @@ unlocked coal extraction (closing `discover deposit → workforce demand → wor
 diffusion → mine output → settlement/factory supply`). Seed one marked coal trace
 inside the starting party's around-list range so the loop is playable immediately.
 Defer iron deposits and player-operated coal/iron extraction until factories
-consume iron; keep the alternate sites engine disabled until Phase 5. Includes
+consume iron; the alternate sites engine is selectable from Phase 5. Includes
 `experiments/mape_spread.js`.
 
 Gate: midpoint across 20 walkable cells crosses zero within `15 s` on 1×, axial vs
@@ -1528,6 +1528,16 @@ compare sites on identical seeds.
 
 Gate: runtime switches preserve the stock ledger, all engines pass `smoke` and
 `dom_smoke`, comparison metrics are logged.
+
+Status: delivered. `mapeEngineAvailable` admits SITES; the HUD Sites radio is
+live and switches with `mapeSitesSettle()` landing in-flight shipments into
+goods before the routing change (a minor in-flight loss is accepted for this
+early-dev switch). `MAPE_INFLUENCE_GROWTH = 0.10` scales the growth rate by the
+player-influence share. `experiments/mape_compare.js` switches through all four
+engines and benches Sites on the same seed; `dom_smoke` asserts the Sites radio
+is enabled and switches. Victory gains two stability checks: population steadiness
+(total pop not below 50% of its peak) and no unmanaged factory/mine above the
+disturbance floor.
 
 ### Phase 6 — Transport speed map
 

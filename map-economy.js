@@ -135,6 +135,7 @@ const mape = {
 	settleCount: 0,
 	totalPop: 0,
 	initialPop: 0,
+	popPeak: 0,
 	popDelta: 0,
 	factoryX: new Uint8Array(MAPE_FACTORY_CAP),
 	factoryY: new Uint8Array(MAPE_FACTORY_CAP),
@@ -252,6 +253,7 @@ function mapeReset() {
 	mape.transportWork = 0;
 	mape.minedTotal = 0;
 	mape.popDelta = 0;
+	mape.popPeak = 0;
 	mape.massIn = 0;
 	mape.massOut = 0;
 	mape.transit = 0;
@@ -286,8 +288,11 @@ function mapeFinishSetup(fill, warm) {
 	if (warm) mapeWarmDemand();
 }
 
+// All four engines are selectable at runtime. Sites is a discrete-shipment engine, so its
+// market fields are not bounded 0-1 pulls; it still passes the stock ledger on switch.
 function mapeEngineAvailable(mode) {
-	return mode === MAPE_ENGINE.DIFFUSION || mode === MAPE_ENGINE.CATCHMENT || mode === MAPE_ENGINE.QUEUE;
+	return mode === MAPE_ENGINE.DIFFUSION || mode === MAPE_ENGINE.CATCHMENT ||
+		mode === MAPE_ENGINE.QUEUE || mode === MAPE_ENGINE.SITES;
 }
 
 // Bounded 0–1 import-pull engines; Diffusion and Sites carry signed fields instead.
@@ -364,6 +369,7 @@ function mapeRebuildSettlements() {
 	}
 	mape.settleCount = count;
 	mape.totalPop = sum;
+	if (sum > mape.popPeak) mape.popPeak = sum;
 }
 
 function mapeRecoverMoney(seconds) {
