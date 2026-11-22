@@ -197,13 +197,13 @@ MAPE_DECAY = 0.008               // signed demand fade per s (resulting reach sq
 MAPE_CO2_DIFFUSE = 0.5625        // atmospheric CO2 pairwise stock diffusion, cells²/s
 MAPE_CATCHMENT_DIFFUSE = 3       // A: import pull diffusion, cells²/s (reach kept with decay 0.1)
 MAPE_QUEUE_DIFFUSE = 2           // B: import pull diffusion, cells²/s (reach kept with decay 0.1)
-MAPE_FLOW_SPEED = 1.8            // max goods advection rate /s up normalized gradient
+MAPE_FLOW_SPEED = 3.6            // max goods advection rate /s at c = 1 (meadow moves half)
 MAPE_FOOD_FLOW_MULT = 0.25       // food stock moves at one quarter of the field-engine rate
 MAPE_GRAD_REF = 0.02             // Michaelis-Menten half-saturation for demand gradient
 MAPE_WORK_SIGNAL = 3.2           // workforce demand gain per unmet worker per s
 MAPE_WORK_DECAY = 0.10           // workforce field decay per s
-MAPE_WORK_SPEED = 1.8            // transit worker walking rate /s up workforce gradient
-MAPE_WORK_LEAVE = 0.035          // settlement departure rate /s (prevents overshoot drain)
+MAPE_WORK_SPEED = 3.6            // transit worker walking rate /s at c = 1 up workforce gradient
+MAPE_WORK_LEAVE = 0.07           // settlement departure rate /s at c = 1 (prevents overshoot drain)
 MAPE_MINE_WORKERS = 12           // target workforce for full mine output
 MAPE_MINE_MIN_WORKERS = 0.1      // min arrived workers before mine extracts
 MAPE_FACTORY_WORKERS = 32        // target workforce for active factory (2x: crew range, not a point)
@@ -271,11 +271,11 @@ MAPE_WORKFORCE_PER_UNIT = 0.4    // transport effort / workforce per unit moved 
 MAPE_WF_GEN = 0.05               // fluid model: fresh workforce per resident per second
 MAPE_WF_TIRE = 0.02              // fluid model: fresh → depleted rate /s (balance subject)
 MAPE_WF_DIFFUSE = 0.875          // fluid model: depleted spread, cells²/s (slower than goods)
-MAPE_WF_FLOW = 1.8               // fluid model: fresh advection rate /s up the pull
+MAPE_WF_FLOW = 3.6               // fluid model: fresh advection rate /s at c = 1 up the pull
 MAPE_WF_GRAD_REF = 0.03          // fluid model: Michaelis-Menten half saturation for advection
 MAPE_WF_SPEND = 1.0              // fluid model: fresh consumed per need per second by jobs
 MAPE_WF_REST = 0.05              // fluid model: depleted absorbed per free person per second
-MAPE_WF_RETURN = 1.8             // fluid model: depleted advection rate /s up the rest pull
+MAPE_WF_RETURN = 3.6             // fluid model: depleted advection rate /s at c = 1 up the rest pull
 MAPE_WF_REST_GRAD_REF = 0.005   // fluid model: rest pull gradient half saturation
 MAPE_WF_REST_SIGNAL = 0.9        // fluid model: rest pull relaxation per second at settlements
 MAPE_WF_REST_DECAY = 0.02        // fluid model: rest pull decay per s (uses MAPE_DIFFUSE for reach)
@@ -918,16 +918,16 @@ pull. A single pinned cell lost its coal to a larger town pull next door.
 
 - **A · Catchment:** relax the town's signal toward hungry pull times
   `1 / (1 + stock / max(1, 9 × rate))` at `0.9/s`. Stock is the total reachable
-  in four cardinal steps — the intake catchment, where households fetch from,
-  not a demand limit. Apply that signal over the same catchment with falloff,
+  within four meadow steps of travel time — the intake catchment, where
+  households fetch from, not a demand limit. Apply that signal over the same catchment with falloff,
   then spread it with `MAPE_CATCHMENT_DIFFUSE = 3 cells²/s` (one pass per
   canonical tick, mix 0.15). The
   3x3 filtered demand steers uncapped, conservative uphill hauling at up to
-  `6.5 cells/s`. After hauling, the town consumes its need,
+  `13 cells/s` at `c = 1` (6.5 on meadow). After hauling, the town consumes its need,
   `rate × dt`, proportionally from reachable stock; the need is fixed, because
   scaling it by the demand signal let stock cool the pull and then stop its own
   uptake, so towns hoarded coal and the field died.
-- **B · Queue:** the target senses falloff-weighted stock within four steps
+- **B · Queue:** the target senses falloff-weighted stock in the same catchment
   and cools further as the settlement fills its short intake buffer. The
   center relaxes at `1.6/s` and is pinned through the single Jacobi pass of
   `MAPE_QUEUE_DIFFUSE = 2 cells²/s` (mix 0.10 per canonical tick). Eight-neighbor uphill transfer can use diagonal routes
@@ -944,12 +944,12 @@ pull. A single pinned cell lost its coal to a larger town pull next door.
 
 ## Transport speed map
 
-Status: core implemented (draft 4.1a "transportation speed map"): haulage, pull
-diffusion, workforce, display and tuning. Catchment/scan travel-time budgets
-and a Sites path field remain follow-ups. Warm-up and response rates are unchanged.
+Status: implemented (draft 4.1a "transportation speed map"): haulage, pull
+diffusion, workforce, catchment and scan travel time, display and tuning. A
+Sites path field remains a follow-up. Warm-up and response rates are unchanged.
 
 **Data.** `transport.speed`, a `Float32Array(n)` multiplier per cell owned by
-`map-transport.js` (`// owns: per-cell transport speed and edge conductance`).
+`map-transport.js` (`// owns: per-cell transport speed, edge conductance and bounded travel-time search`).
 `1` is the maximum effective speed, reserved for roads and future ships;
 meadow is `0.5`, and `0` blocks. Built at setup from terrain and rebuilt only when an input changes:
 
@@ -981,7 +981,9 @@ precomputed once per rebuild (right and down edge per cell, `2n` floats).
   uphill transfer becomes `budget · g_k · c_k / (Σ g + ref)`, so goods move
   slowly through swamp and prefer a faster route with a comparable gradient.
   The unweighted denominator prevents conductance from cancelling out when
-  every outgoing edge is equally slow. Transport
+  every outgoing edge is equally slow; Queue B admission saturates on raw
+  slopes and weights by `c` the same way. Shipped haul and walk rates are
+  rates at `c = 1`, so meadow moves at half of them and swamp at a tenth. Transport
   effort per unit moved scales by `1 / c`, so slow ground also costs more
   labour.
 - *Pull diffusion* (signed demand, A/B import pull, workforce pull): the same
@@ -993,10 +995,16 @@ precomputed once per rebuild (right and down edge per cell, `2n` floats).
 - *Workforce* (residents walking, fresh and depleted pools): the same table to
   start with; a separate walking table is a later split if carts and people
   should differ.
-- *Catchment and scan distances* (follow-up): these still count walkable steps.
-  Converting the A/B intake catchment and factory scan walk field to travel-time
-  budgets (step cost `1 / s`) is deferred; ten swamp steps would cost as much
-  as a hundred meadow steps with this table.
+- *Catchment and scan distances*: travel time in meadow steps, each edge
+  costing `0.5 / c` (meadow 1, forest 2.5, hills 5, swamp 10, a road 0.5),
+  found by one bounded Dijkstra (`transportTravel`, preallocated heap). The A/B
+  intake catchment is every cell within 4 meadow steps, weighted
+  `1 − t / 5`; an all-meadow map keeps the old 41-cell diamond, a forest town
+  reaches its four neighbours, a swamp or hill town only its own cell, and a
+  road reaches 8 steps (the stencil holds that 145-cell diamond). Haulage still
+  carries stock into a town's own cell, so a small catchment narrows where
+  households fetch, not what can arrive. The factory scan's deposit fields
+  are the same travel times without a budget. Terrain tuning rebuilds both.
 - *Sites*: shipment eta and haul cost read the same travel time once the site
   engine has a path field; until then it keeps euclidean distance and the
   divergence is listed with the others.
@@ -1021,7 +1029,11 @@ town delays first arrival by roughly the strip's extra travel time and, with a
 meadow detour open, most stock takes the detour; ledger residual stays below
 `1e-6`; water at `c = 0` matches the current water barrier bit for bit; a road
 at `50×` stays positive and bounded; pull reach across swamp drops by about
-`sqrt(c)`.
+`sqrt(c)`; uniform swamp sends `c`-times less than meadow on a steep gradient
+in field haul and queue admission; the meadow catchment is the 41-cell diamond
+with step falloff, forest gives 5 cells, swamp 1, tuning to road speed 145;
+Dijkstra matches brute-force relaxation on the survey; a scan field along a
+causeway sums `0.5 / c` per edge.
 
 ## Economy test scenes
 
@@ -1513,8 +1525,8 @@ Gate: runtime switches preserve the stock ledger, all engines pass `smoke` and
 
 Deliverable: `map-transport.js` speed table and edge conductances, wired into
 haulage, pull diffusion and workforce movement, plus the display layer and
-tuning rows (see **Transport speed map**). Core shipped; catchment and scan
-travel-time budgets and Sites path costs are deferred.
+tuning rows, and travel-time catchment and scan distances (see **Transport
+speed map**). Sites path costs are deferred.
 
 Gate: the `experiments/mape_transport.js` checks listed in that section, and the
 full suite unchanged with an all-`1` speed map.
@@ -1567,6 +1579,11 @@ full suite unchanged with an all-`1` speed map.
 - Pause on Demand → Coal and pick Diffusion, A and B. The demand map and help
   change while the clock, supply and party stay put. Hover a settlement to see
   its A/B pull; uncheck feedback and resume to restore the full pull.
+- On A · Catchment, Amount → transport speed: hover settlements — a meadow town
+  reads `intake 41 cells` (fewer on a shore), a forest town 5, a hill or swamp
+  town 1. Drag Tuning → Meadow speed down and the meadow town's intake shrinks
+  at once; stock hauled across swamp visibly crawls while the same stock on
+  meadow keeps its old pace.
 - Moving pointer over the map updates the HUD cell inspector (`pop`, `work`, and
   per-item `d`/`s`) without flickering radios or action buttons.
 - Jumping to a settlement shows market funds and prices; selling moves funds and
