@@ -293,8 +293,9 @@ function mapeSitesSubstep(dt) {
 	mapeStepFactories(dt);
 	mapeStepWorkshops(dt);
 	mapeSitesOrders();
+	mapeEmitWasteCo2(dt);
 	mape.goodsNext.set(mape.goods);
-	mapeDiffuseCo2Stock(mape.goods, mape.goodsNext, MAPE_RES.CO2 * n, world.size, dt);
+	mapeDiffuseCo2Stock(mape.goods, mape.goodsNext, MAPE_RES.CO2 * n, world.size, dt, mape.flowX, mape.flowY);
 	mape.goods.set(mape.goodsNext);
 	mapeStepWorkforce(dt, mapeSites.haul);
 	mapeSites.haul.fill(0);
