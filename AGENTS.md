@@ -57,11 +57,14 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	economy.js — resources, recipes, biosphere, conservation ledger.
 	sites.js — site pool, discovery, claims, extraction, payouts.
 	map-economy.js — shared fields, settlement and market state, engine selection and ledgers.
+	map-seed.js — survey seeding: settlement placement, starter town, initial atmosphere.
+	map-trade.js — player trade at settlement markets: prices, selling, supplies, hiring.
 	map-transport.js — per-cell transport speed and edge conductance.
 	map-industry.js — mine/factory pools, deposit locks, workshops and forestry production.
 	map-factory-scan.js — engine factory placement scan: region need, site choice and kind selection.
 	map-farm.js — farm fields: clearing to farmland, one worker per cell, batch harvest and food.
-	map-diffusion.js — shared field tick, single-pass diffusion under the mix budget, gradient goods/worker flow.
+	map-kernels.js — single-pass kernels: conductance Jacobi, CO2 pairwise pass, bounded transfer, gradient push.
+	map-diffusion.js — shared field tick, demand injection, haul and worker flow using the kernels.
 	map-sites.js — discrete Site engine: delivered-price orders, SoA shipment pool, margin siting.
 	map-market-flow.js — land stencil, catchment reach and joint intake admission.
 	map-market-demand.js — bounded A/B pull, stock feedback and household use.
