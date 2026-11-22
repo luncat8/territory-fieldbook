@@ -303,7 +303,7 @@ function mapeSitesSubstep(dt) {
 	else if (!mape.fixedResidents) mapeTransportWorkers(dt);
 	mapePopulationStep(dt);
 	economyStep(dt);
-	mapeRecoverMoney(dt);
+	mapeMoneyStep(dt);
 }
 
 // Whole canonical ticks, same runner shape as mapeStepDiffusion (units-and-scales.md).

@@ -1,19 +1,11 @@
 // owns: player trade at settlement markets — prices, selling, items, supplies and hiring
 // edit for: price law, market funds use, supply cost, recruitment
 
+// One price law for the whole map: the party trades at the local scarcity ratio the
+// settlement's own households and industry pay (map-money.js).
 function mapePrice(res, idx) {
-	const n = world.n;
 	const mr = mapeResOf(res);
-	const slot = (mr >= 0 ? mr : MAPE_RES.GOODS) * n + idx;
-	const stock = mape.goods[slot];
-	let factor = 1 + mape.demand[slot] * 0.05;
-	if (factor < 0.5) factor = 0.5;
-	if (factor > 2) factor = 2;
-	const base = RES_BASE_VALUE[res];
-	let price = base * RES_REF_STOCK[res] / (stock + 1) * factor;
-	if (price < base * 0.35) price = base * 0.35;
-	if (price > base * 3) price = base * 3;
-	return price;
+	return RES_BASE_VALUE[res] * mapeMoneyPriceRatio(mr >= 0 ? mr : MAPE_RES.GOODS, idx);
 }
 
 function mapeSell(res, idx) {
@@ -25,7 +17,7 @@ function mapeSell(res, idx) {
 	if (units < 0.05) return 0;
 	const revenue = units * price;
 	economy.inventory[res] = have - units;
-	mape.money[idx] -= revenue;
+	mapeMoneyPlayer(idx, -revenue);
 	const mr = mapeResOf(res);
 	if (mr >= 0) {
 		const slot = mr * world.n + idx;
@@ -38,7 +30,7 @@ function mapeSell(res, idx) {
 
 function mapeAcceptItem(idx) {
 	if (!mapeIsSettlement(idx) || mape.money[idx] < ITEM_VALUE) return 0;
-	mape.money[idx] -= ITEM_VALUE;
+	mapeMoneyPlayer(idx, -ITEM_VALUE);
 	return ITEM_VALUE;
 }
 
@@ -54,7 +46,7 @@ function mapeBuySupplies(idx, units) {
 	mape.goods[slot] = before - units * MAPE_SUPPLY_GOODS;
 	mape.massOut += before - mape.goods[slot];
 	const cost = units * SUPPLY_PRICE;
-	mape.money[idx] += cost;
+	mapeMoneyPlayer(idx, cost);
 	return cost;
 }
 
@@ -67,7 +59,7 @@ function mapeRecruit(idx, fee) {
 	const before = mape.pop[idx];
 	mape.pop[idx] = before - 1;
 	mape.popDelta -= before - mape.pop[idx];
-	mape.money[idx] += fee;
+	mapeMoneyPlayer(idx, fee);
 	mapeRebuildSettlements();
 	return true;
 }

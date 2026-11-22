@@ -278,7 +278,7 @@ check('frames_advance_at_4x', result.clockSec >= 7.8 && result.clockSec <= 8.1 &
 check('canvas_painted', result.litCells > 3000);
 	check('time_controls', result.timeButtons === 5);
 check('view_controls', result.viewRadios === 8 && result.distinctViews === 7);
-check('item_controls', result.startsOnSupply && result.itemRadios === 15 && result.demandItemRadios === 8 && result.itemHiddenOnTerrain && result.itemShownOnDemand && result.distinctItems >= 5);
+check('item_controls', result.startsOnSupply && result.itemRadios === 16 && result.demandItemRadios === 13 && result.itemHiddenOnTerrain && result.itemShownOnDemand && result.distinctItems >= 5);
 check('engine_controls', result.engineRadios === 4 && result.engineCatchmentChecked && result.engineSitesEnabled && result.engineClickOnly);
 check('workforce_controls', result.workforceRadios === 2 && /Workforce/.test(result.workforceStats || ''));
 check('workforce_switch', result.fluidSwitch && result.residentsSwitch);

@@ -97,11 +97,14 @@ function renderFieldPalette(stops) {
 }
 
 function renderDemandMax(item) {
+	if (item > MAPE_VIEW_ITEM.MONEY) return 1;
 	return mapeMarketEngine() && item <= MAPE_RES.CO2 && mapeIsMarketItem(item) ? 1 : RENDER_DEMAND_MAX;
 }
 
 // Amount reads stocks, demand reads the pull each stock follows: fresh to jobs, depleted home to rest.
 const RENDER_POOL_LOG = Math.log1p(MAPE_VIEW_POOL_MAX);
+const RENDER_MONEY_LOG = Math.log1p(MAPE_VIEW_MONEY_MAX);
+const RENDER_PRICE_LOG = Math.log(MAPE_PRICE_MAX);
 
 function renderViewItem(view) {
 	return view === VIEW.DEMAND ? mape.viewItemDemand : mape.viewItem;
@@ -118,12 +121,16 @@ function renderItemField(item, demand) {
 	if (item === MAPE_VIEW_ITEM.JOBS) return demand ? mape.workforce : mape.jobNeed;
 	if (item === MAPE_VIEW_ITEM.FRESH) return demand ? mape.workforce : mape.wfFresh;
 	if (item === MAPE_VIEW_ITEM.DEPLETED) return demand ? mape.wfRestPull : mape.wfDepleted;
+	if (item === MAPE_VIEW_ITEM.MONEY) return demand ? mapeMoney.pullView : mapeMoney.view;
+	if (item > MAPE_VIEW_ITEM.MONEY) return mapeMoney.priceView[mapeMoneyPriceSlot(item)];
 	return demand ? mape.demandView[item] : mape.goodsView[item];
 }
 
 function renderItemNorm(item, value, demand) {
 	const v = value <= 0 ? 0 : value;
 	if (item === MAPE_VIEW_ITEM.HUMIDITY) return Math.min(1, v / 0.4);
+	if (item === MAPE_VIEW_ITEM.MONEY) return demand ? v / (v + MAPE_VIEW_PULL_REF) : Math.min(1, Math.log1p(v) / RENDER_MONEY_LOG);
+	if (item > MAPE_VIEW_ITEM.MONEY) return v > 1 ? 1 : v;
 	if (item >= MAPE_VIEW_ITEM.WASTE) return Math.min(1, v);
 	if (item === MAPE_VIEW_ITEM.POPULATION) return Math.sqrt(Math.min(1, v / MAPE_VIEW_POP_MAX));
 	if (item === MAPE_VIEW_ITEM.JOBS) return Math.sqrt(Math.min(1, v / MAPE_VIEW_JOB_MAX));
@@ -135,11 +142,21 @@ function renderItemNorm(item, value, demand) {
 	return -1;
 }
 
+// Prices read signed around their base on a log scale: cheap paints like surplus, dear like pull.
+// A one-sided ramp put the neutral 1× in its bright midtones and the whole map read as dear.
+function renderPriceSigned(item, value) {
+	const ratio = value / MAPE_PRICE_BASE[mapeMoneyPriceSlot(item)];
+	if (ratio <= 0) return 0;
+	const k = Math.log(ratio) / RENDER_PRICE_LOG;
+	return k > 1 ? 1 : k < -1 ? -1 : k;
+}
+
 function renderEconomyCells(view) {
 	const pixels = render.pixels;
 	const item = renderViewItem(view);
 	const demand = view === VIEW.DEMAND;
 	const civic = item === MAPE_VIEW_ITEM.POPULATION;
+	const priced = item > MAPE_VIEW_ITEM.MONEY;
 	const field = renderItemField(item, demand);
 	const demandMax = renderDemandMax(item);
 	const style = render.fieldStyle;
@@ -147,7 +164,7 @@ function renderEconomyCells(view) {
 	const civicBase = renderEconomy.civicBase;
 	const terrain = world.terrain;
 	for (let i = 0, p = 0; i < world.n; i++, p += 4) {
-		const value = field[i];
+		const value = priced ? renderPriceSigned(item, field[i]) : field[i];
 		const norm = renderItemNorm(item, value, demand);
 		if (item !== MAPE_RES.CO2 && item !== MAPE_VIEW_ITEM.HUMIDITY && terrain[i] === TERRAIN.WATER) {
 			pixels[p] = 21;
@@ -295,7 +312,7 @@ function renderFlowBand(ctx, time, min, max, bright) {
 }
 
 function renderHasFlowItem(item) {
-	return item <= MAPE_RES.CO2 || (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID && (item === MAPE_VIEW_ITEM.FRESH || item === MAPE_VIEW_ITEM.DEPLETED));
+	return item <= MAPE_RES.CO2 || item === MAPE_VIEW_ITEM.MONEY || (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID && (item === MAPE_VIEW_ITEM.FRESH || item === MAPE_VIEW_ITEM.DEPLETED));
 }
 
 function renderGoodsFlow(ctx) {

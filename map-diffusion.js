@@ -108,9 +108,10 @@ function mapeInjectDemand(dt, marketsOnly) {
 		if (t === water) continue;
 		const p = pop[i];
 		if (p > 0 && local) {
-			demand[goodsOff + i] += p * MAPE_NEED_GOODS * gain;
-			demand[coalOff + i] += p * MAPE_NEED_COAL * gain;
-			demand[foodOff + i] += p * MAPE_NEED_FOOD * gain;
+			const want = p * mapeMoneyBuy(i) * gain;
+			demand[goodsOff + i] += want * MAPE_NEED_GOODS;
+			demand[coalOff + i] += want * MAPE_NEED_COAL;
+			demand[foodOff + i] += want * MAPE_NEED_FOOD;
 		}
 		if (marketsOnly) continue;
 		if (p > 0 && !mapeIsIndustry(i)) demand[MAPE_RES.LOGS * n + i] += p * MAPE_NEED_LOGS * gain;
@@ -229,13 +230,14 @@ function mapeStepWorkforce(dt, transportBuffer) {
 	const signal = MAPE_WORK_SIGNAL * dt;
 	// Demand is "proportional on what the factory needs and gets" (draft): once a site is
 	// staffed with fresh workforce, its pull falls to zero instead of keep calling for more.
+	// The wage offer scales the call: a site with cash pulls harder than a broke one (draft 4.4).
 	for (let i = 0; i < n; i++) {
 		const present = mapeWorkPresent(i);
 		const siteNeed = job[i] > 0 ? Math.max(0, job[i] - present) : 0;
 		const haulNeed = hauling ? transportBuffer[i] * invDt : 0;
 		if (siteNeed > 0) {
 			if (hauling && siteNeed + haulNeed <= pop[i]) continue;
-			work[i] += (siteNeed + haulNeed) * signal;
+			work[i] += (siteNeed * mapeMoneyHire(i) + haulNeed) * signal;
 		} else if (haulNeed > pop[i]) {
 			work[i] += (haulNeed - pop[i]) * 0.25 * dt;
 		}
@@ -317,7 +319,7 @@ function mapeDiffusionTick(dt) {
 	mapeStepFactories(dt);
 	mapeStepWorkshops(dt);
 	economyStep(dt);
-	mapeRecoverMoney(dt);
+	mapeMoneyStep(dt);
 }
 
 // Advance a duration in whole canonical ticks: one tick (SIM_STEP_SEC) is the only step size the

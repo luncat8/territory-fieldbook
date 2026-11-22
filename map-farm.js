@@ -141,6 +141,7 @@ function mapeFarmHarvest(f) {
 		}
 	}
 	mape.factoryGoods[f] = food / MAPE_FARM_SEASON_SEC;
+	mapeMoneyEarn(mape.factoryY[f] * size + mape.factoryX[f], MAPE_RES.FOOD, food);
 	mapeFarmRingWaste(mape.factoryX[f], mape.factoryY[f], food);
 }
 

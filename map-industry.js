@@ -160,6 +160,7 @@ function mapeStepMines(dt) {
 		const units = sitesExtract(mape.mineSite[m], mapeMineRate(m) * staff * dt, -1);
 		if (units <= 0) continue;
 		mape.minedTotal += mapeProduceStock(mape.mineRes[m], idx, units);
+		mapeMoneyEarn(idx, mape.mineRes[m], units);
 		// Spoil heaps land beside the shaft; the pit itself keeps the productivity its yield reads.
 		landDisturbRing(idx, MAPE_MINE_WASTE * dt);
 	}
@@ -277,6 +278,7 @@ function mapeStepFactories(dt) {
 		goods[goodsOff + idx] = before + made;
 		goods[co2Off + idx] += co2;
 		mape.massIn += made + co2;
+		mapeMoneyEarn(idx, MAPE_RES.GOODS, made);
 		landDisturbAround(idx, MAPE_FACTORY_DISTURB * pace * k * dt);
 		mape.factoryCoal[f] = MAPE_FACTORY_COAL * pace * k;
 		mape.factoryIron[f] = MAPE_FACTORY_IRON * pace * k;
@@ -358,6 +360,7 @@ function mapeStepForestryFactory(f, idx, dt) {
 		economy.biomass[cell] = 0;
 		mape.factoryGoods[f] = units / dt;
 		mapeProduceStock(MAPE_RES.LOGS, cell, units);
+		mapeMoneyEarn(idx, MAPE_RES.LOGS, units);
 		landDisturbRing(cell, 0.00015 * units);
 		return;
 	}
@@ -381,12 +384,14 @@ function mapeStepForestryFactory(f, idx, dt) {
 		mape.factoryCo2[f] = co2 / dt;
 		mapeProduceStock(MAPE_RES.COAL, idx, coal);
 		mapeProduceStock(MAPE_RES.CO2, idx, co2);
+		mapeMoneyEarn(idx, MAPE_RES.COAL, coal);
 		landDisturbAround(idx, MAPE_FACTORY_DISTURB * staff * dt);
 		return;
 	}
 	const goods = used * MAPE_WOOD_YIELD;
 	mape.factoryGoods[f] = goods / dt;
 	mapeProduceStock(MAPE_RES.GOODS, idx, goods);
+	mapeMoneyEarn(idx, MAPE_RES.GOODS, goods);
 	landDisturbAround(idx, MAPE_FACTORY_DISTURB * staff * dt);
 }
 
@@ -486,7 +491,7 @@ function mapeStepWorkshops(dt) {
 	for (let k = 0; k < mape.workshopCount; k++) {
 		const idx = mape.workshopCells[k];
 		const units = Math.min(MAPE_WORKSHOP_STOCK - stock[idx], MAPE_WORKSHOP_RATE * tune.workshop * landProductivity(idx) * dt);
-		mapeProduceStock(MAPE_RES.GOODS, idx, units);
+		mapeMoneyEarn(idx, MAPE_RES.GOODS, mapeProduceStock(MAPE_RES.GOODS, idx, units));
 	}
 }
 

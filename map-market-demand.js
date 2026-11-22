@@ -108,7 +108,7 @@ function mapePullMarketSlice(r, dt, queue) {
 		const i = mape.settleCells[k];
 		const p = off + i;
 		const hungry = mapeMarketHungry(i);
-		const target = hungry * mapeMarketPull(r, i);
+		const target = hungry * mapeMarketPull(r, i) * mapeMoneyBuy(i);
 		const signal = marketSignal[p] + (target - marketSignal[p]) * response;
 		marketSignal[p] = signal;
 		if (queue) {

@@ -105,9 +105,9 @@ fields (`territory.js`), disturbed fraction (`land.js`), biomass and oxygen
 - **Cell**: one of 4096 cells (`64×64`), linear index `i = y * 64 + x`.
 - **Settlement**: any non-industry walkable cell with `pop[i] ≥ 3`. Seeded at ~2%
   of all cells (~82 cells) with population 8…20; steady-state density emerges
-  from growth and migration. Market funds `money[i]` scale with `pop[i]` and
-  recover over time, so larger settlements carry deeper purchasing power (draft
-  4.4). Mine and factory cells (`MAPE_CELL_INDUSTRY`) hold resident workers and
+  from growth and migration. Every town holds cash `money[i]`, seeded at
+  `25 × pop`; big towns mint more and all prices are local (see **Money**,
+  draft 4.4). Mine and factory cells (`MAPE_CELL_INDUSTRY`) hold resident workers and
   count toward `totalPop` without acting as town markets. They hold no
   settlement population: in Fluid field their `pop` is pinned to zero, in
   Residents the crew standing there is workforce only — it never grows, wears no
@@ -288,8 +288,24 @@ MAPE_WF_SPAWN_VALUE = 0.35       // fluid model: min settlement location value t
 MAPE_CO2_INIT = 0.4              // ambient CO2 per land cell at start
 BIO_RESPONSE = 0.08             // forest adjustment /s
 BIO_CARBON_PER_COVER = 0.7       // CO2 stored per unit cover
-MAPE_MONEY_PER_POP = 25          // market funds target per resident
-MAPE_MONEY_REGEN = 0.04          // market funds recovery /s toward target
+MAPE_MONEY_PER_POP = 25          // seeded town cash per resident
+MAPE_PRICE_BASE = [1, 1, 1.2, 0.5, 1, 0.05] // money per unit at ratio 1: coal iron goods logs food, labour per worker-s
+MAPE_PRICE_EASE = 0.5            // scarcity ratio (want + ease) / (have + ease); empty unwanted land reads 1x
+MAPE_PRICE_MIN = 0.2, MAPE_PRICE_MAX = 4 // ratio clamp
+MAPE_PRICE_STOCK_REF = 4         // local stock at which availability is one half
+MAPE_PRICE_STAFF_REF = 16        // workers on a cell at which labour availability is one half
+MAPE_MINT_POP = 25               // towns above this size mint
+MAPE_MINT_RATE = 0.05            // money /s per resident above MINT_POP
+MAPE_MINT_RESERVE = 40           // a town mints only while cash < reserve x pop
+MAPE_PURSE_SEC = 30              // seconds of full bill that make a full purse
+MAPE_BUY_FLOOR = 0.4             // import pull of a town with an empty purse
+MAPE_HIRE_FLOOR = 0.35, MAPE_HIRE_MAX = 1.5 // job pull multiplier from broke to a full wage purse
+MAPE_INVEST_RATE = 0.05          // share of town cash /s backing a site below its seed
+MAPE_DIVIDEND_RATE = 0.1         // share /s of site cash above 2 purses paid home as wages
+MAPE_PAY_FLOW = 3.6              // payment advection /s at c = 1 up the owed pull
+MAPE_PAY_DECAY = 0.02            // owed pull decay /s (reach about 9 cells with MAPE_DIFFUSE)
+MAPE_PAY_WEAR = 0.02             // money in transit worn /s: the supply's only sink
+MAPE_EARN_TIME = 5               // smoothing of the claim rate that drives the owed pull
 MAPE_SUPPLY_GOODS = 0.2
 MAPE_VIEW_POP_MAX = 600          // population view saturation (rides the pop cap)
 MAPE_VIEW_JOB_MAX = 32           // jobs view saturation (rides the full crew)
@@ -323,7 +339,12 @@ State:
   recycling for experiments.
 - `jobNeed: Float32Array(N)`, `cellExport: Uint8Array(N)` — per-cell
   retained job slots (never mutated by walking logic), industry marker.
-- `money: Float32Array(N)` — market cash at settlement cells.
+- `money: Float64Array(N)` — cash held at town and site cells (`map-economy.js`).
+- `mapeMoney` (`map-money.js`): `price: Float32Array(6N)` (coal, iron, goods, logs,
+  food, labour), `pay`, `payNext: Float64Array(2N)` (money in transit: purchases,
+  wages), `pull`, `earn: Float32Array(2N)` (owed pull and smoothed claim rate),
+  `buy`, `hire: Float32Array(N)` (purse multipliers), `view`, `pullView` (display),
+  ledger `initial, minted, worn, playerIn, playerOut`.
 - `factories` (cap 32, SoA): `x, y, state` (building/active/idle), `progress`, `starved`.
 - `mines` (cap 32, SoA): `x, y, site, res, unlocked`.
 - `storages` (cap 96, SoA): `x, y, site` (registered on unlock/build; stock lives in `goods`).
@@ -1103,6 +1124,58 @@ Inventory, market funds, residents, worker demand, mines, deposit stock, party
 progress and atmosphere do not reset. Tests start from identical layouts when
 comparing curves; live switches preserve the consequences of earlier ticks.
 
+## Money (draft 4.4)
+
+Money makes exchange easy and lets capital be saved. It is worth something only
+because towns and sites accept it for resources and work; prices come from local
+demand and availability alone, never from the money supply. Owner: `map-money.js`.
+
+- **Cash** sits on town and site cells (`money[i]`). Towns start with `25 × pop`.
+  **Big towns make money**: a settlement above `MAPE_MINT_POP` mints
+  `MAPE_MINT_RATE × (pop − MAPE_MINT_POP)` per second while its cash is below
+  `MAPE_MINT_RESERVE × pop`, so the supply follows the large markets.
+- **Prices** are a per-cell field for coal, iron, goods, logs, food and labour:
+  `base × clamp((want + ease) / (have + ease))`. `want` is the item's pull (A/B
+  market items use the 0–1 pull, signed fields `d / (d + 1)`; labour uses the job
+  pull), `have` is local stock (or present workforce) over its half point. Where
+  stock piles up money buys a lot; where pull is unmet it buys little.
+- **Payments** are two stocks in transit so that no payer sits on its own sink:
+  households pay industry (**purchases**), industry pays towns (**wages**).
+  Households pay for what they ate (goods, coal, food) at their cell's price.
+  Sites pay `staffed × wage × dt` from their cash; the wage is owed to the town
+  the job tabulation credits (the nearest one). Output is a claim, not cash: a
+  site that produces `u` units is owed `u × price` at its cell.
+- **Owed pull**: each sink (industry for purchases, settlements for wages)
+  relaxes toward `earn / (earn + 0.5)` of its smoothed claim rate; one Jacobi
+  pass per tick spreads it (units rule). Payments advect up it and land in the
+  first sink of their kind they reach, so a town or site on a trade route
+  catches money passing by. Cash on a cell that stopped being a town or site
+  returns to circulation as wages. Money in transit wears at `MAPE_PAY_WEAR`:
+  with the player it is the only sink, so mint and wear set the supply.
+- **Effective demand**: a town's purse is its cash against `MAPE_PURSE_SEC` of
+  full needs at local prices; its import pull (A/B target, Diffusion household
+  injection) is scaled from `MAPE_BUY_FLOOR` to 1 by it. Dear local prices lower
+  the purse, which lowers the pull, which lowers the price.
+- **Wage offer**: a site's purse is its cash against `MAPE_PURSE_SEC` of full
+  wages; its job pull is scaled from `MAPE_HIRE_FLOOR` to `MAPE_HIRE_MAX`, so a
+  profitable site outbids a broke one for workforce.
+- **Capital**: a site below half a purse draws `MAPE_INVEST_RATE` of its town's
+  cash per second while that town's purse is at least half full; cash above two
+  purses (`MAPE_SITE_CASH_MIN` for workshops) is paid home as wages. Liquid big
+  towns back the industry next door; unprofitable sites drain their towns.
+- **Player**: party trade uses the same price law (`RES_BASE_VALUE × ratio`);
+  sales, relics, supplies and hiring move cash across the map edge and are
+  ledgered as `playerIn` / `playerOut`.
+- **Ledger**: `Σ cash + Σ pay = initial + minted + playerIn − playerOut − worn`
+  to 1e-9 (`experiments/mape_money.js`). Scene actor placement seeds town cash
+  outside the ledger.
+- **Views**: Amount → money (cash plus payments, log, flow traces of both
+  payment stocks); Demand → money (owed pull), coal/goods/food price and wage,
+  drawn signed on a log scale: teal cheap, dark 1×, purple dear.
+- Not yet: factories buying their coal, iron and logs (inputs are free), Sites
+  engine orders ignoring purses, wages reaching workers' own towns rather than
+  the nearest one, prices reacting to the money supply.
+
 ## Player role
 
 - **Unlock deposits**: coal and iron deposits start locked for automated mining.
@@ -1110,8 +1183,8 @@ comparing curves; live switches preserve the consequences of earlier ticks.
   influence (`territoryContest ≥ 1`) unlocks its mine. Losing influence pauses
   automated mining until control is restored.
 - **Settlement markets**: at any non-industry cell with `pop ≥ 3`, the player sells
-  resources and relics against `money[i]` (prices use cell `goods` stock and
-  `demand`), buys supplies (consuming `MAPE_SUPPLY_GOODS` goods per unit), and
+  resources and relics against `money[i]` at the local scarcity ratio of the
+  map price law (**Money**), buys supplies (consuming `MAPE_SUPPLY_GOODS` goods per unit), and
   hires party members when `pop ≥ 4` (recruiting one resident).
 - **Territory and land**: player influence boosts local population growth by
   `+10%` (Phase 5), and active restoration counters settlement, mine and factory
@@ -1606,6 +1679,13 @@ full suite unchanged with an all-`1` speed map.
   per-item `d`/`s`) without flickering radios or action buttons.
 - Jumping to a settlement shows market funds and prices; selling moves funds and
   stock, buying supplies deducts goods, hiring recruits a resident.
+- Amount → money at 4×: cash glows on towns and sites; traces run from towns to
+  mines/works (purchases) and back (wages). After a minute or two the big towns
+  hold the brightest cash. Demand → money shows owed-pull halos on busy sites.
+- Demand → wage: purple around unstaffed works, teal around towns with spare
+  workforce. Demand → goods/food price: teal next to workshops and farms,
+  purple where towns pull and stock is short. Hover a town: purse %; hover a
+  site or select it: cash, wage and hire ×.
 - The around list gives the nearby marked coal trace coordinates; recording the
   deposit to 100% and holding it unlocks the mine. Iron deposits and manual mining
   stay absent until factory demand makes them useful.

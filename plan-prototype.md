@@ -227,8 +227,8 @@ Resources are data: id, name, base value, reference stock, deposit rate.
 | goods | 18 | 8 | — |
 
 Settlement markets replace town stocks and prices (see `plan-map-economy.md`). Price at a
-settlement cell, per unit: `base × ref/(stock+1) × demandFactor`, clamped to 0.35…3 × base,
-paid from settlement `money[i]` (target `25 × pop`, recovering at 4 %/s). Selling mapped
+settlement cell, per unit: `base ×` the map's local scarcity ratio (0.2…4, plan-map-economy **Money**),
+paid from settlement cash `money[i]` (seeded `25 × pop`, then circulating: plan-map-economy **Money**). Selling mapped
 resources (`ore`, `fuel`, `goods`) adds directly to that cell's map-economy `goods` stock.
 
 Supplies cost 5 funds per unit at a settlement and consume 0.2 settlement goods per unit. An

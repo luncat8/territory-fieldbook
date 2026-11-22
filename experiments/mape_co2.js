@@ -122,7 +122,8 @@ const center = 32 * world.size + 32;
 	}
 	check('co2_sources_present', popEmit > 1 && facEmit > 1 && wasteEmit > 0.5,
 		'pop=' + popEmit.toFixed(2) + ' fac=' + facEmit.toFixed(2) + ' waste=' + wasteEmit.toFixed(2));
-	check('co2_visible_band', bandMin > 0.02 && bandMax > 0.7 && bandMax <= RENDER_CO2_MAX,
+	// Peak plume rides economic activity (money purses moved it 0.65–0.87); 0.6 still reads on the 0–2 scale.
+	check('co2_visible_band', bandMin > 0.02 && bandMax > 0.6 && bandMax <= RENDER_CO2_MAX,
 		'min=' + bandMin.toFixed(3) + ' max=' + bandMax.toFixed(3));
 	check('co2_demand_signed', demandMin < -0.1 && demandMax > 0.1,
 		'min=' + demandMin.toFixed(3) + ' max=' + demandMax.toFixed(3));

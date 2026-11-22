@@ -1,16 +1,17 @@
-// owns: settlements, settlement markets, map-economy fields, mine/factory/storage pools and ledger
+// owns: settlements, settlement markets, map-economy fields (incl. cash), mine/factory/storage pools and ledger
 // edit for: map-economy data tables, seeding, deposit unlock rules, settlement market actions
 
 const MAPE_R = 6;
 const MAPE_RES = { COAL: 0, IRON: 1, GOODS: 2, LOGS: 3, FOOD: 4, CO2: 5 };
 const MAPE_RES_NAME = ['coal', 'iron', 'goods', 'logs', 'food', 'co2'];
-const MAPE_VIEW_ITEM = { POPULATION: 6, FRESH: 7, JOBS: 8, DEPLETED: 9, WASTE: 10, FOREST: 11, SOIL: 12, HUMIDITY: 13, WATER: 14, TRANSPORT: 15 };
-const MAPE_VIEW_ITEM_NAME = ['coal', 'iron', 'goods', 'logs', 'food', 'co2', 'population', 'fresh', 'workforce', 'depleted', 'waste', 'forest', 'soil moisture', 'air humidity', 'surface water', 'transport speed'];
-const MAPE_VIEW_ITEM_LABEL = ['coal', 'iron', 'goods', 'logs', 'food', 'co2', 'population', 'workforce · fresh', 'workforce', 'workforce · depleted', 'waste', 'forest cover', 'soil moisture', 'air humidity', 'surface water', 'transport speed'];
-const MAPE_VIEW_AMOUNT_IDS = [0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15];
+const MAPE_VIEW_ITEM = { POPULATION: 6, FRESH: 7, JOBS: 8, DEPLETED: 9, WASTE: 10, FOREST: 11, SOIL: 12, HUMIDITY: 13, WATER: 14, TRANSPORT: 15, MONEY: 16, PRICE_COAL: 17, PRICE_GOODS: 18, PRICE_FOOD: 19, WAGE: 20 };
+const MAPE_VIEW_ITEM_NAME = ['coal', 'iron', 'goods', 'logs', 'food', 'co2', 'population', 'fresh', 'workforce', 'depleted', 'waste', 'forest', 'soil moisture', 'air humidity', 'surface water', 'transport speed', 'money', 'coal price', 'goods price', 'food price', 'wage'];
+const MAPE_VIEW_ITEM_LABEL = ['coal', 'iron', 'goods', 'logs', 'food', 'co2', 'population', 'workforce · fresh', 'workforce', 'workforce · depleted', 'waste', 'forest cover', 'soil moisture', 'air humidity', 'surface water', 'transport speed', 'money', 'price · coal', 'price · goods', 'price · food', 'wage'];
+const MAPE_VIEW_AMOUNT_IDS = [0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16];
 // The 'jobs' demand layer duplicated the fresh-workforce pull (both render mape.workforce),
-// so it is dropped; the draft only describes one fresh/depleted workforce demand.
-const MAPE_VIEW_DEMAND_IDS = [0, 1, 2, 3, 4, 5, 7, 9];
+// so it is dropped; the draft only describes one fresh/depleted workforce demand. Prices sit on
+// the demand side: each one is read from the pull against the stock at the cell.
+const MAPE_VIEW_DEMAND_IDS = [0, 1, 2, 3, 4, 5, 7, 9, 16, 17, 18, 19, 20];
 const MAPE_VIEW_AMOUNT_NAMES = MAPE_VIEW_AMOUNT_IDS.map(id => MAPE_VIEW_ITEM_NAME[id]);
 const MAPE_VIEW_DEMAND_NAMES = MAPE_VIEW_DEMAND_IDS.map(id => MAPE_VIEW_ITEM_NAME[id]);
 const MAPE_ENGINE = { DIFFUSION: 0, CATCHMENT: 1, QUEUE: 2, SITES: 3 };
@@ -72,7 +73,6 @@ const MAPE_FACTORY_BUILD_DISTURB = 0.0015;
 const MAPE_WORKFORCE_PER_UNIT = 0.4;
 const MAPE_CO2_INIT = 0.4;
 const MAPE_MONEY_PER_POP = 25;
-const MAPE_MONEY_REGEN = 0.04;
 const MAPE_SUPPLY_GOODS = 0.2;
 // View normalisation rides the sim scales: the pop cap sits at 600 and a full crew at 32.
 const MAPE_VIEW_POP_MAX = 600;
@@ -183,10 +183,10 @@ function mapeInit(mode, fixedResidents = false) {
 		mape.goods = new Float64Array(MAPE_R * n);
 		mape.goodsNext = new Float64Array(MAPE_R * n);
 		mape.marketSignal = new Float32Array(MAPE_R * n);
-		mape.flowX = new Float32Array(MAPE_VIEW_ITEM.DEPLETED * n + n);
-		mape.flowY = new Float32Array(MAPE_VIEW_ITEM.DEPLETED * n + n);
-		mape.wfFlowX = [mape.flowX.subarray(MAPE_VIEW_ITEM.FRESH * n, (MAPE_VIEW_ITEM.FRESH + 1) * n), mape.flowX.subarray(MAPE_VIEW_ITEM.DEPLETED * n)];
-		mape.wfFlowY = [mape.flowY.subarray(MAPE_VIEW_ITEM.FRESH * n, (MAPE_VIEW_ITEM.FRESH + 1) * n), mape.flowY.subarray(MAPE_VIEW_ITEM.DEPLETED * n)];
+		mape.flowX = new Float32Array(MAPE_VIEW_ITEM.MONEY * n + n);
+		mape.flowY = new Float32Array(MAPE_VIEW_ITEM.MONEY * n + n);
+		mape.wfFlowX = [mape.flowX.subarray(MAPE_VIEW_ITEM.FRESH * n, (MAPE_VIEW_ITEM.FRESH + 1) * n), mape.flowX.subarray(MAPE_VIEW_ITEM.DEPLETED * n, (MAPE_VIEW_ITEM.DEPLETED + 1) * n)];
+		mape.wfFlowY = [mape.flowY.subarray(MAPE_VIEW_ITEM.FRESH * n, (MAPE_VIEW_ITEM.FRESH + 1) * n), mape.flowY.subarray(MAPE_VIEW_ITEM.DEPLETED * n, (MAPE_VIEW_ITEM.DEPLETED + 1) * n)];
 		mape.workforce = new Float32Array(n);
 		mape.workforceNext = new Float32Array(n);
 		mape.wfFresh = new Float32Array(n);
@@ -211,7 +211,7 @@ function mapeInit(mode, fixedResidents = false) {
 		mape.farmOwner = new Uint8Array(n);
 		mape.jobNeed = new Float32Array(n);
 		mape.cellExport = new Uint8Array(n);
-		mape.money = new Float32Array(n);
+		mape.money = new Float64Array(n);
 		mape.settleCells = new Uint16Array(n);
 		mape.demandView = new Array(MAPE_R);
 		mape.goodsView = new Array(MAPE_R);
@@ -223,6 +223,7 @@ function mapeInit(mode, fixedResidents = false) {
 	// Sites runs from setup only; runtime switching lands with the HUD toggle (Phase 5).
 	if (mode === MAPE_ENGINE.SITES || mapeEngineAvailable(mode)) mape.engine = mode;
 	mape.fixedResidents = fixedResidents;
+	mapeMoneyPrepare();
 	mapeReset();
 	transportRebuild();
 	mapeMarketFlowPrepare();
@@ -259,6 +260,7 @@ function mapeReset() {
 	mape.transit = 0;
 	mape.dissipated = 0;
 	mapeSitesReset();
+	mapeMoneyReset();
 }
 
 function mapeSeedSurvey() {
@@ -286,6 +288,7 @@ function mapeFinishSetup(fill, warm) {
 	mape.marketFill = fill;
 	mapeResetMarketFields(fill);
 	if (warm) mapeWarmDemand();
+	mapeMoneyFinishSetup();
 }
 
 // All four engines are selectable at runtime. Sites is a discrete-shipment engine, so its
@@ -370,22 +373,6 @@ function mapeRebuildSettlements() {
 	mape.settleCount = count;
 	mape.totalPop = sum;
 	if (sum > mape.popPeak) mape.popPeak = sum;
-}
-
-function mapeRecoverMoney(seconds) {
-	const cells = mape.settleCells;
-	const money = mape.money;
-	const pop = mape.pop;
-	let rate = MAPE_MONEY_REGEN * seconds;
-	if (rate > 1) rate = 1;
-	for (let k = 0; k < mape.settleCount; k++) {
-		const idx = cells[k];
-		const cap = pop[idx] * MAPE_MONEY_PER_POP;
-		const cur = money[idx];
-		if (cur >= cap) continue;
-		const next = cur + (cap - cur) * rate;
-		money[idx] = next > cap ? cap : next;
-	}
 }
 
 function mapeStep(seconds) {

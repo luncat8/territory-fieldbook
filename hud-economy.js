@@ -107,7 +107,8 @@ function hudPaintFieldLegend(refs, demand) {
 		refs.unit.textContent = 'Speed / 0–1';
 		refs.scale.className = scale;
 		refs.range.textContent = '0 → 1 · linear';
-	} else if (item >= MAPE_VIEW_ITEM.WASTE) {
+	} else if (item >= MAPE_VIEW_ITEM.MONEY) hudPaintMoneyLegend(refs, item, demand, scale);
+	else if (item >= MAPE_VIEW_ITEM.WASTE) {
 		refs.unit.textContent = 'Cell coverage / fraction';
 		refs.scale.className = scale;
 		refs.range.textContent = '0 → 100% · linear';
@@ -128,6 +129,18 @@ function hudPaintWorkerLegend(refs, item, demand, scale) {
 	refs.scale.className = scale + ' demand';
 	refs.unit.textContent = item === MAPE_VIEW_ITEM.FRESH ? 'Fresh pull / cell' : 'Rest pull / cell';
 	refs.range.textContent = '0 → 1 pull';
+}
+
+function hudPaintMoneyLegend(refs, item, demand, scale) {
+	if (item === MAPE_VIEW_ITEM.MONEY) {
+		refs.scale.className = demand ? scale + ' demand' : scale;
+		refs.unit.textContent = demand ? 'Owed pull / cell' : 'Cash + payments / cell';
+		refs.range.textContent = demand ? '0 → 1 pull' : 'log 0 → ' + MAPE_VIEW_MONEY_MAX;
+		return;
+	}
+	refs.scale.className = scale + ' demand signed';
+	refs.unit.textContent = (item === MAPE_VIEW_ITEM.WAGE ? 'Wage' : 'Price') + ' / base';
+	refs.range.textContent = (1 / MAPE_PRICE_MAX) + '× cheap → 1× → ' + MAPE_PRICE_MAX + '× dear · log';
 }
 
 function hudPaintPullLegend(refs, item, scale) {
@@ -192,12 +205,28 @@ function hudUpdateInspect() {
 		text += '\nImport pull · coal ' + Math.round(100 * mapeMarketPull(MAPE_RES.COAL, idx)) +
 			'% · goods ' + Math.round(100 * mapeMarketPull(MAPE_RES.GOODS, idx)) + '% · intake ' + mapeCatchmentCells(idx) + ' cells';
 	}
+	text += hudMoneyReadout(idx);
 	const lock = mapeDepositState(x, y);
 	if (lock >= 0) text += '\nDeposit ' + hudMineText(lock, idx);
 	if (renderHasAmount() && renderHasFlowItem(mape.viewItem)) {
 		text += '\nNet flow ' + hudFlowRate(mape.viewItem * n + idx).toFixed(2) + '/s';
 	}
 	hudEconomy.inspectEl.textContent = text;
+}
+
+function hudMoneyReadout(idx) {
+	const n = world.n;
+	const price = mapeMoney.price;
+	let text = '\nCash ' + mape.money[idx].toFixed(1) + ' · in transit ' + (mapeMoney.pay[idx] + mapeMoney.pay[n + idx]).toFixed(2) +
+		' · owed pull ' + mapeMoney.pullView[idx].toFixed(2);
+	if (mapeIsSettlement(idx)) text += ' · purse ' + Math.round(100 * mapeMoneyBuy(idx)) + '%';
+	if (mape.jobNeed[idx] > 0) text += ' · hire ×' + mapeMoneyHire(idx).toFixed(2);
+	return text + '\nPrice coal ' + price[MAPE_RES.COAL * n + idx].toFixed(2) + ' · goods ' + price[MAPE_RES.GOODS * n + idx].toFixed(2) +
+		' · food ' + price[MAPE_RES.FOOD * n + idx].toFixed(2) + ' · wage ' + price[MAPE_PRICE_LABOUR * n + idx].toFixed(3);
+}
+
+function hudSiteMoneyText(idx) {
+	return '\nCash ' + mape.money[idx].toFixed(1) + ' · wage ' + mapeMoney.price[MAPE_PRICE_LABOUR * world.n + idx].toFixed(3) + '/worker·s · hire ×' + mapeMoneyHire(idx).toFixed(2);
 }
 
 function hudFactorySiteText(f, idx) {
@@ -209,6 +238,7 @@ function hudFactorySiteText(f, idx) {
 	if (st === MAPE_FACTORY_STATE.BUILDING) text += ' · ' + Math.floor(mape.factoryProgress[f] * 100) + '%';
 	text += '\nCell ' + mape.factoryX[f] + ',' + mape.factoryY[f] + ' · productivity ' + Math.round(100 * landProductivity(idx)) + '% · disturbed ' + Math.round(100 * land.disturbed[idx]) + '%';
 	text += '\nWorkers ' + present.toFixed(1) + '/' + need + ' · ' + Math.round(100 * staff) + '% staffed';
+	text += hudSiteMoneyText(idx);
 	const kind = mape.factoryKind[f];
 	if (st === MAPE_FACTORY_STATE.BUILDING) {
 		const mat = kind === MAPE_FACTORY_KIND.SAWMILL ? 'forest' : 'logs';
@@ -257,6 +287,7 @@ function hudMineSiteText(m) {
 	let text = 'Mine S' + (m + 1) + ' · ' + (fuel ? 'coal' : 'iron') + ' · ' + state;
 	text += '\nCell ' + mape.mineX[m] + ',' + mape.mineY[m] + ' · productivity ' + Math.round(100 * landProductivity(idx)) + '% · disturbed ' + Math.round(100 * land.disturbed[idx]) + '%';
 	text += '\nWorkers ' + present.toFixed(1) + '/' + MAPE_MINE_WORKERS + ' · ' + Math.round(100 * staff) + '% staffed';
+	text += hudSiteMoneyText(idx);
 	text += '\nRate ' + (active ? (mapeMineRate(m) * staff).toFixed(2) : '0.00') + '/s · deposit left ' + sites.stock[site].toFixed(1);
 	return text;
 }
@@ -297,6 +328,7 @@ function hudUpdateWorkforce() {
 		text += '\nfresh ' + t.fresh.toFixed(1) + ' · depleted ' + t.depleted.toFixed(1);
 		text += '\nrested ' + mape.fluidRested.toFixed(1) + ' · spawned ' + mape.fluidSpawned;
 	}
+	text += '\nMoney ' + Math.round(mapeMoneyTotal()) + ' · in transit ' + mapeMoneyTransit().toFixed(1) + ' · minting ' + mapeMoney.mintRate.toFixed(2) + '/s';
 	el.textContent = text;
 }
 

@@ -78,7 +78,7 @@ function mapSceneEdit(x, y) {
 		if (!town && mine < 0 && factory < 0) return eventsStatus('No actor in this cell.');
 		if (mine >= 0) mapeRemoveMine(mine);
 		if (factory >= 0) mapeRemoveFactory(factory);
-		mape.pop[idx] = mape.money[idx] = 0;
+		mape.pop[idx] = 0;
 		eventsStatus('Actor removed. Stored resources stay in circulation.');
 	} else {
 		if (town || mine >= 0 || mapeFactoryAt(x, y) >= 0) return eventsStatus('This cell already has an actor.');

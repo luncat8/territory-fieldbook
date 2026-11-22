@@ -337,3 +337,22 @@ weight the send, then express shipped rates at c = 1 so the reference ground kee
 −6e-9/s drift that sat just under the 1e-6 gate until an unrelated balance change
 crossed it. A linear residual is a leak, not float noise — wrap each tick phase with a
 ledger delta (`mapeLedgerResidual` before/after) to find it in one run.
+
+## money as a field: a payer must never be its own sink
+
+Payments moving up an "owed" pull get stuck on any cell that both pays and is owed: its own
+pull source is a local maximum, so `mapePushUpGradient` finds no uphill neighbour. Split the
+money in transit by direction (households → industry, industry → towns) so every payer injects
+into a stock whose sinks exclude it. Output-as-claim (steers pull) plus payment-as-cash keeps
+the ledger exact without matching buyers to sellers.
+
+## ratio fields need a signed ramp
+
+A price (or any ratio around 1) on a one-sided 0–1 palette puts the neutral value in bright
+midtones and the whole map reads "hot". Draw log(ratio) signed through the existing negative
+(teal) branch; and keep the ratio's ease term large enough (0.5) that empty, unwanted land is 1×.
+
+## emergent display gates move with the economy
+
+`mape_co2` band max (peak plume on 0–2) swung 0.65–0.87 when purses changed coal burning. Gates on
+emergent magnitudes need slack or a scene with pinned sources; don't treat a shift as a regression.
