@@ -7,7 +7,7 @@ class EconomyTelemetry {
 			const canvas = card.querySelector('canvas');
 			return { canvas, ctx:canvas.getContext('2d'), label:card.querySelector('strong'), samples:new Float64Array(64), color:getComputedStyle(card.querySelector('.icon')).color };
 		});
-		this.values = new Float64Array(4);
+		this.values = new Float64Array(this.cards.length);
 		this.relief = new FieldRelief($('field-relief'));
 		this.clock = $('sim-time');
 		this.coalMade = $('coal-made');
@@ -16,6 +16,12 @@ class EconomyTelemetry {
 		this.goodsMade = $('goods-made');
 		this.goodsEaten = $('goods-eaten');
 		this.goodsHeld = $('goods-held');
+		this.laborMade = $('labor-made');
+		this.laborUsed = $('labor-used');
+		this.laborHeld = $('labor-held');
+		this.goldSeeded = $('gold-seeded');
+		this.goldMined = $('gold-mined');
+		this.goldHeld = $('gold-held');
 	}
 
 	reset(model) {
@@ -25,10 +31,11 @@ class EconomyTelemetry {
 	}
 
 	measure(model) {
-		let coal = 0, goods = 0, coalPrice = 0, goodsPrice = 0;
+		let coal = 0, goods = 0, labor = 0, coalPrice = 0, goodsPrice = 0;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			coal += model.coal[i];
 			goods += model.goods[i];
+			labor += model.labor[i];
 			coalPrice += model.priceCoal[i];
 			goodsPrice += model.priceGoods[i];
 		}
@@ -36,6 +43,8 @@ class EconomyTelemetry {
 		this.values[1] = goods;
 		this.values[2] = coalPrice / ECONOMY_SIZE;
 		this.values[3] = goodsPrice / ECONOMY_SIZE;
+		this.values[4] = model.money.total();
+		this.laborTotal = labor;
 	}
 
 	record(model) {
@@ -78,6 +87,12 @@ class EconomyTelemetry {
 		this.goodsMade.textContent = model.producedGoods.toFixed(3);
 		this.goodsEaten.textContent = model.consumedGoods.toFixed(3);
 		this.goodsHeld.textContent = this.values[1].toFixed(3);
+		this.laborMade.textContent = model.suppliedLabor.toFixed(3);
+		this.laborUsed.textContent = model.workedLabor.toFixed(3);
+		this.laborHeld.textContent = this.laborTotal.toFixed(3);
+		this.goldSeeded.textContent = model.money.seeded.toFixed(2);
+		this.goldMined.textContent = model.money.mined.toFixed(2);
+		this.goldHeld.textContent = this.values[4].toFixed(2);
 		const seconds = Math.floor(model.ticks * ECONOMY_DT);
 		this.clock.textContent = `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
 	}

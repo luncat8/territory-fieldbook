@@ -13,12 +13,19 @@ const ICON_PATHS = {
 	contour:'M3 12c0-4 3-4 5-7 4-5 11-2 11 3 0 4 5 6 2 10-2 4-6 1-10 3-5 1-9-3-8-9Zm4 0c0-2 3-3 4-5 3-2 5 0 5 3 0 3 4 5 1 7-2 1-3-1-6 0-3 1-5-2-4-5Zm4 0c1-3 4-3 4 1 0 3-4 3-4-1Z',
 	sliders:'M3 7h4m5 0h9M3 17h10m5 0h3M7 4h5v6H7zM13 14h5v6h-5z',
 	cursor:'m4 3 6.5 18 3.2-7.5L21 10z',crosshair:'M12 3v5m0 8v5M3 12h5m8 0h5M19 12a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z',
-	diamond:'m12 2 10 10-10 10L2 12z',square:'M4 4h16v16H4z',circle:'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z',
+	diamond:'m12 2 10 10-10 10L2 12z',hexagon:'M12 2l8.7 5v10L12 22l-8.7-5V7z',square:'M4 4h16v16H4z',circle:'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z',
 	erase:'m3 14 10-10a2 2 0 0 1 3 0l5 5a2 2 0 0 1 0 3l-8 8H9l-6-6Zm6-6 8 8M12 20h9',
 	reset:'M3 4v6h6M4 9a8 8 0 1 1 .7 8',clear:'M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7',close:'m6 6 12 12M18 6 6 18'
 };
 const labIcon = name => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON_PATHS[name]}"/></svg>`;
-const TOOL_HINTS = { inspect:'Select a cell on either map to inspect its values.', mine:'Select an empty cell on either map to place a mine.', factory:'Select an empty cell on either map to place a factory.', town:'Select an empty cell on either map to place a town.', erase:'Select an actor to remove it. Stored stock stays in its cell.' };
+const TOOL_KINDS = { inspect:0, erase:0, mine:ECONOMY_MINE, factory:ECONOMY_FACTORY, town:ECONOMY_TOWN, gold:ECONOMY_GOLD };
+const RESOURCE_TITLES = {
+	coal:['Coal stock','Available stock per cell','Coal price','Diffused buyer bid per cell'],
+	goods:['Goods stock','Available stock per cell','Goods price','Diffused buyer bid per cell'],
+	labor:['Labor force','Available workers per cell','Wage','Diffused firm wage bid per cell'],
+	gold:['Gold held','Purses and payments in transit','Payment ask','Where owed gold is headed']
+};
+const TOOL_HINTS = { inspect:'Select a cell on either map to inspect its values.', mine:'Select an empty cell on either map to place a mine.', factory:'Select an empty cell on either map to place a factory.', town:'Select an empty cell on either map to place a town. Residents supply labor, pay taxes and draw supplies.', gold:'Select an empty cell on either map to place a gold mine. It hires workers while digging gold is profitable.', erase:'Select an actor to remove it. Stored stock stays in its cell.' };
 
 function bootEconomy() {
 	for (const node of document.querySelectorAll('[data-icon]')) node.outerHTML = labIcon(node.dataset.icon);
@@ -40,15 +47,14 @@ function bootEconomy() {
 	$('grid-size').textContent = `${ECONOMY_WIDTH} × ${ECONOMY_HEIGHT}`;
 	$('source-note').textContent = SOURCE_RATE.toFixed(2);
 	$('uptake-note').textContent = NEED_RATE.toFixed(2);
+	$('start-price-note').textContent = START_PRICE.toFixed(0);
+	$('gold-rate-note').textContent = GOLD_RATE.toFixed(2);
 
 	function syncActors() {
-		let mines = 0, factories = 0, towns = 0;
-		for (const kind of model.actors) {
-			if (kind === ECONOMY_MINE) mines++;
-			if (kind === ECONOMY_FACTORY) factories++;
-			if (kind === ECONOMY_TOWN) towns++;
-		}
-		$('actor-count').textContent = `${mines} mine${mines === 1 ? '' : 's'} · ${factories} factor${factories === 1 ? 'y' : 'ies'} · ${towns} town${towns === 1 ? '' : 's'}`;
+		const counts = [0,0,0,0,0];
+		for (const kind of model.actors) counts[kind]++;
+		const [, mines, factories, towns, gold] = counts;
+		$('actor-count').textContent = `${mines} M · ${factories} F · ${towns} T · ${gold} G`;
 		clearButton.disabled = !towns;
 		for (const plot of plots) plot.readActors(model.actors);
 		dirty = true;
@@ -85,7 +91,7 @@ function bootEconomy() {
 			message.textContent = pinned ? `Pinned cell ${cellName(i)}.` : 'Both maps are linked.';
 			return;
 		}
-		const kind = tool === 'mine' ? ECONOMY_MINE : tool === 'factory' ? ECONOMY_FACTORY : tool === 'town' ? ECONOMY_TOWN : 0;
+		const kind = TOOL_KINDS[tool];
 		if (kind === 0 && !model.actors[i]) { message.textContent = 'No actor in this cell.'; return; }
 		if (!model.setActor(i,kind)) { message.textContent = 'Cell occupied. Erase its actor first.'; return; }
 		message.textContent = `Actor ${kind ? 'placed' : 'removed'} at ${cellName(i)}.`;
@@ -123,7 +129,7 @@ function bootEconomy() {
 	function reset() {
 		model.reset(); stats.reset(model); syncActors(); clearSelection();
 		accumulator = 0; lastFrame = performance.now();
-		message.textContent = 'New map · price starts at zero and builds from buyer bids.';
+		message.textContent = 'New map · towns hold gold worth the starting price; bids build from there.';
 		stats.refresh(model); paint();
 	}
 
@@ -154,8 +160,9 @@ function bootEconomy() {
 	for (const button of resourceButtons) button.addEventListener('click',() => {
 		for (const plot of plots) plot.resource = button.dataset.resource;
 		for (const candidate of resourceButtons) candidate.setAttribute('aria-pressed',candidate === button);
-		$('stock-title').textContent = `${button.dataset.resource === 'coal' ? 'Coal' : 'Goods'} stock`;
-		$('price-title').textContent = `${button.dataset.resource === 'coal' ? 'Coal' : 'Goods'} price`;
+		const [stockTitle, stockNote, priceTitle, priceNote] = RESOURCE_TITLES[button.dataset.resource];
+		$('stock-title').textContent = stockTitle; $('stock-note').textContent = stockNote;
+		$('price-title').textContent = priceTitle; $('price-note').textContent = priceNote;
 		dirty = true;
 	});
 	runButton.addEventListener('click',toggleRun);
@@ -184,7 +191,7 @@ function bootEconomy() {
 	document.addEventListener('visibilitychange',() => { lastFrame = performance.now(); accumulator = 0; });
 	window.addEventListener('resize',fit);
 	stats.reset(model);
-	for (let n = 0; n < Math.round(8/ECONOMY_DT); n++) tick();
+	for (let n = 0; n < Math.round(16/ECONOMY_DT); n++) tick();
 	syncActors(); syncPlayback(); fit();
 	document.fonts.ready.then(fit);
 	requestAnimationFrame(frame);

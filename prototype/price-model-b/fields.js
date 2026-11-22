@@ -6,7 +6,18 @@ const PRICE_COLORS = [[0,'#17151f'],[0.16,'#271f34'],[0.3,'#3b2a52'],[0.48,'#634
 const ISO_EDGES = [[],[3,0],[0,1],[3,1],[1,2],[3,0,1,2],[0,2],[3,2],[2,3],[0,2],[0,1,2,3],[1,2],[1,3],[0,1],[0,3],[]];
 const STOCK_EXPOSURE = 6000;
 const STOCK_LOG = Math.log1p(STOCK_EXPOSURE);
+const SCALE_FLOOR = { price:0.5, gold:1 };
+const ACTOR_NAMES = ['Cell','Mine','Factory','Town','Gold mine'];
+const ACTOR_TAGS = ['','M','F','T','G'];
+const ACTOR_INK = [[],['#77512c','#ffdb9f','#ffd69b'],['#2f4a3f','#9fe0c0','#a9e8c8'],['#514065','#e6d3ff','#e2cff4'],['#5c4a12','#f7d65a','#f7dc78']];
 const cellName = i => `${String(i % ECONOMY_WIDTH).padStart(2,'0')}, ${String(Math.floor(i / ECONOMY_WIDTH)).padStart(2,'0')}`;
+
+// 1-2-5 steps keep the legend and contour spacing still while uncapped prices drift.
+function niceCeil(value) {
+	const power = 10 ** Math.floor(Math.log10(value));
+	const n = value / power;
+	return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * power;
+}
 
 function fieldPalette(stops) {
 	const colors = stops.map(([t, hex]) => [t, parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5),16)]);
@@ -29,6 +40,10 @@ class FieldPlot {
 		this.isStock = isStock;
 		this.resource = 'coal';
 		this.tooltip = canvas.nextElementSibling;
+		this.view = new Float64Array(ECONOMY_SIZE);
+		this.scale = 1;
+		this.legendKey = '';
+		this.scaleLabel = canvas.closest('.field-card').querySelector('.scale-label');
 		const colors = isStock ? STOCK_COLORS : PRICE_COLORS;
 		this.palette = fieldPalette(colors);
 		canvas.closest('.field-card').querySelector('.ramp').style.background = `linear-gradient(90deg,${colors.map(([t,c]) => `${c} ${t*100}%`).join(',')})`;
@@ -89,27 +104,53 @@ class FieldPlot {
 	}
 
 	readActors(actors) {
-		let m = 0, f = 0, t = 0;
+		const counts = [0,0,0,0,0];
 		this.markers.length = 0;
 		for (let i = 0; i < actors.length; i++) {
-			if (!actors[i]) continue;
 			const kind = actors[i];
-			this.markers.push({ i, kind, label: kind === ECONOMY_MINE ? `M${++m}` : kind === ECONOMY_FACTORY ? `F${++f}` : `T${++t}` });
+			if (kind) this.markers.push({ i, kind, label: `${ACTOR_TAGS[kind]}${++counts[kind]}` });
 		}
 	}
 
 	fieldFor(model) {
+		if (this.resource === 'gold') return this.goldView(model.money);
+		if (this.resource === 'labor') return this.isStock ? model.labor : model.priceLabor;
 		if (this.isStock) return this.resource === 'coal' ? model.coal : model.goods;
 		return this.resource === 'coal' ? model.priceCoal : model.priceGoods;
+	}
+
+	goldView(money) {
+		const { view, isStock } = this, [coal, goods, wage] = money.streams;
+		for (let i = 0; i < ECONOMY_SIZE; i++) view[i] = isStock ? money.held(i) : coal.ask[i] + goods.ask[i] + wage.ask[i];
+		return view;
+	}
+
+	intensity(value) {
+		if (!this.isStock) return Math.min(1, value / this.scale);
+		if (this.resource === 'gold') return Math.log1p(value) / Math.log1p(this.scale);
+		return Math.log1p(STOCK_EXPOSURE * value) / STOCK_LOG;
+	}
+
+	rescale(data) {
+		let peak = this.isStock ? SCALE_FLOOR.gold : SCALE_FLOOR.price;
+		for (let i = 0; i < ECONOMY_SIZE; i++) peak = Math.max(peak, data[i]);
+		this.scale = niceCeil(peak);
+		const key = this.isStock && this.resource !== 'gold' ? 'stock' : `${this.resource} ${this.scale}`;
+		if (key !== this.legendKey) this.showScale(key);
+	}
+
+	showScale(key) {
+		this.legendKey = key;
+		const unit = this.resource === 'gold' ? (this.isStock ? ' g' : '') : ' g/u';
+		if (key === 'stock') this.scaleLabel.innerHTML = 'Log scale <b>0 – 1</b>';
+		else this.scaleLabel.innerHTML = `${this.isStock ? 'Log' : 'Linear'} scale <b>0 – ${this.scale}${unit}</b>`;
 	}
 
 	draw(model, selection, vectors) {
 		const { ctx:g, isStock, pw, ph, left, top, cw, ch } = this;
 		const data = this.fieldFor(model);
-		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			const intensity = isStock ? Math.log1p(STOCK_EXPOSURE * data[i]) / STOCK_LOG : Math.min(1, data[i] / BID_MAX);
-			this.pixels[i] = this.palette[Math.round(intensity*1024)];
-		}
+		this.rescale(data);
+		for (let i = 0; i < ECONOMY_SIZE; i++) this.pixels[i] = this.palette[Math.round(this.intensity(data[i])*1024)];
 		this.rasterCtx.putImageData(this.image,0,0);
 		g.fillStyle = isStock ? '#191819' : '#1b1822';
 		g.fillRect(0,0,this.w,this.h);
@@ -123,7 +164,7 @@ class FieldPlot {
 		g.drawImage(this.grid,0,0,this.w,this.h);
 		g.save();
 		g.translate(left,top);
-		if (isStock && vectors) this.drawVectors(model);
+		if (isStock && vectors) this.drawFlows(model);
 		for (const marker of this.markers) this.drawMarker(marker);
 		if (selection >= 0) {
 			g.strokeStyle = '#fff3d9'; g.lineWidth = 1.5;
@@ -134,7 +175,7 @@ class FieldPlot {
 
 	contours(field) {
 		const { ctx:g, cw, ch, ex, ey } = this;
-		const w = ECONOMY_WIDTH, h = ECONOMY_HEIGHT, interval = 0.15;
+		const w = ECONOMY_WIDTH, h = ECONOMY_HEIGHT, interval = this.scale / 26;
 		g.beginPath();
 		for (let y = -1; y < h; y++) {
 			const row = Math.max(0,y)*w, next = Math.min(h-1,y+1)*w, py = (y+0.5)*ch;
@@ -160,9 +201,15 @@ class FieldPlot {
 		g.lineWidth = 0.85; g.strokeStyle = '#ddc0ff70'; g.stroke();
 	}
 
-	drawVectors(model) {
+	drawFlows(model) {
+		if (this.resource === 'coal') this.drawVectors(model, model.coalFlow);
+		else if (this.resource === 'goods') this.drawVectors(model, model.goodsFlow);
+		else if (this.resource === 'labor') this.drawVectors(model, model.laborFlow);
+		else for (const stream of model.money.streams) this.drawVectors(model, stream.scratch);
+	}
+
+	drawVectors(model, scratch) {
 		const { ctx:g, cw, ch } = this;
-		const scratch = this.resource === 'coal' ? model.coalFlow : model.goodsFlow;
 		g.strokeStyle = '#fff0ca'; g.lineWidth = 1; g.lineCap = 'round';
 		const time = model.ticks * ECONOMY_DT;
 		for (let y = 0; y < ECONOMY_HEIGHT; y += 2) {
@@ -188,13 +235,13 @@ class FieldPlot {
 		const { ctx:g, cw, ch } = this;
 		const x = (marker.i%ECONOMY_WIDTH+0.5)*cw, y = (Math.floor(marker.i/ECONOMY_WIDTH)+0.5)*ch;
 		const r = Math.max(3.5,Math.min(6.5,cw*0.55));
-		if (marker.kind === ECONOMY_MINE) { g.fillStyle = '#77512c'; g.strokeStyle = '#ffdb9f'; }
-		else if (marker.kind === ECONOMY_FACTORY) { g.fillStyle = '#2f4a3f'; g.strokeStyle = '#9fe0c0'; }
-		else { g.fillStyle = '#514065'; g.strokeStyle = '#e6d3ff'; }
+		const ink = ACTOR_INK[marker.kind];
+		g.fillStyle = ink[0]; g.strokeStyle = ink[1];
 		g.lineWidth = 1.7;
 		g.beginPath();
 		if (marker.kind === ECONOMY_MINE) { g.moveTo(x,y-r); g.lineTo(x+r,y); g.lineTo(x,y+r); g.lineTo(x-r,y); g.closePath(); }
 		else if (marker.kind === ECONOMY_FACTORY) g.rect(x-r*0.85,y-r*0.85,r*1.7,r*1.7);
+		else if (marker.kind === ECONOMY_GOLD) this.hexagon(x,y,r);
 		else g.arc(x,y,r*0.88,0,Math.PI*2);
 		g.fill(); g.stroke();
 		g.fillStyle = g.strokeStyle;
@@ -202,8 +249,17 @@ class FieldPlot {
 		const labelWidth = marker.label.length*5.5+5;
 		const lx = x+r+labelWidth+2 < this.pw ? x+r+3 : x-r-labelWidth-3;
 		g.fillStyle = '#15141be3'; g.fillRect(lx,y-7,labelWidth,13);
-		g.fillStyle = marker.kind === ECONOMY_MINE ? '#ffd69b' : marker.kind === ECONOMY_FACTORY ? '#a9e8c8' : '#e2cff4';
+		g.fillStyle = ink[2];
 		g.font = '9px monospace'; g.textBaseline = 'middle'; g.textAlign = 'left'; g.fillText(marker.label,lx+2.5,y-0.3);
+	}
+
+	hexagon(x, y, r) {
+		const g = this.ctx;
+		for (let k = 0; k < 6; k++) {
+			const a = Math.PI/6 + k*Math.PI/3;
+			if (k) g.lineTo(x+r*Math.cos(a),y+r*Math.sin(a)); else g.moveTo(x+r*Math.cos(a),y+r*Math.sin(a));
+		}
+		g.closePath();
 	}
 
 	cellAt(event) {
@@ -217,8 +273,14 @@ class FieldPlot {
 		const tip = this.tooltip;
 		tip.hidden = i < 0;
 		if (i < 0) return;
-		const actor = model.actors[i] === ECONOMY_MINE ? 'Mine' : model.actors[i] === ECONOMY_FACTORY ? 'Factory' : model.actors[i] === ECONOMY_TOWN ? 'Town' : 'Cell';
-		tip.textContent = `${pinned ? 'Pinned · ' : ''}${actor} ${cellName(i)}\nCoal ${model.coal[i].toFixed(3)} · Goods ${model.goods[i].toFixed(3)}\nCoal price ${model.priceCoal[i].toFixed(3)} · Goods price ${model.priceGoods[i].toFixed(3)}`;
+		const { money, actors } = model, actor = actors[i];
+		const head = `${pinned ? 'Pinned · ' : ''}${ACTOR_NAMES[actor]} ${cellName(i)}${actor === ECONOMY_TOWN ? ` · Pop ${model.pop[i].toFixed(1)}` : ''}`;
+		const stocks = `Coal ${model.coal[i].toFixed(3)} · Goods ${model.goods[i].toFixed(3)} · Labor ${model.labor[i].toFixed(3)}`;
+		const prices = `Coal ${model.priceCoal[i].toFixed(2)} · Goods ${model.priceGoods[i].toFixed(2)} · Wage ${model.priceLabor[i].toFixed(2)}`;
+		const wallet = actor === ECONOMY_TOWN
+			? `Town ${money.purse[i].toFixed(2)}g · Workers ${money.workerPurse[i].toFixed(2)}g · Profit ${model.profit[i].toFixed(2)}/s`
+			: `Gold ${money.held(i).toFixed(2)}g · Owed ${money.owedAt(i).toFixed(2)}g${actor ? ` · Profit ${model.profit[i].toFixed(2)}/s` : ''}`;
+		tip.textContent = `${head}\n${stocks}\n${prices}\n${wallet}`;
 		const x = this.left+(i%ECONOMY_WIDTH+0.5)*this.cw, y = this.top+(Math.floor(i/ECONOMY_WIDTH)+0.5)*this.ch;
 		tip.style.left = `${Math.max(3,Math.min(this.w-tip.offsetWidth-3,x+10))}px`;
 		tip.style.top = `${y+tip.offsetHeight+12 < this.h ? y+10 : Math.max(2,y-tip.offsetHeight-8)}px`;
@@ -261,7 +323,10 @@ class FieldRelief {
 		if (!this.w) return;
 		const { ctx:g, x, y, base, cols, rows } = this;
 		g.clearRect(0,0,this.w,this.h);
-		for (let i = 0; i < x.length; i++) y[i] = base[i]-this.h*0.14*field[this.cells[i]];
+		let peak = START_PRICE;
+		for (let i = 0; i < x.length; i++) peak = Math.max(peak,field[this.cells[i]]);
+		const gain = this.h*0.56/peak;
+		for (let i = 0; i < x.length; i++) y[i] = base[i]-gain*field[this.cells[i]];
 		g.lineWidth = 0.8; g.strokeStyle = this.ink; g.fillStyle = '#19171e';
 		for (let r = 1; r < rows; r++) {
 			const back = (r-1)*cols, front = r*cols;

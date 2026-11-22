@@ -356,3 +356,31 @@ midtones and the whole map reads "hot". Draw log(ratio) signed through the exist
 
 `mape_co2` band max (peak plume on 0–2) swung 0.65–0.87 when purses changed coal burning. Gates on
 emergent magnitudes need slack or a scene with pinned sources; don't treat a shift as a regression.
+
+## stream per receiver kind: payments without an owed-pull field
+
+Extends the entry above. price-model-b gold (`prototype/price-model-b/gold.js`): goods climb the buyer's bid, gold climbs the
+seller's ask. One coin stream per receiver kind (coal→mines, goods→factories, wage→towns) with
+an ask injected by receivers reuses item transport and keeps every payer off its own stream.
+Test helpers that clear actors must also reset money, or seeded purses stay on empty cells and
+the gold ledger breaks while the model is fine.
+
+## finite buffer cooling, transit delay and multi-buyer pass-through
+
+Three traps surfaced together in `prototype/price-model-b/`:
+
+- **A stock-cooled bid whose cell capacity sits near `STOCK_REF` never reaches zero.** Capping a
+  buyer cell at `0.085` while cooling by `1 + stock / 0.08` froze the divisor at `2.06`, so
+  towns kept bidding ~50 % of max even when flooded and pulled free (`price = 0`) stock into
+  an endless ring around themselves. Cooling linearly as `max(0, 1 − stock / target)` with
+  `cap[buyer] = target` drops both the bid and intake room to exact zero once finite need is met.
+- **An input buffer shorter than spatial transit time pulses on and off.** A `0.6 s` labor
+  buffer at a mine `12` cells from town (`~2 s` walk) filled in one burst, cut the wage bid by
+  96 %, halted incoming commuters, and starved `0.6 s` later. Size `BUFFER_SECONDS` (`1.5 s`)
+  comparable to neighborhood refill time so steady flow locks in without bullwhip oscillation.
+- **A satisfied buyer must not clamp down a rival's steeper price.** When both towns and
+  factories buy coal (or mines and factories both hire labor), relaxing a full town toward
+  `bid = 0` creates a cold sink that blocks a nearby factory's coal bid. Yielding to `ambient`
+  whenever `ambient > here && ambient > relaxed` passes steeper external bids across while
+  leaving lonely-buyer cooling unchanged.
+
