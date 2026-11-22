@@ -1,11 +1,15 @@
 // owns: the walkable market stencil, catchment reach and headroom-resolved queue transport
 // edit for: routing, shoreline handling, queue admissions and field smoothing
 
+// Intake reach is a travel-time budget in meadow steps; a road (c = 1) steps twice as far, so
+// the stencil is sized for that diamond.
 const MAPE_CATCHMENT_STEPS = 4;
-const MAPE_CATCHMENT_SIZE = 1 + 2 * MAPE_CATCHMENT_STEPS * (MAPE_CATCHMENT_STEPS + 1);
-const MAPE_MARKET_FLOW_SPEED = 6.5;
+const MAPE_CATCHMENT_ROAD_STEPS = 2 * MAPE_CATCHMENT_STEPS;
+const MAPE_CATCHMENT_SIZE = 1 + 2 * MAPE_CATCHMENT_ROAD_STEPS * (MAPE_CATCHMENT_ROAD_STEPS + 1);
+const MAPE_CATCHMENT_TIME_EPS = 1e-6;
+const MAPE_MARKET_FLOW_SPEED = 13;
 const MAPE_MARKET_GRAD_REF = 0.0015;
-const MAPE_QUEUE_FLOW_SPEED = 7;
+const MAPE_QUEUE_FLOW_SPEED = 14;
 const MAPE_FOOD_FLOW_MULT = 0.25;
 const MAPE_QUEUE_GRAD_REF = 0.0002;
 const MAPE_LAND_LINKS = 8;
@@ -20,7 +24,6 @@ const mapeMarketFlow = {
 	catchments: null,
 	weights: null,
 	counts: null,
-	visited: null,
 	requests: null,
 	room: null,
 	accepted: null
@@ -34,7 +37,6 @@ function mapeMarketFlowPrepare() {
 		mapeMarketFlow.catchments = new Uint16Array(n * MAPE_CATCHMENT_SIZE);
 		mapeMarketFlow.weights = new Float32Array(n * MAPE_CATCHMENT_SIZE);
 		mapeMarketFlow.counts = new Uint8Array(n);
-		mapeMarketFlow.visited = new Uint16Array(n);
 		mapeMarketFlow.requests = new Float64Array(n * MAPE_LAND_LINKS);
 		mapeMarketFlow.room = new Float64Array(n);
 		mapeMarketFlow.accepted = new Float64Array(n);
@@ -69,35 +71,27 @@ function mapeBuildMarketLinks() {
 	mapeMarketFlow.landCount = count;
 }
 
+// Falloff runs on travel time, so a slow cell inside the reach counts for less than a near one.
 function mapeBuildCatchments() {
-	const { links, land, landCount, catchments, counts, weights, visited } = mapeMarketFlow;
-	visited.fill(0);
+	const { land, landCount, catchments, counts, weights } = mapeMarketFlow;
+	const budget = MAPE_CATCHMENT_STEPS + MAPE_CATCHMENT_TIME_EPS;
+	const falloff = 1 / (MAPE_CATCHMENT_STEPS + 1);
 	counts.fill(0);
 	for (let iLand = 0; iLand < landCount; iLand++) {
 		const i = land[iLand];
 		const base = i * MAPE_CATCHMENT_SIZE;
-		const mark = i + 1;
-		let end = base + 1;
-		let read = base;
-		catchments[base] = i;
-		weights[base] = 1;
-		visited[i] = mark;
-		for (let step = 1; step <= MAPE_CATCHMENT_STEPS; step++) {
-			const layerEnd = end;
-			const weight = 1 - step / (MAPE_CATCHMENT_STEPS + 1);
-			for (; read < layerEnd; read++) {
-				const edge = catchments[read] * MAPE_LAND_LINKS;
-				for (let d = 0; d < 4; d++) {
-					const to = links[edge + d];
-					if (visited[to] === mark) continue;
-					visited[to] = mark;
-					weights[end] = weight;
-					catchments[end++] = to;
-				}
-			}
+		const count = transportTravel(i, budget);
+		for (let k = 0; k < count; k++) {
+			const cell = transport.order[k];
+			catchments[base + k] = cell;
+			weights[base + k] = 1 - transport.time[cell] * falloff;
 		}
-		counts[i] = end - base;
+		counts[i] = count;
 	}
+}
+
+function mapeCatchmentCells(i) {
+	return mapeMarketFlow.counts[i];
 }
 
 function mapeFilterMarketDemand(r) {
@@ -139,10 +133,12 @@ function mapeRequestQueueTransfers(i, off, fraction, cond) {
 		const w = slope * mapeQueueCond(cond, i, to, d);
 		if (w <= 0) continue;
 		requests[base + d] = w;
-		sum += w;
-		if (w > steepest) steepest = w;
+		sum += slope;
+		if (slope > steepest) steepest = slope;
 	}
 	if (sum <= 0) return;
+	// Raw slopes saturate the send and c only weights it, so uniformly slow ground sends less
+	// (Σ requests ≤ max c), matching the field haul share.
 	const scale = goods[off + i] * fraction * steepest / (sum * (steepest + MAPE_QUEUE_GRAD_REF));
 	for (let d = 0; d < MAPE_LAND_LINKS; d++) {
 		const edge = base + d;
@@ -208,4 +204,4 @@ function mapeRouteQueues(r, dt, cond) {
 	}
 }
 
-if (typeof module !== 'undefined') module.exports = { mapeMarketFlowPrepare, mapeFilterMarketDemand, mapeRouteQueues };
+if (typeof module !== 'undefined') module.exports = { mapeMarketFlowPrepare, mapeCatchmentCells, mapeFilterMarketDemand, mapeRouteQueues };
