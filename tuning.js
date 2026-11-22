@@ -88,7 +88,10 @@ function tuneApply() {
 		const knob = TUNE_KNOBS[k];
 		tune[knob.id] = knob.group ? knob.value * TUNE_KNOBS[TUNE_INDEX[knob.group]].value : knob.value;
 	}
-	if (typeof transportRebuild === 'function') transportRebuild();
+	if (typeof transportRebuild !== 'function') return;
+	transportRebuild();
+	// Catchments are travel-time budgets over the speed map, so they follow every terrain change.
+	mapeMarketFlowPrepare();
 }
 
 function tuneSet(id, value) {
