@@ -25,7 +25,7 @@ wrong (see the audit in experiments/mape_diffusion_speed.js).
 | moisture, biomass, soil | fraction | 0..1 |
 
 Signals never carry goods. Hauling reads them as a normalized gradient (each direction's share
-is g·c / (Σg·c + ref)), so their magnitude scale is free; the market pull stays 0..1 because it is
+is g·c / (Σg + ref)), so their magnitude scale is free; the market pull stays 0..1 because it is
 also displayed and asserted.
 
 ## transport — a fraction of the sender's own stock
@@ -34,18 +34,23 @@ also displayed and asserted.
   MAPE_STEP_FRAC_MAX = 0.75 and by the stock that is actually there. A cell can never send more
   than it has, so the rule is identical for 0.1 or 1000 items, never goes negative, and needs no
   amount cap for stability.
-- Shipped speeds (cells/s): haul 1.8, market flow 6.5, queue flow 7, workforce walk 1.8, sites
-  transit 2.0 — all <= 10 cells/s, i.e. at most 0.35 of a cell crossed per tick. Food stock
-  in field engines uses one quarter of the corresponding haul speed; pull diffusion is unchanged.
+- Shipped speeds are rates at c = 1 (cells/s): haul 3.6, market flow 13, queue flow 14,
+  workforce walk and fluid flow/return 3.6. A move sends at most budget x max(c), so meadow
+  (c = 0.5) runs at half these — the same pace as before the speed map — and per-tick fractions
+  stay under MAPE_STEP_FRAC_MAX (queue: 0.7 of stock on a road). Sites transit stays 2.0
+  Euclidean. Food stock in field engines uses one quarter of the corresponding haul speed; pull
+  diffusion is unchanged.
 
 - Terrain speed is dimensionless: meadow 0.5, desert 0.4, forest 0.2, hills 0.1,
   swamp 0.05, water 0. Edge conductance is the harmonic mean of endpoint speeds;
   either blocked endpoint gives c = 0. Haul effort per unit scales as 1/c.
+- Direction shares are g·c / (Σg + ref) with the unweighted gradient sum: a weighted sum would
+  cancel c on uniformly slow ground, so swamp would haul nearly as fast as a road.
 - Effective speeds are capped at 1 by normalizing the whole map when tuning pushes
   its maximum above 1. Roads and ships are deferred; the reserved maximum is twice
   meadow. Ordinary terrain tuning below the cap keeps its absolute scale.
-- Catchment intake and factory scans still count steps; Sites retains Euclidean
-  transit. CO2, hydrology and leachate do not use this speed map.
+- Catchment intake and factory scans use travel time in meadow steps (edge cost 0.5 / c);
+  Sites retains Euclidean transit. CO2, hydrology and leachate do not use this speed map.
 
 ## diffusion — one Jacobi pass per tick
 
@@ -96,5 +101,5 @@ MAPE_WF_REST_DECAY 0.02 -> ~9 cells).
 
 - MAPE_POP_CAP = 600 people per cell. MAPE_STORAGE_CAP = 96 storage sites — a site count, not a
   per-cell goods cap: goods per cell stay uncapped and safe because transport is fraction-based.
-- Catchment stencil reaches 4 walkable cells (MAPE_CATCHMENT_STEPS); the ~5.5 cell pull reach
-  sits just beyond it, so a town's halo reads as one soft field, not a ring.
+- Catchment reaches 4 meadow steps of travel time (MAPE_CATCHMENT_STEPS; 8 cells on a road, the
+  stencil size); the ~5.5 cell pull reach sits just beyond the meadow reach, so a town's halo reads as one soft field, not a ring.
