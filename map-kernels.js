@@ -3,8 +3,8 @@
 
 // Symmetric edge fluxes give exact zero-flux bounds at water and map borders. With
 // conductance each edge flux is weighted by c (harmonic-mean speed), so pull bends
-// along fast ground and its reach over slow ground shrinks by about sqrt(c). A null
-// conductance is the all-1 map (c = 1 on land edges) and reproduces the old pass.
+// along fast ground and its reach over slow ground shrinks by about sqrt(c). The
+// conductance tables are required: tests that do not model terrain pass an all-1 map.
 function mapeDiffuseLandPass(src, dst, off, size, terrain, edgeMix, keep, condR, condD) {
 	const water = TERRAIN.WATER;
 	const decay = 1 - keep;
@@ -23,24 +23,12 @@ function mapeDiffuseLandPass(src, dst, off, size, terrain, edgeMix, keep, condR,
 			const cur = src[p];
 			let delta = 0;
 			if (innerY && x > 0 && x < end) {
-				if (condR) {
-					delta = condR[i - 1] * (src[p - 1] - cur) + condR[i] * (src[p + 1] - cur) + condD[i - size] * (src[p - size] - cur) + condD[i] * (src[p + size] - cur);
-				} else {
-					if (terrain[i - 1] !== water) delta += src[p - 1] - cur;
-					if (terrain[i + 1] !== water) delta += src[p + 1] - cur;
-					if (terrain[i - size] !== water) delta += src[p - size] - cur;
-					if (terrain[i + size] !== water) delta += src[p + size] - cur;
-				}
-			} else if (condR) {
+				delta = condR[i - 1] * (src[p - 1] - cur) + condR[i] * (src[p + 1] - cur) + condD[i - size] * (src[p - size] - cur) + condD[i] * (src[p + size] - cur);
+			} else {
 				if (x > 0) delta += condR[i - 1] * (src[p - 1] - cur);
 				if (x < end) delta += condR[i] * (src[p + 1] - cur);
 				if (y > 0) delta += condD[i - size] * (src[p - size] - cur);
 				if (y < end) delta += condD[i] * (src[p + size] - cur);
-			} else {
-				if (x > 0 && terrain[i - 1] !== water) delta += src[p - 1] - cur;
-				if (x < end && terrain[i + 1] !== water) delta += src[p + 1] - cur;
-				if (y > 0 && terrain[i - size] !== water) delta += src[p - size] - cur;
-				if (y < end && terrain[i + size] !== water) delta += src[p + size] - cur;
 			}
 			const mixed = cur + edgeMix * delta;
 			if (decay > 0) loss += mixed < 0 ? -mixed : mixed;
@@ -89,7 +77,7 @@ function mapeDiffuseSlice(field, scratch, off, size, terrain, landOnly, rate, de
 	const edgeMix = rate * dt;
 	const keep = decayRate > 0 ? Math.exp(-decayRate * dt) : 1;
 	const loss = landOnly
-		? mapeDiffuseLandPass(field, scratch, off, size, terrain, edgeMix, keep, cond ? cond.condR : null, cond ? cond.condD : null)
+		? mapeDiffuseLandPass(field, scratch, off, size, terrain, edgeMix, keep, cond.condR, cond.condD)
 		: mapeDiffuseAllPass(field, scratch, off, size, edgeMix, keep);
 	const end = off + size * size;
 	for (let p = off; p < end; p++) field[p] = scratch[p];
@@ -124,13 +112,14 @@ function mapeApplyTransfer(next, srcIdx, dstIdx, amount, dstMax) {
 }
 
 // Pairwise stock transfer in one pass: mix = D · dt ≤ MAPE_MIX_MAX by the units rule. Transfers
-// stay conservative and are bounded by what each cell holds.
-function mapeDiffuseCo2Stock(goods, next, off, size, dt) {
+// stay conservative and are bounded by what each cell holds; accepted fluxes land in the flow
+// slices (when given) so the amount view can animate the gas.
+function mapeDiffuseCo2Stock(goods, next, off, size, dt, flowX, flowY) {
 	if (dt <= 0) return;
-	mapeCo2Pass(goods, next, off, size, MAPE_CO2_DIFFUSE * dt);
+	mapeCo2Pass(goods, next, off, size, MAPE_CO2_DIFFUSE * dt, flowX, flowY);
 }
 
-function mapeCo2Pass(src, next, off, size, edgeMix) {
+function mapeCo2Pass(src, next, off, size, edgeMix, flowX, flowY) {
 	const end = size - 1;
 	for (let y = 0; y < size; y++) {
 		const row = off + y * size;
@@ -139,13 +128,23 @@ function mapeCo2Pass(src, next, off, size, edgeMix) {
 			const cur = src[p];
 			if (x < end) {
 				const d = cur - src[p + 1];
-				if (d > MAPE_EPS) mapeApplyTransfer(next, p, p + 1, d * edgeMix, 0);
-				else if (d < -MAPE_EPS) mapeApplyTransfer(next, p + 1, p, -d * edgeMix, 0);
+				if (d > MAPE_EPS) {
+					const moved = mapeApplyTransfer(next, p, p + 1, d * edgeMix, 0);
+					if (flowX && moved > 0) { flowX[p] += moved; flowX[p + 1] -= moved; }
+				} else if (d < -MAPE_EPS) {
+					const moved = mapeApplyTransfer(next, p + 1, p, -d * edgeMix, 0);
+					if (flowX && moved > 0) { flowX[p] -= moved; flowX[p + 1] += moved; }
+				}
 			}
 			if (y < end) {
 				const d = cur - src[p + size];
-				if (d > MAPE_EPS) mapeApplyTransfer(next, p, p + size, d * edgeMix, 0);
-				else if (d < -MAPE_EPS) mapeApplyTransfer(next, p + size, p, -d * edgeMix, 0);
+				if (d > MAPE_EPS) {
+					const moved = mapeApplyTransfer(next, p, p + size, d * edgeMix, 0);
+					if (flowY && moved > 0) { flowY[p] += moved; flowY[p + size] -= moved; }
+				} else if (d < -MAPE_EPS) {
+					const moved = mapeApplyTransfer(next, p + size, p, -d * edgeMix, 0);
+					if (flowY && moved > 0) { flowY[p] -= moved; flowY[p + size] += moved; }
+				}
 			}
 		}
 	}
@@ -154,14 +153,13 @@ function mapeCo2Pass(src, next, off, size, edgeMix) {
 // Share g_k·c_k / (Σg + ref): the unweighted denominator keeps speeds absolute (meadow at
 // half a road) — a weighted one cancels c on uniformly slow ground. Returns the transport
 // effort (moved / c · per-unit), so slow ground costs more labour.
-function mapePushUpGradient(x, y, i, p, size, terrain, field, next, budget, gradRef, cap, disturbed, flowX, flowY, workforceBalance, cond) {
-	const water = TERRAIN.WATER;
+function mapePushUpGradient(x, y, i, p, size, field, next, budget, gradRef, cap, disturbed, flowX, flowY, workforceBalance, cond) {
 	const end = size - 1;
 	const cur = field[p];
-	const cL = cond ? (x > 0 ? cond.condR[i - 1] : 0) : (x > 0 && terrain[i - 1] !== water ? 1 : 0);
-	const cR = cond ? (x < end ? cond.condR[i] : 0) : (x < end && terrain[i + 1] !== water ? 1 : 0);
-	const cU = cond ? (y > 0 ? cond.condD[i - size] : 0) : (y > 0 && terrain[i - size] !== water ? 1 : 0);
-	const cD = cond ? (y < end ? cond.condD[i] : 0) : (y < end && terrain[i + size] !== water ? 1 : 0);
+	const cL = x > 0 ? cond.condR[i - 1] : 0;
+	const cR = x < end ? cond.condR[i] : 0;
+	const cU = y > 0 ? cond.condD[i - size] : 0;
+	const cD = y < end ? cond.condD[i] : 0;
 	const gL = x > 0 && cL > 0 && field[p - 1] > cur ? field[p - 1] - cur : 0;
 	const gR = x < end && cR > 0 && field[p + 1] > cur ? field[p + 1] - cur : 0;
 	const gU = y > 0 && cU > 0 && field[p - size] > cur ? field[p - size] - cur : 0;
