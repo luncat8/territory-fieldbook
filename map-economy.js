@@ -61,7 +61,9 @@ const MAPE_BUILD_LOG_RESERVE = 8;      // logs a region keeps back for its next 
 const MAPE_FACTORY_BUILD_WORKERS = 8;
 const MAPE_FACTORY_COAL = 0.5;
 const MAPE_FACTORY_IRON = 0.5;
-const MAPE_FACTORY_CO2 = 0.5;
+const MAPE_FACTORY_CO2 = 1.5;
+// Wasteland dump: disturbed ground outgasses proportional to the waste it holds.
+const MAPE_WASTE_CO2 = 0.05;
 const MAPE_FACTORY_WORKERS = 32;
 const MAPE_FACTORY_BUILD_SEC = 20;
 const MAPE_FACTORY_YIELD = 1.0;
