@@ -130,9 +130,11 @@ function mapeSitesShip(r, from, to, qty, dist, dx, dy) {
 	const off = r * world.n;
 	const before = mape.goods[off + from];
 	if (qty > before) qty = before;
+	// Reject dust before the debit: a shipment dropped after it leaks from the ledger.
+	if (qty <= MAPE_EPS) return;
 	mape.goods[off + from] = before - qty;
 	const shipped = before - mape.goods[off + from];
-	if (shipped <= MAPE_EPS) return;
+	if (shipped <= 0) return;
 	const c = mapeSites.shipCount;
 	mapeSites.shipRes[c] = r;
 	mapeSites.shipFrom[c] = from;
