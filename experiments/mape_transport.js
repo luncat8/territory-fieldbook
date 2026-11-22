@@ -1,5 +1,5 @@
-// owns: transport speed map gate — all-1 reproduction, swamp delay/detour, ledger,
-// water barrier, road bound, pull reach sqrt(c), mix budget
+// owns: transport speed map gate — all-1 reproduction, swamp delay/detour, ledger, water
+// barrier, road bound, pull reach sqrt(c), mix budget, travel-time catchments and scan fields
 // run: node experiments/mape_transport.js
 
 const fs = require('node:fs');
@@ -309,6 +309,41 @@ for (const engine of [MAPE_ENGINE.DIFFUSION, MAPE_ENGINE.CATCHMENT, MAPE_ENGINE.
 	check('queue_routes_and_charges_effort', west > 4 * east && east > 0 && Math.abs(effort - expected) < 1e-9 && Math.abs(mape.goodsNext.reduce((a, b) => a + b, 0) - 100) < 1e-9);
 }
 
+// Speeds are absolute: uniformly slow ground sends c-times less on a steep gradient, in the
+// field haul and in queue admission alike (a weighted denominator would cancel c here).
+{
+	const sent = (terr) => {
+		const cond = transportBuild(terr, size);
+		const demand = new Float64Array(n);
+		const goods = new Float64Array(n);
+		for (const k of [center - 1, center + 1, center - size, center + size]) demand[k] = 1;
+		goods[center] = 100;
+		mapeKernelStep(size, 1, terr, demand, new Float64Array(n), goods, new Float64Array(n), new Float64Array(n).fill(20), new Float64Array(n), new Float64Array(n), SIM_STEP_SEC, cond);
+		return 100 - goods[center];
+	};
+	const swampAll = new Uint8Array(n).fill(TERRAIN.SWAMP);
+	const fieldRatio = sent(swampAll) / sent(meadow);
+	const queued = (terr) => {
+		const cond = transportBuild(terr, size);
+		mape.demand.fill(0);
+		for (let d = 0; d < MAPE_LAND_LINKS; d++) mape.demand[mapeMarketFlow.links[center * MAPE_LAND_LINKS + d]] = 1;
+		mape.demand[center] = 0;
+		mape.goods.fill(0);
+		mape.goods[center] = 100;
+		mape.goodsNext.set(mape.goods);
+		mapeMarketFlow.room.fill(-1);
+		mapeMarketFlow.requests.fill(0);
+		mapeMarketFlow.accepted.fill(0);
+		mapeRequestQueueTransfers(center, 0, 0.1, cond);
+		mapeApplyQueueTransfers(center, 0, cond);
+		return 100 - mape.goodsNext[center];
+	};
+	const queueRatio = queued(swampAll) / queued(meadow);
+	const expect = TRANSPORT_SPEED_BY_TERRAIN[TERRAIN.SWAMP] / TRANSPORT_SPEED_BY_TERRAIN[TERRAIN.MEADOW];
+	check('uniform_slow_ground_sends_less', Math.abs(fieldRatio - expect) < 0.02 && Math.abs(queueRatio - expect) < 0.02,
+		'field=' + fieldRatio.toFixed(3) + ' queue=' + queueRatio.toFixed(3) + ' expect=' + expect.toFixed(3));
+}
+
 // Fresh and depleted movement share the map, conserve pools, and respect zero-speed edges.
 {
 	const terr = new Uint8Array(meadow);
@@ -331,6 +366,87 @@ for (const engine of [MAPE_ENGINE.DIFFUSION, MAPE_ENGINE.CATCHMENT, MAPE_ENGINE.
 	fresh[center] = 100;
 	mapeFluidAdvect(SIM_STEP_SEC, size, terr, pull, fresh, next, blocked);
 	check('workers_do_not_cross_water', fresh[center + 1] === 0);
+}
+
+// Travel-time budgets: meadow reproduces the 4-step diamond and its falloff; slower ground shrinks
+// it, faster ground (up to a road) grows it within the stencil, and tuning rebuilds it live.
+{
+	main.setup(START_SEED, 'a');
+	tuneReset();
+	const countAt = (i) => mapeMarketFlow.counts[i];
+	const base = center * MAPE_CATCHMENT_SIZE;
+	let diamond = countAt(center) === 41;
+	for (let k = 0; k < countAt(center); k++) {
+		const cell = mapeMarketFlow.catchments[base + k];
+		const steps = Math.abs(cell % size - 32) + Math.abs(((cell / size) | 0) - 32);
+		if (steps > MAPE_CATCHMENT_STEPS || Math.abs(mapeMarketFlow.weights[base + k] - Math.fround(1 - steps / (MAPE_CATCHMENT_STEPS + 1))) > 1e-7) diamond = false;
+	}
+	check('catchment_meadow_diamond', diamond && countAt(0) === 15, 'center=' + countAt(center) + ' corner=' + countAt(0));
+	tuneSet('groundMeadow', 0.5);
+	const slow = countAt(center);
+	tuneSet('groundMeadow', 2);
+	const road = countAt(center);
+	tuneReset();
+	check('catchment_follows_tuning', slow === 13 && road === MAPE_CATCHMENT_SIZE && countAt(center) === 41,
+		'slow=' + slow + ' road=' + road + ' size=' + MAPE_CATCHMENT_SIZE);
+	const ground = (t) => {
+		world.terrain.fill(t);
+		transportRebuild();
+		mapeMarketFlowPrepare();
+		return countAt(center);
+	};
+	const forest = ground(TERRAIN.FOREST);
+	const swamp = ground(TERRAIN.SWAMP);
+	check('catchment_shrinks_on_slow_ground', forest === 5 && swamp === 1, 'forest=' + forest + ' swamp=' + swamp);
+}
+
+// Dijkstra agrees with brute-force relaxation on the seeded survey, and a scan field along a
+// one-cell causeway sums 0.5 / c per edge, so a swamp stretch costs its extra travel time.
+{
+	main.setup(START_SEED, '');
+	let start = center;
+	while (world.terrain[start] === TERRAIN.WATER) start++;
+	const count = transportTravel(start, Infinity);
+	const fast = new Float64Array(n).fill(-1);
+	for (let k = 0; k < count; k++) fast[transport.order[k]] = transport.time[transport.order[k]];
+	const brute = new Float64Array(n).fill(Infinity);
+	brute[start] = 0;
+	for (let changed = true; changed;) {
+		changed = false;
+		for (let i = 0; i < n; i++) {
+			const x = i % size;
+			const relax = (j, c) => {
+				if (c <= 0) return;
+				const t = brute[i] + TRANSPORT_STEP_REF / c;
+				if (t < brute[j] - 1e-12) { brute[j] = t; changed = true; }
+			};
+			if (brute[i] === Infinity) continue;
+			if (x > 0) relax(i - 1, transport.condR[i - 1]);
+			if (x < size - 1) relax(i + 1, transport.condR[i]);
+			if (i >= size) relax(i - size, transport.condD[i - size]);
+			if (i < n - size) relax(i + size, transport.condD[i]);
+		}
+	}
+	let maxDiff = 0;
+	let sameSet = true;
+	for (let i = 0; i < n; i++) {
+		if ((fast[i] >= 0) !== (brute[i] < Infinity)) sameSet = false;
+		else if (fast[i] >= 0) maxDiff = Math.max(maxDiff, Math.abs(fast[i] - brute[i]));
+	}
+	check('travel_matches_brute_force', sameSet && maxDiff < 1e-9 && count > 1000, 'settled=' + count + ' maxDiff=' + maxDiff.toExponential(2));
+	const causeway = (swampCells) => {
+		world.terrain.fill(TERRAIN.WATER);
+		for (let x = 10; x <= 40; x++) world.terrain[32 * size + x] = swampCells.includes(x) ? TERRAIN.SWAMP : TERRAIN.MEADOW;
+		transportRebuild();
+		return mapeScanWalkField(10, 32)[32 * size + 40];
+	};
+	const plain = causeway([]);
+	const slowed = causeway([24, 25, 26, 27, 28]);
+	const m = TRANSPORT_SPEED_BY_TERRAIN[TERRAIN.MEADOW];
+	const sw = TRANSPORT_SPEED_BY_TERRAIN[TERRAIN.SWAMP];
+	const expect = 24 + 2 * m / transportEdge(m, sw) + 4 * m / sw;
+	check('scan_field_counts_travel_time', plain === 30 && Math.abs(slowed - expect) < 1e-4 && causeway([]) === 30,
+		'meadow=' + plain + ' swamp=' + slowed.toFixed(3) + ' expect=' + expect.toFixed(3));
 }
 
 console.log('transport_checks=' + (failures === 0 ? 'pass' : 'FAIL') + ' failures=' + failures);
