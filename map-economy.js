@@ -221,9 +221,9 @@ function mapeInit(mode, fixedResidents = false) {
 	if (mode === MAPE_ENGINE.SITES || mapeEngineAvailable(mode)) mape.engine = mode;
 	mape.fixedResidents = fixedResidents;
 	mapeReset();
+	transportRebuild();
 	mapeMarketFlowPrepare();
 	mapeSitesPrepare();
-	transportRebuild();
 }
 
 function mapeReset() {
@@ -346,68 +346,6 @@ function mapeResOf(res) {
 	return -1;
 }
 
-function mapePlaceSettlement(idx, p = randomRange(MAPE_POP_SEED_MIN, MAPE_POP_SEED_MAX), stock = true) {
-	const n = world.n;
-	mape.pop[idx] = p;
-	mape.money[idx] = p * MAPE_MONEY_PER_POP;
-	if (!stock) {
-		const pCoal = MAPE_RES.COAL * n + idx;
-		const pGoods = MAPE_RES.GOODS * n + idx;
-		mape.marketSignal[pCoal] = mape.demand[pCoal];
-		mape.marketSignal[pGoods] = mape.demand[pGoods];
-		return;
-	}
-	mape.goods[MAPE_RES.GOODS * n + idx] = p * (0.18 + 0.1 * (idx % 4));
-	mape.goods[MAPE_RES.COAL * n + idx] = p * 0.15;
-}
-
-function mapeFindStarterSettlement() {
-	const sx = world.startX;
-	const sy = world.startY;
-	for (let r = 2; r <= 6; r++) {
-		for (let dy = -r; dy <= r; dy++) {
-			for (let dx = -r; dx <= r; dx++) {
-				if (Math.max(dx < 0 ? -dx : dx, dy < 0 ? -dy : dy) !== r) continue;
-				const x = sx + dx;
-				const y = sy + dy;
-				if (!worldWalkableAt(x, y) || sitesAt(x, y) >= 0) continue;
-				return y * world.size + x;
-			}
-		}
-	}
-	return -1;
-}
-
-function mapeSeedSettlements() {
-	const target = Math.round(world.n * MAPE_SETTLE_TARGET);
-	let placed = 0;
-	const starter = mapeFindStarterSettlement();
-	if (starter >= 0) {
-		mapePlaceSettlement(starter);
-		placed = 1;
-	}
-	// Settle the ground that can carry a town: swamp interior and bare desert cannot farm.
-	const maxTries = target * 40;
-	for (let t = 0; t < maxTries && placed < target; t++) {
-		const x = randomInt(world.size);
-		const y = randomInt(world.size);
-		if (!worldWalkableAt(x, y)) continue;
-		const idx = y * world.size + x;
-		if (mape.pop[idx] > 0 || sitesAt(x, y) >= 0) continue;
-		if (x === world.startX && y === world.startY) continue;
-		if (world.settleValue[idx] < MAPE_SETTLE_VALUE_MIN) continue;
-		mapePlaceSettlement(idx);
-		placed++;
-	}
-}
-
-function mapeSeedAtmosphere() {
-	const n = world.n;
-	const off = MAPE_RES.CO2 * n;
-	const goods = mape.goods;
-	for (let i = 0; i < n; i++) goods[off + i] = MAPE_CO2_INIT;
-}
-
 function mapeRebuildSettlements() {
 	const pop = mape.pop;
 	const exp = mape.cellExport;
@@ -473,77 +411,6 @@ function mapeNearestSettlement(x, y) {
 		best = idx;
 	}
 	return best;
-}
-
-function mapePrice(res, idx) {
-	const n = world.n;
-	const mr = mapeResOf(res);
-	const slot = (mr >= 0 ? mr : MAPE_RES.GOODS) * n + idx;
-	const stock = mape.goods[slot];
-	let factor = 1 + mape.demand[slot] * 0.05;
-	if (factor < 0.5) factor = 0.5;
-	if (factor > 2) factor = 2;
-	const base = RES_BASE_VALUE[res];
-	let price = base * RES_REF_STOCK[res] / (stock + 1) * factor;
-	if (price < base * 0.35) price = base * 0.35;
-	if (price > base * 3) price = base * 3;
-	return price;
-}
-
-function mapeSell(res, idx) {
-	if (!mapeIsSettlement(idx)) return 0;
-	const have = economy.inventory[res];
-	if (have < 0.01) return 0;
-	const price = mapePrice(res, idx);
-	const units = Math.min(have, mape.money[idx] / price);
-	if (units < 0.05) return 0;
-	const revenue = units * price;
-	economy.inventory[res] = have - units;
-	mape.money[idx] -= revenue;
-	const mr = mapeResOf(res);
-	if (mr >= 0) {
-		const slot = mr * world.n + idx;
-		const before = mape.goods[slot];
-		mape.goods[slot] = before + units;
-		mape.massIn += mape.goods[slot] - before;
-	}
-	return revenue;
-}
-
-function mapeAcceptItem(idx) {
-	if (!mapeIsSettlement(idx) || mape.money[idx] < ITEM_VALUE) return 0;
-	mape.money[idx] -= ITEM_VALUE;
-	return ITEM_VALUE;
-}
-
-function mapeCanBuySupplies(idx, units) {
-	if (!mapeIsSettlement(idx)) return false;
-	return mape.goods[MAPE_RES.GOODS * world.n + idx] >= units * MAPE_SUPPLY_GOODS;
-}
-
-function mapeBuySupplies(idx, units) {
-	if (!mapeCanBuySupplies(idx, units)) return -1;
-	const slot = MAPE_RES.GOODS * world.n + idx;
-	const before = mape.goods[slot];
-	mape.goods[slot] = before - units * MAPE_SUPPLY_GOODS;
-	mape.massOut += before - mape.goods[slot];
-	const cost = units * SUPPLY_PRICE;
-	mape.money[idx] += cost;
-	return cost;
-}
-
-function mapeCanHire(idx) {
-	return mapeIsSettlement(idx) && mape.pop[idx] >= MAPE_HIRE_MIN_POP;
-}
-
-function mapeRecruit(idx, fee) {
-	if (!mapeCanHire(idx)) return false;
-	const before = mape.pop[idx];
-	mape.pop[idx] = before - 1;
-	mape.popDelta -= before - mape.pop[idx];
-	mape.money[idx] += fee;
-	mapeRebuildSettlements();
-	return true;
 }
 
 function mapeGoodsTotal() {
