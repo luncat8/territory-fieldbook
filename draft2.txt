@@ -339,6 +339,10 @@ food amount in cell depends on optimal environment (humidity) (at harvest time, 
 
 CO2 O2 gas diffusion dont blocked by water
 
+plant produce,
+fabs, animal, population consume.
+ think reasonable amount and diffusion speed to see dinamic flows on the view map
+
 #### settings panel
 
 add special panel (left) with sliders to easy adjust and play with speed of
