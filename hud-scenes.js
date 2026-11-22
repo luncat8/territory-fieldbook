@@ -77,7 +77,7 @@ function hudSceneInspect(el) {
 	}
 	const idx = y * world.size + x;
 	const p = MAPE_RES.COAL * world.n + idx;
-	text += '\nCell ' + x + ',' + y + ' · settle ' + world.settleValue[idx].toFixed(2) + ' · stock ' + mape.goods[p].toFixed(2) + ' · pull ' + mape.demand[p].toFixed(3) +
+	text += '\nCell ' + x + ',' + y + ' · ' + TERRAIN_NAME[world.terrain[idx]] + ' · speed ' + (transport.speed ? transport.speed[idx].toFixed(2) : '—') + ' · settle ' + world.settleValue[idx].toFixed(2) + ' · stock ' + mape.goods[p].toFixed(2) + ' · pull ' + mape.demand[p].toFixed(3) +
 		'\nNet flow ' + hudFlowRate(p).toFixed(2) + '/s';
 	text += hudForestReadout(idx);
 	if (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID && mapeIsSettlement(idx)) {

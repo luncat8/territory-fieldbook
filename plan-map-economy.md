@@ -944,27 +944,29 @@ pull. A single pinned cell lost its coal to a larger town pull next door.
 
 ## Transport speed map
 
-Status: planned, not implemented (draft 4.1a "transportation speed map"). It
-changes how fast stock, pull and people cross a cell, so the amount of products
-spreads slower over swamp and routes bend around slow ground.
+Status: core implemented (draft 4.1a "transportation speed map"): haulage, pull
+diffusion, workforce, display and tuning. Catchment/scan travel-time budgets
+and a Sites path field remain follow-ups. Warm-up and response rates are unchanged.
 
-**Data.** `transport.speed`, a `Float32Array(n)` multiplier per cell owned by a
-new `map-transport.js` (`// owns: per-cell transport speed and edge
-conductance`). `1` is meadow, the reference every current rate is tuned on;
-`0` blocks. Built at setup from terrain and rebuilt only when an input changes:
+**Data.** `transport.speed`, a `Float32Array(n)` multiplier per cell owned by
+`map-transport.js` (`// owns: per-cell transport speed and edge conductance`).
+`1` is the maximum effective speed, reserved for roads and future ships;
+meadow is `0.5`, and `0` blocks. Built at setup from terrain and rebuilt only when an input changes:
 
 | terrain | speed | why |
 | --- | --- | --- |
-| meadow | 1.0 | reference ground |
-| desert | 0.8 | open but rough |
-| forest | 0.6 | cover slows carts |
-| hills | 0.5 | climbs |
-| swamp | 0.25 | the draft's example: products cross it slowly |
+| meadow | 0.5 | reference ground; half the maximum |
+| desert | 0.4 | 0.8× meadow |
+| forest | 0.2 | 0.4× meadow |
+| hills | 0.1 | 0.2× meadow |
+| swamp | 0.05 | 0.1× meadow |
 | water | 0 | blocked, exactly as today |
 
 Later inputs multiply in: standing surface water from hydrology (a flooded
-cell is slow), heavy disturbance, and roads or caravans above `1`. Ships that
-make deep water and sea faster than land stay deferred, as in the draft.
+cell is slow), heavy disturbance, roads and caravans. Ships remain deferred;
+when discovered, water is intended to become `1.0` (twice meadow). Terrain
+tuning above the cap normalizes all speeds by the map maximum, so no effective
+speed exceeds `1.0`. There is no water tuning row while ships are unavailable.
 
 **Edges, not cells.** Every transfer runs over an edge with conductance
 `c = 2 · s_i · s_j / (s_i + s_j)`, the harmonic mean: symmetric, so pairwise
@@ -991,9 +993,10 @@ precomputed once per rebuild (right and down edge per cell, `2n` floats).
 - *Workforce* (residents walking, fresh and depleted pools): the same table to
   start with; a separate walking table is a later split if carts and people
   should differ.
-- *Catchment and scan distances*: the A/B intake catchment and the factory
-  scan's walk field become travel-time budgets (step cost `1 / s`), so four
-  meadow steps reach as far as one swamp step.
+- *Catchment and scan distances* (follow-up): these still count walkable steps.
+  Converting the A/B intake catchment and factory scan walk field to travel-time
+  budgets (step cost `1 / s`) is deferred; ten swamp steps would cost as much
+  as a hundred meadow steps with this table.
 - *Sites*: shipment eta and haul cost read the same travel time once the site
   engine has a path field; until then it keeps euclidean distance and the
   divergence is listed with the others.
@@ -1002,15 +1005,15 @@ precomputed once per rebuild (right and down edge per cell, `2n` floats).
 
 **Stability.** One pass per tick either way (**Diffusion speed and
 stability**); with conductance the budget is `D · max(c) · dt ≤ MAPE_MIX_MAX`.
-Terrain speeds at or below `1` only shrink the mix; a road above `1` has to fit
-the same budget — a `3x` road needs a base `D ≤ 1`, so roads and coefficients
-share one scale instead of buying extra passes. Haul fractions keep
-`MAPE_STEP_FRAC_MAX` by dividing the base fraction by `max(c)` when it exceeds
-`1`.
+Effective speeds and edge conductances are at most `1`, so the shipped rates
+remain within budget unchanged; slow ground only shrinks the mix. Over-cap
+terrain tuning normalizes the speed map, never the rate or the pass count.
+Haul fractions keep the existing `MAPE_STEP_FRAC_MAX` cap, with nonnegative
+conductance-weighted shares whose sum cannot exceed one.
 
 **Display.** An amount-side `transport speed` layer with a fixed 0–1 legend
-(roads above `1` saturate), and the cell inspector lists speed beside terrain.
-The tuning panel gets one multiplier per terrain row.
+(roads/ships at `1` saturate), and the cell inspector lists speed beside terrain.
+The tuning panel has one multiplier per passable terrain row.
 
 **Gate** (`experiments/mape_transport.js`): an all-`1` speed map reproduces
 today's results to the ledger tolerance; a swamp strip between a mine and a
@@ -1509,8 +1512,9 @@ Gate: runtime switches preserve the stock ledger, all engines pass `smoke` and
 ### Phase 6 — Transport speed map
 
 Deliverable: `map-transport.js` speed table and edge conductances, wired into
-haulage, pull diffusion, workforce movement, catchment and scan distances, plus
-the display layer and tuning rows (see **Transport speed map**).
+haulage, pull diffusion and workforce movement, plus the display layer and
+tuning rows (see **Transport speed map**). Core shipped; catchment and scan
+travel-time budgets and Sites path costs are deferred.
 
 Gate: the `experiments/mape_transport.js` checks listed in that section, and the
 full suite unchanged with an all-`1` speed map.

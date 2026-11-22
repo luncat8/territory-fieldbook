@@ -115,7 +115,17 @@ function mapeFilterMarketDemand(r) {
 	return dst;
 }
 
-function mapeRequestQueueTransfers(i, off, fraction) {
+function mapeQueueCond(cond, i, to, d) {
+	if (!cond) return 1;
+	if (to === i) return 0;
+	if (d === 0) return cond.condR[to];
+	if (d === 1) return cond.condR[i];
+	if (d === 2) return cond.condD[to];
+	if (d === 3) return cond.condD[i];
+	return transportEdge(cond.speed[i], cond.speed[to]);
+}
+
+function mapeRequestQueueTransfers(i, off, fraction, cond) {
 	const { links, requests, room, accepted } = mapeMarketFlow;
 	const { demand, goods } = mape;
 	const here = demand[off + i];
@@ -126,9 +136,11 @@ function mapeRequestQueueTransfers(i, off, fraction) {
 		const to = links[base + d];
 		const slope = (demand[off + to] - here) * MAPE_EDGE_UNIT[d];
 		if (slope <= 0 || room[to] === 0) continue;
-		requests[base + d] = slope;
-		sum += slope;
-		if (slope > steepest) steepest = slope;
+		const w = slope * mapeQueueCond(cond, i, to, d);
+		if (w <= 0) continue;
+		requests[base + d] = w;
+		sum += w;
+		if (w > steepest) steepest = w;
 	}
 	if (sum <= 0) return;
 	const scale = goods[off + i] * fraction * steepest / (sum * (steepest + MAPE_QUEUE_GRAD_REF));
@@ -141,10 +153,10 @@ function mapeRequestQueueTransfers(i, off, fraction) {
 	}
 }
 
-function mapeApplyQueueTransfers(i, off) {
+function mapeApplyQueueTransfers(i, off, cond) {
 	const { links, requests, room, accepted } = mapeMarketFlow;
 	const base = i * MAPE_LAND_LINKS;
-	let moved = 0;
+	let effort = 0;
 	let vx = 0;
 	let vy = 0;
 	for (let d = 0; d < MAPE_LAND_LINKS; d++) {
@@ -153,20 +165,21 @@ function mapeApplyQueueTransfers(i, off) {
 		const to = links[edge];
 		const share = room[to] < 0 ? 1 : accepted[to];
 		const amount = mapeApplyTransfer(mape.goodsNext, off + i, off + to, requests[edge] * share, 0);
-		moved += amount;
+		const c = mapeQueueCond(cond, i, to, d);
+		if (c > 0) effort += amount / c;
 		vx += amount * MAPE_DX[d] * MAPE_EDGE_UNIT[d];
 		vy += amount * MAPE_DY[d] * MAPE_EDGE_UNIT[d];
 	}
 	mape.flowX[off + i] = vx;
 	mape.flowY[off + i] = vy;
-	return moved;
+	return effort * MAPE_WORKFORCE_PER_UNIT;
 }
 
 function mapeFoodFlowMultiplier(r) {
 	return r === MAPE_RES.FOOD ? MAPE_FOOD_FLOW_MULT : 1;
 }
 
-function mapeRouteQueues(r, dt) {
+function mapeRouteQueues(r, dt, cond) {
 	const off = r * world.n;
 	const fraction = Math.min(MAPE_STEP_FRAC_MAX, MAPE_QUEUE_FLOW_SPEED * mapeFoodFlowMultiplier(r) * tune.haul * dt);
 	const { requests, room, accepted, land, landCount } = mapeMarketFlow;
@@ -179,7 +192,7 @@ function mapeRouteQueues(r, dt) {
 	}
 	for (let k = 0; k < landCount; k++) {
 		const i = land[k];
-		if (room[i] < 0 && mape.goods[off + i] > MAPE_EPS) mapeRequestQueueTransfers(i, off, fraction);
+		if (room[i] < 0 && mape.goods[off + i] > MAPE_EPS) mapeRequestQueueTransfers(i, off, fraction, cond);
 	}
 	// Resolve against pre-transfer headroom, so the first donor scanned does not win.
 	for (let k = 0; k < mape.settleCount; k++) {
@@ -189,7 +202,7 @@ function mapeRouteQueues(r, dt) {
 	for (let k = 0; k < landCount; k++) {
 		const i = land[k];
 		if (room[i] >= 0 || mape.goods[off + i] <= MAPE_EPS) continue;
-		const effort = mapeApplyQueueTransfers(i, off) * MAPE_WORKFORCE_PER_UNIT;
+		const effort = mapeApplyQueueTransfers(i, off, cond);
 		mape.workforceNext[i] += effort;
 		mape.transportWork += effort;
 	}

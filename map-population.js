@@ -72,12 +72,13 @@ function mapePopulationImports(i) {
 	return 0.45 * mape.satFood[i] + 0.40 * mape.satGoods[i] + 0.15 * mape.satCoal[i];
 }
 
-function mapePopulationTransfer(a, b, dt, next) {
+function mapePopulationTransfer(a, b, dt, next, cond) {
 	const pa = mape.pop[a];
 	const pb = mape.pop[b];
 	const attractA = mapePopulationAttract(a);
 	const attractB = mapePopulationAttract(b);
-	const flux = (MAPE_MIGRATE * (pa - pb) * 0.5 + MAPE_MIGRATE_BIAS * (pa + pb) * (attractB - attractA)) * tune.migration * dt;
+	const c = cond ? transportEdge(cond.speed[a], cond.speed[b]) : 1;
+	const flux = (MAPE_MIGRATE * (pa - pb) * 0.5 + MAPE_MIGRATE_BIAS * (pa + pb) * (attractB - attractA)) * tune.migration * dt * c;
 	if (Math.abs(flux) <= 1e-9) return;
 	const src = flux > 0 ? a : b;
 	const dst = flux > 0 ? b : a;
@@ -100,8 +101,8 @@ function mapePopulationMigration(dt) {
 		for (let x = 0; x < size; x++) {
 			const i = row + x;
 			if (terrain[i] === TERRAIN.WATER || pop[i] <= 0) continue;
-			if (x + 1 < size && terrain[i + 1] !== TERRAIN.WATER) mapePopulationTransfer(i, i + 1, dt, next);
-			if (y + 1 < size && terrain[i + size] !== TERRAIN.WATER) mapePopulationTransfer(i, i + size, dt, next);
+			if (x + 1 < size && terrain[i + 1] !== TERRAIN.WATER) mapePopulationTransfer(i, i + 1, dt, next, transport);
+			if (y + 1 < size && terrain[i + size] !== TERRAIN.WATER) mapePopulationTransfer(i, i + size, dt, next, transport);
 		}
 	}
 	pop.set(next);

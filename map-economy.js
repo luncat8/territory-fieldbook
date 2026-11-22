@@ -4,10 +4,10 @@
 const MAPE_R = 6;
 const MAPE_RES = { COAL: 0, IRON: 1, GOODS: 2, LOGS: 3, FOOD: 4, CO2: 5 };
 const MAPE_RES_NAME = ['coal', 'iron', 'goods', 'logs', 'food', 'co2'];
-const MAPE_VIEW_ITEM = { POPULATION: 6, FRESH: 7, JOBS: 8, DEPLETED: 9, WASTE: 10, FOREST: 11, SOIL: 12, HUMIDITY: 13, WATER: 14 };
-const MAPE_VIEW_ITEM_NAME = ['coal', 'iron', 'goods', 'logs', 'food', 'co2', 'population', 'fresh', 'workforce', 'depleted', 'waste', 'forest', 'soil moisture', 'air humidity', 'surface water'];
-const MAPE_VIEW_ITEM_LABEL = ['coal', 'iron', 'goods', 'logs', 'food', 'co2', 'population', 'workforce · fresh', 'workforce', 'workforce · depleted', 'waste', 'forest cover', 'soil moisture', 'air humidity', 'surface water'];
-const MAPE_VIEW_AMOUNT_IDS = [0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14];
+const MAPE_VIEW_ITEM = { POPULATION: 6, FRESH: 7, JOBS: 8, DEPLETED: 9, WASTE: 10, FOREST: 11, SOIL: 12, HUMIDITY: 13, WATER: 14, TRANSPORT: 15 };
+const MAPE_VIEW_ITEM_NAME = ['coal', 'iron', 'goods', 'logs', 'food', 'co2', 'population', 'fresh', 'workforce', 'depleted', 'waste', 'forest', 'soil moisture', 'air humidity', 'surface water', 'transport speed'];
+const MAPE_VIEW_ITEM_LABEL = ['coal', 'iron', 'goods', 'logs', 'food', 'co2', 'population', 'workforce · fresh', 'workforce', 'workforce · depleted', 'waste', 'forest cover', 'soil moisture', 'air humidity', 'surface water', 'transport speed'];
+const MAPE_VIEW_AMOUNT_IDS = [0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15];
 // The 'jobs' demand layer duplicated the fresh-workforce pull (both render mape.workforce),
 // so it is dropped; the draft only describes one fresh/depleted workforce demand.
 const MAPE_VIEW_DEMAND_IDS = [0, 1, 2, 3, 4, 5, 7, 9];
@@ -223,6 +223,7 @@ function mapeInit(mode, fixedResidents = false) {
 	mapeReset();
 	mapeMarketFlowPrepare();
 	mapeSitesPrepare();
+	transportRebuild();
 }
 
 function mapeReset() {

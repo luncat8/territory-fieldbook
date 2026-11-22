@@ -57,6 +57,7 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	economy.js — resources, recipes, biosphere, conservation ledger.
 	sites.js — site pool, discovery, claims, extraction, payouts.
 	map-economy.js — shared fields, settlement and market state, engine selection and ledgers.
+	map-transport.js — per-cell transport speed and edge conductance.
 	map-industry.js — mine/factory pools, deposit locks, workshops and forestry production.
 	map-factory-scan.js — engine factory placement scan: region need, site choice and kind selection.
 	map-farm.js — farm fields: clearing to farmland, one worker per cell, batch harvest and food.

@@ -51,11 +51,16 @@ run('hud.viewRadios[VIEW.PAIRED].click()');
 check('paired_radio_draws_both', run('renderIsPaired() && drawViews.join(":") === [VIEW.AMOUNT, VIEW.DEMAND].join(":")') && !elements.get('ui-demand-map').hidden && /ui-paired/.test(elements.get('ui-app').className));
 run('hud.itemRadios[MAPE_RES.COAL].click(); hud.demandItemRadios[0].click()');
 check('paired_item_legends', elements.get('ui-map-layer').textContent === 'Amount · coal' && elements.get('ui-demand-layer').textContent === 'Demand · coal');
-check('amount_chips', run('MAPE_VIEW_AMOUNT_IDS.join() === "0,1,2,3,4,5,6,7,9,10,11,12,13,14" && hud.itemRadios.length === 14'));
+check('amount_chips', run('MAPE_VIEW_AMOUNT_IDS.join() === "0,1,2,3,4,5,6,7,9,10,11,12,13,14,15" && hud.itemRadios.length === 15'));
 check('demand_chips', run('MAPE_VIEW_DEMAND_IDS.join() === "0,1,2,3,4,5,7,9" && hud.demandItemRadios.length === 8'));
 check('logs_exposed_in_both_maps', run('MAPE_VIEW_AMOUNT_IDS.includes(MAPE_RES.LOGS) && MAPE_VIEW_DEMAND_IDS.includes(MAPE_RES.LOGS)'));
 run('hudSetAmountItem(MAPE_RES.LOGS); hudSetDemandItem(MAPE_RES.LOGS)');
 check('logs_legends_and_source_key', elements.get('ui-map-layer').textContent === 'Amount · logs' && elements.get('ui-demand-layer').textContent === 'Demand · logs' && /Sawmill/.test(elements.get('ui-map-key').textContent));
+run('hudSetAmountItem(MAPE_VIEW_ITEM.TRANSPORT); renderDraw(); hudUpdateInspect()');
+check('transport_amount_only', run('!MAPE_VIEW_DEMAND_IDS.includes(MAPE_VIEW_ITEM.TRANSPORT) && renderItemField(MAPE_VIEW_ITEM.TRANSPORT, false) === transport.speed'));
+check('transport_legend_and_scale', elements.get('ui-map-range').textContent === '0 → 1 · linear' && elements.get('ui-map-unit').textContent === 'Speed / 0–1' && run('renderItemNorm(MAPE_VIEW_ITEM.TRANSPORT, 0.5, false) === 0.5'));
+check('transport_no_flow', elements.get('ui-flow').disabled);
+check('transport_inspector', /speed \d+\.\d{2}/.test(elements.get('ui-inspect').textContent));
 run('hudSetAmountItem(MAPE_RES.COAL); hudSetDemandItem(MAPE_RES.COAL)');
 for (const item of ['WASTE', 'FOREST', 'SOIL']) {
 	run('hudSetAmountItem(MAPE_VIEW_ITEM.' + item + ')');

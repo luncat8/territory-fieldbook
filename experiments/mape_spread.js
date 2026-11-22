@@ -14,6 +14,9 @@ for (const file of scripts) {
 	vm.runInThisContext(code, { filename: file });
 }
 
+// Keep the pre-terrain timing baseline at c = 1; mape_transport.js gates shipped terrain speeds.
+tuneSet('groundMeadow', 2);
+
 const metrics = vm.runInThisContext(`
 (function () {
 	// Measurement window per iteration: mapeStep advances it as whole canonical ticks, so every
@@ -27,6 +30,7 @@ const metrics = vm.runInThisContext(`
 	function blankMap(seed) {
 		main.setup(seed || START_SEED, '', 0, MAPE_ENGINE.DIFFUSION);
 		world.terrain.fill(TERRAIN.MEADOW);
+		transportRebuild();
 		land.disturbed.fill(0);
 		economy.biomass.fill(0);
 		hydrology.soil.fill(0);
@@ -126,6 +130,7 @@ const metrics = vm.runInThisContext(`
 	function measureWater() {
 		blankMap();
 		for (let y = 0; y < size; y++) world.terrain[idx(32, y)] = TERRAIN.WATER;
+		transportRebuild();
 		mape.pop[idx(28, 32)] = 20;
 		mapeAddStorage(30, 32, 255);
 		mape.goods[MAPE_RES.IRON * n + idx(30, 32)] = 20;
@@ -167,6 +172,7 @@ const metrics = vm.runInThisContext(`
 		// Partial wall verifies material demand and goods bend around coastlines.
 		blankMap();
 		for (let y = 24; y <= 40; y++) world.terrain[idx(32, y)] = TERRAIN.WATER;
+		transportRebuild();
 		mapeAddStorage(30, 32, 255);
 		mape.goods[MAPE_RES.GOODS * n + idx(30, 32)] = 30;
 		mape.pop[idx(35, 32)] = 25;
@@ -188,6 +194,7 @@ const metrics = vm.runInThisContext(`
 		function plume(crossWater) {
 			blankMap();
 			if (crossWater) for (let y = 0; y < size; y++) world.terrain[idx(32, y)] = TERRAIN.WATER;
+			transportRebuild();
 			for (let i = 0; i < n; i++) mape.goods[MAPE_RES.CO2 * n + i] = (i % size) < 32 ? 2.0 : 0.1;
 			for (let s = 0; s < 100; s++) mapeStep(dt);
 			return mape.goods[MAPE_RES.CO2 * n + idx(34, 32)];

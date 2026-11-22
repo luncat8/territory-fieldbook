@@ -12,6 +12,9 @@ for (const [, file] of html.matchAll(/<script src="([^"]+)"><\/script>/g)) {
 	vm.runInThisContext(fs.readFileSync(path.join(root, file), 'utf8'), { filename: file });
 }
 
+// Keep the pre-terrain timing baseline at c = 1; mape_transport.js gates shipped terrain speeds.
+tuneSet('groundMeadow', 2);
+
 function advance(seconds) {
 	for (let k = 0, ticks = Math.round(seconds / SIM_STEP_SEC); k < ticks; k++) main.step(SIM_STEP_SEC);
 }

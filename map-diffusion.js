@@ -157,8 +157,11 @@ function mapeInjectDemand(dt, marketsOnly) {
 	}
 }
 
-// Symmetric edge fluxes give exact zero-flux bounds at water and map borders.
-function mapeDiffuseLandPass(src, dst, off, size, terrain, edgeMix, keep) {
+// Symmetric edge fluxes give exact zero-flux bounds at water and map borders. With
+// conductance each edge flux is weighted by c (harmonic-mean speed), so pull bends
+// along fast ground and its reach over slow ground shrinks by about sqrt(c). A null
+// conductance is the all-1 map (c = 1 on land edges) and reproduces the old pass.
+function mapeDiffuseLandPass(src, dst, off, size, terrain, edgeMix, keep, condR, condD) {
 	const water = TERRAIN.WATER;
 	const decay = 1 - keep;
 	const end = size - 1;
@@ -176,10 +179,19 @@ function mapeDiffuseLandPass(src, dst, off, size, terrain, edgeMix, keep) {
 			const cur = src[p];
 			let delta = 0;
 			if (innerY && x > 0 && x < end) {
-				if (terrain[i - 1] !== water) delta += src[p - 1] - cur;
-				if (terrain[i + 1] !== water) delta += src[p + 1] - cur;
-				if (terrain[i - size] !== water) delta += src[p - size] - cur;
-				if (terrain[i + size] !== water) delta += src[p + size] - cur;
+				if (condR) {
+					delta = condR[i - 1] * (src[p - 1] - cur) + condR[i] * (src[p + 1] - cur) + condD[i - size] * (src[p - size] - cur) + condD[i] * (src[p + size] - cur);
+				} else {
+					if (terrain[i - 1] !== water) delta += src[p - 1] - cur;
+					if (terrain[i + 1] !== water) delta += src[p + 1] - cur;
+					if (terrain[i - size] !== water) delta += src[p - size] - cur;
+					if (terrain[i + size] !== water) delta += src[p + size] - cur;
+				}
+			} else if (condR) {
+				if (x > 0) delta += condR[i - 1] * (src[p - 1] - cur);
+				if (x < end) delta += condR[i] * (src[p + 1] - cur);
+				if (y > 0) delta += condD[i - size] * (src[p - size] - cur);
+				if (y < end) delta += condD[i] * (src[p + size] - cur);
 			} else {
 				if (x > 0 && terrain[i - 1] !== water) delta += src[p - 1] - cur;
 				if (x < end && terrain[i + 1] !== water) delta += src[p + 1] - cur;
@@ -225,14 +237,15 @@ function mapeDiffuseAllPass(src, dst, off, size, edgeMix, keep) {
 
 // One Jacobi pass per tick. mix = rate · dt must sit at or below MAPE_MIX_MAX by construction
 // (units-and-scales.md): rates are scaled so a single pass is always stable — no pass count, no
-// substeps. The pass reads field and writes scratch, then the slice is copied back so callers
+// substeps. With conductance the budget is D · max(c) · dt; max stays 1.0 by normalization.
+// The pass reads field and writes scratch, then the slice is copied back so callers
 // keep their buffer identities (demandView subarrays point into mape.demand).
-function mapeDiffuseSlice(field, scratch, off, size, terrain, landOnly, rate, decayRate, dt) {
+function mapeDiffuseSlice(field, scratch, off, size, terrain, landOnly, rate, decayRate, dt, cond) {
 	if (rate <= 0 || dt <= 0) return 0;
 	const edgeMix = rate * dt;
 	const keep = decayRate > 0 ? Math.exp(-decayRate * dt) : 1;
 	const loss = landOnly
-		? mapeDiffuseLandPass(field, scratch, off, size, terrain, edgeMix, keep)
+		? mapeDiffuseLandPass(field, scratch, off, size, terrain, edgeMix, keep, cond ? cond.condR : null, cond ? cond.condD : null)
 		: mapeDiffuseAllPass(field, scratch, off, size, edgeMix, keep);
 	const end = off + size * size;
 	for (let p = off; p < end; p++) field[p] = scratch[p];
@@ -303,26 +316,36 @@ function mapeDiffuseFields(dt, marketsOnly) {
 		const marketItem = mapeIsMarketItem(r);
 		if (marketItem ? marketFlow : marketsOnly) continue;
 		const landOnly = r !== MAPE_RES.CO2;
-		mape.dissipated += mapeDiffuseSlice(mape.demand, mape.demandNext, r * n, size, terrain, landOnly, MAPE_DIFFUSE, MAPE_DECAY, dt);
+		mape.dissipated += mapeDiffuseSlice(mape.demand, mape.demandNext, r * n, size, terrain, landOnly, MAPE_DIFFUSE, MAPE_DECAY, dt, transport);
 	}
 }
 
-// Normalized gradient g_k / (gSum + ref) keeps steady speed across 20 cells and around water.
-function mapePushUpGradient(x, y, i, p, size, terrain, field, next, budget, gradRef, cap, disturbed, flowX, flowY, workforceBalance) {
+// Normalized gradient g_k·c_k / (Σg·c + ref) keeps steady speed across 20 cells and
+// around water, and prefers a fast route with a comparable gradient. Returns the
+// transport effort (moved / c · per-unit), so slow ground costs more labour.
+function mapePushUpGradient(x, y, i, p, size, terrain, field, next, budget, gradRef, cap, disturbed, flowX, flowY, workforceBalance, cond) {
 	const water = TERRAIN.WATER;
 	const end = size - 1;
 	const cur = field[p];
-	const gL = x > 0 && terrain[i - 1] !== water && field[p - 1] > cur ? field[p - 1] - cur : 0;
-	const gR = x < end && terrain[i + 1] !== water && field[p + 1] > cur ? field[p + 1] - cur : 0;
-	const gU = y > 0 && terrain[i - size] !== water && field[p - size] > cur ? field[p - size] - cur : 0;
-	const gD = y < end && terrain[i + size] !== water && field[p + size] > cur ? field[p + size] - cur : 0;
-	const gSum = gL + gR + gU + gD;
-	if (gSum <= 0) return 0;
-	const scale = budget / (gSum + gradRef);
-	const left = gL > 0 ? mapeApplyTransfer(next, p, p - 1, gL * scale, cap > 0 ? cap * (1 - disturbed[i - 1]) : 0) : 0;
-	const right = gR > 0 ? mapeApplyTransfer(next, p, p + 1, gR * scale, cap > 0 ? cap * (1 - disturbed[i + 1]) : 0) : 0;
-	const up = gU > 0 ? mapeApplyTransfer(next, p, p - size, gU * scale, cap > 0 ? cap * (1 - disturbed[i - size]) : 0) : 0;
-	const down = gD > 0 ? mapeApplyTransfer(next, p, p + size, gD * scale, cap > 0 ? cap * (1 - disturbed[i + size]) : 0) : 0;
+	const cL = cond ? (x > 0 ? cond.condR[i - 1] : 0) : (x > 0 && terrain[i - 1] !== water ? 1 : 0);
+	const cR = cond ? (x < end ? cond.condR[i] : 0) : (x < end && terrain[i + 1] !== water ? 1 : 0);
+	const cU = cond ? (y > 0 ? cond.condD[i - size] : 0) : (y > 0 && terrain[i - size] !== water ? 1 : 0);
+	const cD = cond ? (y < end ? cond.condD[i] : 0) : (y < end && terrain[i + size] !== water ? 1 : 0);
+	const gL = x > 0 && cL > 0 && field[p - 1] > cur ? field[p - 1] - cur : 0;
+	const gR = x < end && cR > 0 && field[p + 1] > cur ? field[p + 1] - cur : 0;
+	const gU = y > 0 && cU > 0 && field[p - size] > cur ? field[p - size] - cur : 0;
+	const gD = y < end && cD > 0 && field[p + size] > cur ? field[p + size] - cur : 0;
+	const wL = gL * cL;
+	const wR = gR * cR;
+	const wU = gU * cU;
+	const wD = gD * cD;
+	const wSum = wL + wR + wU + wD;
+	if (wSum <= 0) return 0;
+	const scale = budget / (wSum + gradRef);
+	const left = wL > 0 ? mapeApplyTransfer(next, p, p - 1, wL * scale, cap > 0 ? cap * (1 - disturbed[i - 1]) : 0) : 0;
+	const right = wR > 0 ? mapeApplyTransfer(next, p, p + 1, wR * scale, cap > 0 ? cap * (1 - disturbed[i + 1]) : 0) : 0;
+	const up = wU > 0 ? mapeApplyTransfer(next, p, p - size, wU * scale, cap > 0 ? cap * (1 - disturbed[i - size]) : 0) : 0;
+	const down = wD > 0 ? mapeApplyTransfer(next, p, p + size, wD * scale, cap > 0 ? cap * (1 - disturbed[i + size]) : 0) : 0;
 	if (workforceBalance) {
 		mapeFluidRecordMove(i, i - 1, left);
 		mapeFluidRecordMove(i, i + 1, right);
@@ -333,7 +356,7 @@ function mapePushUpGradient(x, y, i, p, size, terrain, field, next, budget, grad
 		flowX[p] = right - left;
 		flowY[p] = down - up;
 	}
-	return left + right + up + down;
+	return ((cL > 0 ? left / cL : 0) + (cR > 0 ? right / cR : 0) + (cU > 0 ? up / cU : 0) + (cD > 0 ? down / cD : 0)) * MAPE_WORKFORCE_PER_UNIT;
 }
 
 function mapeHaulBudget(i, stock, fraction, pop, work) {
@@ -341,7 +364,7 @@ function mapeHaulBudget(i, stock, fraction, pop, work) {
 	return stock * fraction * (MAPE_TRANSPORT_BASE + (1 - MAPE_TRANSPORT_BASE) * staff);
 }
 
-function mapeTransportSlice(r, size, terrain, demand, goods, next, pop, work, workNext, dt, fast, flowX, flowY) {
+function mapeTransportSlice(r, size, terrain, demand, goods, next, pop, work, workNext, dt, fast, flowX, flowY, cond) {
 	const off = r * size * size;
 	const water = TERRAIN.WATER;
 	const baseFrac = Math.min(MAPE_STEP_FRAC_MAX, (fast ? MAPE_MARKET_FLOW_SPEED : MAPE_FLOW_SPEED) * mapeFoodFlowMultiplier(r) * tune.haul * dt);
@@ -356,9 +379,8 @@ function mapeTransportSlice(r, size, terrain, demand, goods, next, pop, work, wo
 			if (stock <= MAPE_EPS || terrain[i] === water) continue;
 			const budget = fast ? mapeMarketUsable(r, i, stock) * baseFrac : mapeHaulBudget(i, stock, baseFrac, pop, work);
 			if (budget <= 0) continue;
-			const out = mapePushUpGradient(x, y, i, p, size, terrain, demand, next, budget, gradRef, 0, null, flowX, flowY);
-			if (out <= 0) continue;
-			const effort = out * MAPE_WORKFORCE_PER_UNIT;
+			const effort = mapePushUpGradient(x, y, i, p, size, terrain, demand, next, budget, gradRef, 0, null, flowX, flowY, false, cond);
+			if (effort <= 0) continue;
 			workNext[i] += effort;
 			workTotal += effort;
 		}
@@ -388,7 +410,7 @@ function mapeStepWorkforce(dt, transportBuffer) {
 			work[i] += (haulNeed - pop[i]) * 0.25 * dt;
 		}
 	}
-	mapeDiffuseSlice(work, mape.workforceNext, 0, world.size, world.terrain, true, MAPE_DIFFUSE, MAPE_WORK_DECAY, dt);
+	mapeDiffuseSlice(work, mape.workforceNext, 0, world.size, world.terrain, true, MAPE_DIFFUSE, MAPE_WORK_DECAY, dt, transport);
 }
 
 function mapeTransportWorkers(dt) {
@@ -413,7 +435,7 @@ function mapeTransportWorkers(dt) {
 			const idle = curPop - job[i];
 			if (idle <= MAPE_EPS || terrain[i] === water) continue;
 			const budget = idle * (curPop >= MAPE_SETTLE_MIN ? leaveFrac : walkFrac);
-			if (mapePushUpGradient(x, y, i, i, size, terrain, work, next, budget, MAPE_WORK_GRAD_REF, MAPE_POP_CAP, disturbed) > 0) moved = true;
+			if (mapePushUpGradient(x, y, i, i, size, terrain, work, next, budget, MAPE_WORK_GRAD_REF, MAPE_POP_CAP, disturbed, null, null, false, transport) > 0) moved = true;
 		}
 	}
 	if (!moved) return;
@@ -445,12 +467,12 @@ function mapeDiffusionTick(dt) {
 	for (let r = 0; r < MAPE_RES.CO2; r++) {
 		const marketItem = mapeIsMarketItem(r);
 		if (queues && marketItem) {
-			mapeRouteQueues(r, dt);
+			mapeRouteQueues(r, dt, transport);
 			continue;
 		}
 		const fast = catchment && marketItem;
 		const guide = fast ? mapeFilterMarketDemand(r) : mape.demand;
-		mape.transportWork += mapeTransportSlice(r, size, terrain, guide, goods, goodsNext, mape.pop, mape.workforce, workScratch, dt, fast, mape.flowX, mape.flowY);
+		mape.transportWork += mapeTransportSlice(r, size, terrain, guide, goods, goodsNext, mape.pop, mape.workforce, workScratch, dt, fast, mape.flowX, mape.flowY, transport);
 	}
 	mapeDiffuseCo2Stock(goods, goodsNext, MAPE_RES.CO2 * n, size, dt);
 	goods.set(goodsNext);
@@ -498,17 +520,17 @@ function mapeWarmDemand(marketsOnly) {
 }
 
 // Exercises the exact diffusion + advection kernels at arbitrary R and grid size for Phase 1 scaling gates.
-function mapeKernelStep(size, rCount, terrain, demand, demandNext, goods, goodsNext, pop, work, workNext, dt) {
+function mapeKernelStep(size, rCount, terrain, demand, demandNext, goods, goodsNext, pop, work, workNext, dt, cond) {
 	const n = size * size;
 	for (let r = 0; r < rCount; r++) {
 		const landOnly = r + 1 < rCount || rCount === 1;
-		mapeDiffuseSlice(demand, demandNext, r * n, size, terrain, landOnly, MAPE_DIFFUSE, MAPE_DECAY, dt);
+		mapeDiffuseSlice(demand, demandNext, r * n, size, terrain, landOnly, MAPE_DIFFUSE, MAPE_DECAY, dt, cond);
 	}
 	goodsNext.set(goods);
 	workNext.fill(0);
 	const matCount = rCount > 1 ? rCount - 1 : 1;
 	for (let r = 0; r < matCount; r++) {
-		mapeTransportSlice(r, size, terrain, demand, goods, goodsNext, pop, work, workNext, dt);
+		mapeTransportSlice(r, size, terrain, demand, goods, goodsNext, pop, work, workNext, dt, false, null, null, cond);
 	}
 	if (rCount > 1) mapeDiffuseCo2Stock(goods, goodsNext, (rCount - 1) * n, size, dt);
 	goods.set(goodsNext);
@@ -517,7 +539,7 @@ function mapeKernelStep(size, rCount, terrain, demand, demandNext, goods, goodsN
 		const need = workNext[i] * invDt;
 		if (need > pop[i]) work[i] += (need - pop[i]) * 0.25 * dt;
 	}
-	mapeDiffuseSlice(work, workNext, 0, size, terrain, true, MAPE_DIFFUSE, MAPE_WORK_DECAY, dt);
+	mapeDiffuseSlice(work, workNext, 0, size, terrain, true, MAPE_DIFFUSE, MAPE_WORK_DECAY, dt, cond);
 }
 
 if (typeof module !== 'undefined') {

@@ -25,7 +25,7 @@ wrong (see the audit in experiments/mape_diffusion_speed.js).
 | moisture, biomass, soil | fraction | 0..1 |
 
 Signals never carry goods. Hauling reads them as a normalized gradient (each direction's share
-is g / (gSum + ref)), so their magnitude scale is free; the market pull stays 0..1 because it is
+is g·c / (Σg·c + ref)), so their magnitude scale is free; the market pull stays 0..1 because it is
 also displayed and asserted.
 
 ## transport — a fraction of the sender's own stock
@@ -38,15 +38,24 @@ also displayed and asserted.
   transit 2.0 — all <= 10 cells/s, i.e. at most 0.35 of a cell crossed per tick. Food stock
   in field engines uses one quarter of the corresponding haul speed; pull diffusion is unchanged.
 
+- Terrain speed is dimensionless: meadow 0.5, desert 0.4, forest 0.2, hills 0.1,
+  swamp 0.05, water 0. Edge conductance is the harmonic mean of endpoint speeds;
+  either blocked endpoint gives c = 0. Haul effort per unit scales as 1/c.
+- Effective speeds are capped at 1 by normalizing the whole map when tuning pushes
+  its maximum above 1. Roads and ships are deferred; the reserved maximum is twice
+  meadow. Ordinary terrain tuning below the cap keeps its absolute scale.
+- Catchment intake and factory scans still count steps; Sites retains Euclidean
+  transit. CO2, hydrology and leachate do not use this speed map.
+
 ## diffusion — one Jacobi pass per tick
 
 - The update, exactly once per field per tick:
 
-		next = cur + mix * (sum of 4 neighbours - 4 * cur),   mix = D * dt
+		next = cur + D * dt * Σ c_edge * (neighbour - cur)
 
 - Explicit four-neighbour mixing is stable while mix <= 0.25 (convex weights). The design budget
-  is MAPE_MIX_MAX = 0.15, and it holds by construction: dt <= 0.05 s and every shipped
-  D <= 3 cells^2/s give mix <= 0.15. There is no runtime clamp and no pass count — a rate above
+  is D · max(c) · dt <= MAPE_MIX_MAX = 0.15, and it holds by construction: max(c) <= 1,
+  dt <= 0.05 s and every shipped D <= 3 cells^2/s give mix <= 0.15. There is no runtime clamp and no pass count — a rate above
   the budget fails the audit instead of silently splitting into passes.
 - Fades are keep = exp(-k * dt) in (0, 1) for any k >= 0: multiplicative, scale-free.
 - Reach = sqrt(D / k) is an outcome of the two, never a cutoff. When D changes by a factor a,
@@ -54,7 +63,7 @@ also displayed and asserted.
 - Legal coefficient range at the canonical tick: D in (0, 3] cells^2/s. Faster diffusion needs a
   smaller tick — never more passes.
 
-### shipped rates at the canonical tick
+### shipped rates at the canonical tick (mix/reach shown at c = 1)
 
 | constant | D cells^2/s | mix | reach sqrt(D/k) |
 | --- | --- | --- | --- |
@@ -63,6 +72,9 @@ also displayed and asserted.
 | MAPE_CATCHMENT_DIFFUSE — A pull | 3 | 0.15 | ~5.5 cells (k = MAPE_CATCHMENT_DECAY 0.1) |
 | MAPE_QUEUE_DIFFUSE — B pull | 2 | 0.10 | ~4.5 cells (k = MAPE_QUEUE_DECAY 0.1) |
 | MAPE_WF_DIFFUSE — fluid depleted pool | 0.875 | 0.044 | pools, no fade |
+
+For land-bound fields, uniform terrain shrinks reach by sqrt(c); meadow therefore has ~0.707× the listed
+reach and swamp ~0.224×. Shipped D and warm/response rates are unchanged.
 
 Workforce/rest pulls reuse MAPE_DIFFUSE with their own fades (MAPE_WORK_DECAY 0.1 -> ~4 cells,
 MAPE_WF_REST_DECAY 0.02 -> ~9 cells).

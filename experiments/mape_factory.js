@@ -25,6 +25,7 @@ function cell(x, y) {
 function blank() {
 	main.setup(START_SEED, '', 0, MAPE_ENGINE.DIFFUSION);
 	world.terrain.fill(TERRAIN.MEADOW);
+	transportRebuild();
 	land.disturbed.fill(0);
 	economy.biomass.fill(0);
 	sites.state.fill(SITE_STATE.GONE);

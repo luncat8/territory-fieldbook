@@ -33,6 +33,7 @@ function lab(mode, setup, feedback = true) {
 	mape.surplusFeedback = feedback;
 	mapePlaceSettlement(center, 20, false);
 	if (setup) setup(mape.goodsView[r]);
+	transportRebuild();
 	mapeMarketFlowPrepare();
 	mapeFinishSetup(0, true);
 }

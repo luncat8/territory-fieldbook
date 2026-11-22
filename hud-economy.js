@@ -103,6 +103,10 @@ function hudPaintFieldLegend(refs, demand) {
 		refs.unit.textContent = item === MAPE_VIEW_ITEM.WATER ? 'Water depth / cell' : 'Air moisture / cell';
 		refs.scale.className = scale;
 		refs.range.textContent = item === MAPE_VIEW_ITEM.WATER ? 'Land: 0 → 1+ · linear' : '0 → 0.4+ · linear';
+	} else if (item === MAPE_VIEW_ITEM.TRANSPORT) {
+		refs.unit.textContent = 'Speed / 0–1';
+		refs.scale.className = scale;
+		refs.range.textContent = '0 → 1 · linear';
 	} else if (item >= MAPE_VIEW_ITEM.WASTE) {
 		refs.unit.textContent = 'Cell coverage / fraction';
 		refs.scale.className = scale;
@@ -169,7 +173,7 @@ function hudUpdateInspect() {
 	const idx = y * world.size + x;
 	const pct = (mape.settleCount / n * 100).toFixed(1);
 	let text = 'Settlements ' + mape.settleCount + ' (' + pct + '%) · pop ' + Math.round(mape.totalPop) +
-		'\nCell ' + x + ',' + y + ' · ' + TERRAIN_NAME[world.terrain[idx]] +
+		'\nCell ' + x + ',' + y + ' · ' + TERRAIN_NAME[world.terrain[idx]] + ' · speed ' + (transport.speed ? transport.speed[idx].toFixed(2) : '—') +
 		' · pop ' + mape.pop[idx].toFixed(1) + ' · need ' + mape.jobNeed[idx].toFixed(0) +
 		' · pull ' + mape.workforce[idx].toFixed(2) + (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID ? ' · rest ' + mape.wfRestPull[idx].toFixed(2) : '') +
 		' · settle ' + world.settleValue[idx].toFixed(2) + ' · waste ' + Math.round(100 * land.disturbed[idx]) + '%';

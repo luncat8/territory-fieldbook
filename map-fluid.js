@@ -42,7 +42,7 @@ function mapeFluidGenerate(dt, terrain, pop, fresh) {
 }
 
 // Fresh pool advects up the workforce pull, exactly like goods up the demand gradient.
-function mapeFluidAdvect(dt, size, terrain, pull, fresh, freshNext) {
+function mapeFluidAdvect(dt, size, terrain, pull, fresh, freshNext, cond) {
 	const water = TERRAIN.WATER;
 	let frac = MAPE_WF_FLOW * tune.walk * dt;
 	if (frac > MAPE_STEP_FRAC_MAX) frac = MAPE_STEP_FRAC_MAX;
@@ -52,7 +52,7 @@ function mapeFluidAdvect(dt, size, terrain, pull, fresh, freshNext) {
 		for (let x = 0; x < size; x++) {
 			const i = row + x;
 			if (terrain[i] === water || freshNext[i] <= MAPE_WF_EPS) continue;
-			mapePushUpGradient(x, y, i, i, size, terrain, pull, freshNext, fresh[i] * frac, MAPE_WF_GRAD_REF, 0, null, mape.wfFlowX[0], mape.wfFlowY[0], true);
+			mapePushUpGradient(x, y, i, i, size, terrain, pull, freshNext, fresh[i] * frac, MAPE_WF_GRAD_REF, 0, null, mape.wfFlowX[0], mape.wfFlowY[0], true, cond);
 		}
 	}
 	fresh.set(freshNext);
@@ -98,7 +98,7 @@ function mapeFluidSpendJobs(dt, fresh, depleted) {
 }
 
 // Exhausted workforce spreads like a gas; water blocks it, nothing drains it but settlements.
-function mapeDepletedPass(src, dst, size, terrain, mix) {
+function mapeDepletedPass(src, dst, size, terrain, mix, cond) {
 	const water = TERRAIN.WATER;
 	const end = size - 1;
 	for (let y = 0; y < size; y++) {
@@ -112,22 +112,45 @@ function mapeDepletedPass(src, dst, size, terrain, mix) {
 			}
 			const cur = src[i];
 			let delta = 0;
-			if (innerY && x > 0 && x < end) {
-				if (terrain[i - 1] !== water) delta += src[i - 1] - cur;
-				if (terrain[i + 1] !== water) delta += src[i + 1] - cur;
-				if (terrain[i - size] !== water) delta += src[i - size] - cur;
-				if (terrain[i + size] !== water) delta += src[i + size] - cur;
+			let cL = 0;
+			let cR = 0;
+			let cU = 0;
+			let cD = 0;
+			if (cond) {
+				if (x > 0) cL = cond.condR[i - 1];
+				if (x < end) cR = cond.condR[i];
+				if (y > 0) cU = cond.condD[i - size];
+				if (y < end) cD = cond.condD[i];
+				if (innerY && x > 0 && x < end) {
+					delta = cL * (src[i - 1] - cur) + cR * (src[i + 1] - cur) + cU * (src[i - size] - cur) + cD * (src[i + size] - cur);
+				} else {
+					if (x > 0) delta += cL * (src[i - 1] - cur);
+					if (x < end) delta += cR * (src[i + 1] - cur);
+					if (y > 0) delta += cU * (src[i - size] - cur);
+					if (y < end) delta += cD * (src[i + size] - cur);
+				}
 			} else {
-				if (x > 0 && terrain[i - 1] !== water) delta += src[i - 1] - cur;
-				if (x < end && terrain[i + 1] !== water) delta += src[i + 1] - cur;
-				if (y > 0 && terrain[i - size] !== water) delta += src[i - size] - cur;
-				if (y < end && terrain[i + size] !== water) delta += src[i + size] - cur;
+				if (innerY && x > 0 && x < end) {
+					if (terrain[i - 1] !== water) delta += src[i - 1] - cur;
+					if (terrain[i + 1] !== water) delta += src[i + 1] - cur;
+					if (terrain[i - size] !== water) delta += src[i - size] - cur;
+					if (terrain[i + size] !== water) delta += src[i + size] - cur;
+				} else {
+					if (x > 0 && terrain[i - 1] !== water) delta += src[i - 1] - cur;
+					if (x < end && terrain[i + 1] !== water) delta += src[i + 1] - cur;
+					if (y > 0 && terrain[i - size] !== water) delta += src[i - size] - cur;
+					if (y < end && terrain[i + size] !== water) delta += src[i + size] - cur;
+				}
+				cL = x > 0 && terrain[i - 1] !== water ? 1 : 0;
+				cR = x < end && terrain[i + 1] !== water ? 1 : 0;
+				cU = y > 0 && terrain[i - size] !== water ? 1 : 0;
+				cD = y < end && terrain[i + size] !== water ? 1 : 0;
 			}
 			dst[i] = cur + mix * delta;
-			const left = x > 0 && terrain[i - 1] !== water ? Math.max(0, cur - src[i - 1]) * mix : 0;
-			const right = x < end && terrain[i + 1] !== water ? Math.max(0, cur - src[i + 1]) * mix : 0;
-			const up = y > 0 && terrain[i - size] !== water ? Math.max(0, cur - src[i - size]) * mix : 0;
-			const down = y < end && terrain[i + size] !== water ? Math.max(0, cur - src[i + size]) * mix : 0;
+			const left = x > 0 ? Math.max(0, cur - src[i - 1]) * mix * cL : 0;
+			const right = x < end ? Math.max(0, cur - src[i + 1]) * mix * cR : 0;
+			const up = y > 0 ? Math.max(0, cur - src[i - size]) * mix * cU : 0;
+			const down = y < end ? Math.max(0, cur - src[i + size]) * mix * cD : 0;
 			mapeFluidRecordMove(i, i - 1, left);
 			mapeFluidRecordMove(i, i + 1, right);
 			mapeFluidRecordMove(i, i - size, up);
@@ -138,16 +161,16 @@ function mapeDepletedPass(src, dst, size, terrain, mix) {
 
 // One pass per tick (mix = D · dt ≤ MAPE_MIX_MAX by the units rule, units-and-scales.md), then
 // blit back so the caller keeps its buffer identity. Water cells stay 0: the pass writes them.
-function mapeFluidDiffuse(dt, size, terrain, depleted, depletedNext) {
+function mapeFluidDiffuse(dt, size, terrain, depleted, depletedNext, cond) {
 	if (dt <= 0) return;
-	mapeDepletedPass(depleted, depletedNext, size, terrain, MAPE_WF_DIFFUSE * dt);
+	mapeDepletedPass(depleted, depletedNext, size, terrain, MAPE_WF_DIFFUSE * dt, cond);
 	depleted.set(depletedNext);
-	mapeFluidRecordDiffusionFlow(size, terrain, depleted);
+	mapeFluidRecordDiffusionFlow(size, terrain, depleted, cond);
 }
 
 // Flow marks read the blended wavefront — where the spread content sits against its neighbours
 // is where it travels next tick, so a fresh blob records outward transfer on both flanks.
-function mapeFluidRecordDiffusionFlow(size, terrain, src) {
+function mapeFluidRecordDiffusionFlow(size, terrain, src, cond) {
 	const water = TERRAIN.WATER;
 	const end = size - 1;
 	const flowX = mape.wfFlowX[1];
@@ -158,10 +181,10 @@ function mapeFluidRecordDiffusionFlow(size, terrain, src) {
 			const i = row + x;
 			const cur = src[i];
 			if (cur === 0 || terrain[i] === water) continue;
-			const left = x > 0 && terrain[i - 1] !== water ? Math.max(0, cur - src[i - 1]) : 0;
-			const right = x < end && terrain[i + 1] !== water ? Math.max(0, cur - src[i + 1]) : 0;
-			const up = y > 0 && terrain[i - size] !== water ? Math.max(0, cur - src[i - size]) : 0;
-			const down = y < end && terrain[i + size] !== water ? Math.max(0, cur - src[i + size]) : 0;
+			const left = x > 0 && terrain[i - 1] !== water ? Math.max(0, cur - src[i - 1]) * (cond ? cond.condR[i - 1] : 1) : 0;
+			const right = x < end && terrain[i + 1] !== water ? Math.max(0, cur - src[i + 1]) * (cond ? cond.condR[i] : 1) : 0;
+			const up = y > 0 && terrain[i - size] !== water ? Math.max(0, cur - src[i - size]) * (cond ? cond.condD[i - size] : 1) : 0;
+			const down = y < end && terrain[i + size] !== water ? Math.max(0, cur - src[i + size]) * (cond ? cond.condD[i] : 1) : 0;
 			flowX[i] += right - left;
 			flowY[i] += down - up;
 		}
@@ -169,7 +192,7 @@ function mapeFluidRecordDiffusionFlow(size, terrain, src) {
 }
 
 // Rest pull: settlements with room advertise it; depleted follows this gradient home.
-function mapeFluidRestPull(dt, size, terrain) {
+function mapeFluidRestPull(dt, size, terrain, cond) {
 	const pull = mape.wfRestPull;
 	const response = 1 - Math.exp(-MAPE_WF_REST_SIGNAL * dt);
 	for (let k = 0; k < mape.settleCount; k++) {
@@ -177,10 +200,10 @@ function mapeFluidRestPull(dt, size, terrain) {
 		const target = mapeFluidFreeSpace(i) / MAPE_POP_CAP;
 		pull[i] += (target - pull[i]) * response;
 	}
-	mapeDiffuseSlice(pull, mape.wfRestPullNext, 0, size, terrain, true, MAPE_DIFFUSE, MAPE_WF_REST_DECAY, dt);
+	mapeDiffuseSlice(pull, mape.wfRestPullNext, 0, size, terrain, true, MAPE_DIFFUSE, MAPE_WF_REST_DECAY, dt, cond);
 }
 
-function mapeFluidAdvectDepleted(dt, size, terrain, depleted, depletedNext) {
+function mapeFluidAdvectDepleted(dt, size, terrain, depleted, depletedNext, cond) {
 	let frac = MAPE_WF_RETURN * tune.walk * dt;
 	if (frac > MAPE_STEP_FRAC_MAX) frac = MAPE_STEP_FRAC_MAX;
 	depletedNext.set(depleted);
@@ -189,7 +212,7 @@ function mapeFluidAdvectDepleted(dt, size, terrain, depleted, depletedNext) {
 		for (let x = 0; x < size; x++) {
 			const i = row + x;
 			if (terrain[i] === TERRAIN.WATER || depletedNext[i] <= MAPE_WF_EPS) continue;
-			mapePushUpGradient(x, y, i, i, size, terrain, mape.wfRestPull, depletedNext, depleted[i] * frac, MAPE_WF_REST_GRAD_REF, 0, null, mape.wfFlowX[1], mape.wfFlowY[1], true);
+			mapePushUpGradient(x, y, i, i, size, terrain, mape.wfRestPull, depletedNext, depleted[i] * frac, MAPE_WF_REST_GRAD_REF, 0, null, mape.wfFlowX[1], mape.wfFlowY[1], true, cond);
 		}
 	}
 	depleted.set(depletedNext);
@@ -349,12 +372,12 @@ function mapeFluidStep(dt) {
 	const depleted = mape.wfDepleted;
 	mape.wfBalance.fill(0);
 	mapeFluidGenerate(dt, terrain, mape.pop, fresh);
-	mapeFluidAdvect(dt, size, terrain, mape.workforce, fresh, mape.wfFreshNext);
+	mapeFluidAdvect(dt, size, terrain, mape.workforce, fresh, mape.wfFreshNext, transport);
 	mapeFluidTire(dt, fresh, depleted);
 	mapeFluidSpendJobs(dt, fresh, depleted);
-	mapeFluidRestPull(dt, size, terrain);
-	mapeFluidAdvectDepleted(dt, size, terrain, depleted, mape.wfDepletedNext);
-	mapeFluidDiffuse(dt, size, terrain, depleted, mape.wfDepletedNext);
+	mapeFluidRestPull(dt, size, terrain, transport);
+	mapeFluidAdvectDepleted(dt, size, terrain, depleted, mape.wfDepletedNext, transport);
+	mapeFluidDiffuse(dt, size, terrain, depleted, mape.wfDepletedNext, transport);
 	mapeFluidRest(dt, depleted, fresh);
 	mapeFluidMigrate(dt);
 	mapeFluidSpawn(depleted, terrain);

@@ -274,7 +274,7 @@ check('frames_advance_at_4x', result.clockSec >= 7.8 && result.clockSec <= 8.1 &
 check('canvas_painted', result.litCells > 3000);
 check('time_controls', result.timeButtons === 4);
 check('view_controls', result.viewRadios === 8 && result.distinctViews === 7);
-check('item_controls', result.startsOnSupply && result.itemRadios === 14 && result.demandItemRadios === 8 && result.itemHiddenOnTerrain && result.itemShownOnDemand && result.distinctItems >= 5);
+check('item_controls', result.startsOnSupply && result.itemRadios === 15 && result.demandItemRadios === 8 && result.itemHiddenOnTerrain && result.itemShownOnDemand && result.distinctItems >= 5);
 check('engine_controls', result.engineRadios === 4 && result.engineCatchmentChecked && result.engineSitesDisabled && result.engineClickOnly);
 check('workforce_controls', result.workforceRadios === 2 && /Workforce/.test(result.workforceStats || ''));
 check('workforce_switch', result.fluidSwitch && result.residentsSwitch);
@@ -298,7 +298,7 @@ check('victory_panel', (result.victoryText || '').length > 5);
 check('feed_rendered', result.logItems > 0);
 check('click_moved_party', result.moved === true);
 check('pause_key', result.speedAfterSpace === 0);
-check('tune_panel', result.tuneKnobs === 26 && result.tuneForest === 2 && /\ntune: forest=2$/.test(result.tuneSummary || ''));
+check('tune_panel', result.tuneKnobs === 31 && result.tuneForest === 2 && /\ntune: forest=2$/.test(result.tuneSummary || ''));
 check('all_buttons_safe', (result.buttonsClicked || 0) >= 4);
 check('new_survey_restarts', result.restartState === 'true:0');
 check('test_scene_boot', result.sceneBoots);

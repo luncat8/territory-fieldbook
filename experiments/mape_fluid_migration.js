@@ -19,6 +19,7 @@ const meadow = 30 * world.size + 30;
 const swamp = 45 * world.size + 45;
 world.terrain[shore + 1] = TERRAIN.WATER;
 world.terrain[swamp] = TERRAIN.SWAMP;
+transportRebuild();
 worldSettleValues();
 land.disturbed.fill(0);
 mape.pop.fill(0);

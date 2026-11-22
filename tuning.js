@@ -33,7 +33,12 @@ const TUNE_TABLE = [
 	['spawn', 'sites', 'New timed sites'],
 	['transport', '', 'Transport · all'],
 	['haul', 'transport', 'Goods haulage'],
-	['walk', 'transport', 'Worker walking']
+	['walk', 'transport', 'Worker walking'],
+	['groundMeadow', '', 'Meadow speed'],
+	['groundForest', '', 'Forest speed'],
+	['groundSwamp', '', 'Swamp speed'],
+	['groundHills', '', 'Hills speed'],
+	['groundDesert', '', 'Desert speed']
 ];
 
 const TUNE_HINT = {
@@ -62,7 +67,12 @@ const TUNE_HINT = {
 	spawn: 'Chance of a new cache, relic or task appearing',
 	transport: 'Scales goods and worker movement',
 	haul: 'Goods flow, queue and shipment speed',
-	walk: 'Worker travel to job sites'
+	walk: 'Worker travel to job sites',
+	groundMeadow: 'Meadow transport speed (max stays 1.0)',
+	groundForest: 'Forest transport speed',
+	groundSwamp: 'Swamp transport speed',
+	groundHills: 'Hills transport speed',
+	groundDesert: 'Desert transport speed'
 };
 
 const TUNE_KNOBS = TUNE_TABLE.map(row => ({ id: row[0], group: row[1], label: row[2], value: 1 }));
@@ -78,6 +88,7 @@ function tuneApply() {
 		const knob = TUNE_KNOBS[k];
 		tune[knob.id] = knob.group ? knob.value * TUNE_KNOBS[TUNE_INDEX[knob.group]].value : knob.value;
 	}
+	if (typeof transportRebuild === 'function') transportRebuild();
 }
 
 function tuneSet(id, value) {

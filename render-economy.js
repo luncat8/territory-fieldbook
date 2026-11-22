@@ -111,6 +111,7 @@ function renderItemField(item, demand) {
 	if (item === MAPE_VIEW_ITEM.SOIL) return hydrology.soil;
 	if (item === MAPE_VIEW_ITEM.HUMIDITY) return hydrology.model.humidity;
 	if (item === MAPE_VIEW_ITEM.WATER) return hydrology.model.water;
+	if (item === MAPE_VIEW_ITEM.TRANSPORT) return transport.speed;
 	if (item === MAPE_VIEW_ITEM.POPULATION) return mape.pop;
 	if (item === MAPE_VIEW_ITEM.JOBS) return demand ? mape.workforce : mape.jobNeed;
 	if (item === MAPE_VIEW_ITEM.FRESH) return demand ? mape.workforce : mape.wfFresh;

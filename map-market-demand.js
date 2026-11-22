@@ -130,15 +130,35 @@ function mapePullMarketSlice(r, dt, queue) {
 	}
 }
 
-function mapeMarketJacobi(src, dst, off, mix) {
+function mapeMarketJacobi(src, dst, off, mix, cond) {
 	const { links, land, landCount } = mapeMarketFlow;
+	if (!cond) {
+		for (let k = 0; k < landCount; k++) {
+			const i = land[k];
+			const pos = off + i;
+			const base = i * MAPE_LAND_LINKS;
+			const here = src[pos];
+			const sum = src[off + links[base]] + src[off + links[base + 1]] + src[off + links[base + 2]] + src[off + links[base + 3]];
+			dst[pos] = here + mix * (sum - 4 * here);
+		}
+		return;
+	}
+	const condR = cond.condR;
+	const condD = cond.condD;
 	for (let k = 0; k < landCount; k++) {
 		const i = land[k];
 		const pos = off + i;
 		const base = i * MAPE_LAND_LINKS;
 		const here = src[pos];
-		const sum = src[off + links[base]] + src[off + links[base + 1]] + src[off + links[base + 2]] + src[off + links[base + 3]];
-		dst[pos] = here + mix * (sum - 4 * here);
+		const l = links[base];
+		const r = links[base + 1];
+		const u = links[base + 2];
+		const d = links[base + 3];
+		const cL = l === i ? 0 : condR[l];
+		const cR = r === i ? 0 : condR[i];
+		const cU = u === i ? 0 : condD[u];
+		const cD = d === i ? 0 : condD[i];
+		dst[pos] = here + mix * (cL * (src[off + l] - here) + cR * (src[off + r] - here) + cU * (src[off + u] - here) + cD * (src[off + d] - here));
 	}
 }
 
@@ -180,7 +200,7 @@ function mapeUpdateMarketSlice(r, dt, queue) {
 	const { demand, demandNext } = mape;
 	const mix = (queue ? MAPE_QUEUE_DIFFUSE : MAPE_CATCHMENT_DIFFUSE) * dt;
 	mapePullMarketSlice(r, dt, queue);
-	mapeMarketJacobi(demand, demandNext, off, mix);
+	mapeMarketJacobi(demand, demandNext, off, mix, transport);
 	if (queue) mapeMarketPinQueues(demandNext, off);
 	const { land, landCount } = mapeMarketFlow;
 	for (let k = 0; k < landCount; k++) {
