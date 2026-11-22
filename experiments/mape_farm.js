@@ -203,6 +203,7 @@ function verifyUndermannedFieldKeepsItsCells() {
 // The whole field is brought in at once: nothing between passes, every farmland cell at the pass,
 // the share set by worked cell-seconds, and the crop identical at 0.2 s and 0.05 s steps.
 function verifyBatchHarvest() {
+	assert.equal(MAPE_FARM_YIELD, 6, 'quality-1 farmland produces six food per season');
 	const totals = [];
 	for (const dt of [0.2, 0.05]) {
 		const home = blank(20, 20);
@@ -221,7 +222,7 @@ function verifyBatchHarvest() {
 			food = foodTotal();
 		}
 		assert.equal(harvestTicks, Math.round(121 / MAPE_FARM_SEASON_SEC), 'food arrives only on the season pass');
-		// Scene soil is flat 0.5, so quality is 1 − |0.5 − 0.6| / 0.3 and one full season yields 50.
+		// Scene soil is flat 0.5, so quality is 1 − |0.5 − 0.6| / 0.3 and one full season yields 100.
 		assert.ok(Math.abs(food - 15 * MAPE_FARM_YIELD * (1 - 0.1 / MAPE_FARM_MOISTURE_WIDTH) * FIELD) < 1e-6,
 			'one season brings the whole crop in: ' + food.toFixed(3));
 		totals.push(food);
@@ -291,7 +292,7 @@ function verifyWasteRing() {
 		}
 	}
 	assert.equal(disturbed.length, 1, 'exactly one ring cell takes the season\'s waste');
-	assert.ok(Math.abs(land.disturbed[disturbed[0]] - 50 * MAPE_FARM_WASTE_PER_FOOD) < 1e-9, 'waste scales with the crop');
+	assert.ok(Math.abs(land.disturbed[disturbed[0]] - 100 * MAPE_FARM_WASTE_PER_FOOD) < 1e-9, 'waste scales with the crop');
 	// Water all around: the pick lands in the water and the waste is dropped.
 	const island = blank(45, 45);
 	const g = farm(45, 45, MAPE_FACTORY_STATE.ACTIVE);
@@ -335,11 +336,47 @@ function verifyHouseholdFood(engine) {
 	assert.ok(Math.abs(mapeLedgerResidual()) < 1e-6, 'food consumption balances in ' + MAPE_ENGINE_NAME[engine]);
 }
 
+function verifyFoodTransport() {
+	blank();
+	const source = cell(20, 20);
+	const dest = cell(21, 20);
+	const oldHaul = tune.haul;
+	for (const haul of [1, 10]) {
+		tune.haul = haul;
+		for (const mode of ['diffusion', 'catchment', 'queue']) {
+			const fractions = [];
+			for (const r of [MAPE_RES.FOOD, MAPE_RES.IRON]) {
+				mape.goods.fill(0);
+				mape.demand.fill(0);
+				mape.goodsView[r][source] = 100;
+				mape.demandView[r][dest] = 1;
+				mape.goodsNext.set(mape.goods);
+				mape.workforceNext.fill(0);
+				if (mode === 'queue') mapeRouteQueues(r, SIM_STEP_SEC);
+				else mapeTransportSlice(r, world.size, world.terrain, mape.demand, mape.goods,
+					mape.goodsNext, mape.pop, mape.workforce, mape.workforceNext, SIM_STEP_SEC,
+					mode === 'catchment', mape.flowX, mape.flowY);
+				const off = r * world.n;
+				const moved = mape.goodsNext[off + dest];
+				assert.ok(moved > 0 && moved <= 100, 'transport is positive and bounded');
+				assert.ok(Math.abs(mape.goodsNext[off + source] + moved - 100) < 1e-8, 'transport conserves stock');
+				fractions.push(moved);
+			}
+			const speed = mode === 'queue' ? MAPE_QUEUE_FLOW_SPEED : mode === 'catchment' ? MAPE_MARKET_FLOW_SPEED : MAPE_FLOW_SPEED;
+			const expected = Math.min(MAPE_STEP_FRAC_MAX, speed * 0.25 * haul * SIM_STEP_SEC) /
+				Math.min(MAPE_STEP_FRAC_MAX, speed * haul * SIM_STEP_SEC);
+			assert.ok(Math.abs(fractions[0] / fractions[1] - expected) < 1e-8, mode + ' uses food-specific flow before the transfer cap');
+		}
+	}
+	tune.haul = oldHaul;
+}
+
 verifyClearing();
 verifyBuildPaysInForestOrWood();
 verifyCrewSizing();
 verifyUndermannedFieldKeepsItsCells();
 verifyBatchHarvest();
+verifyFoodTransport();
 verifyMoistureYield();
 verifyWasteRing();
 for (const engine of [MAPE_ENGINE.DIFFUSION, MAPE_ENGINE.CATCHMENT, MAPE_ENGINE.QUEUE, MAPE_ENGINE.SITES]) verifyHouseholdFood(engine);

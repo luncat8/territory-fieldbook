@@ -6,6 +6,7 @@ const MAPE_CATCHMENT_SIZE = 1 + 2 * MAPE_CATCHMENT_STEPS * (MAPE_CATCHMENT_STEPS
 const MAPE_MARKET_FLOW_SPEED = 6.5;
 const MAPE_MARKET_GRAD_REF = 0.0015;
 const MAPE_QUEUE_FLOW_SPEED = 7;
+const MAPE_FOOD_FLOW_MULT = 0.25;
 const MAPE_QUEUE_GRAD_REF = 0.0002;
 const MAPE_LAND_LINKS = 8;
 const MAPE_DX = [-1, 1, 0, 0, -1, 1, -1, 1];
@@ -161,9 +162,13 @@ function mapeApplyQueueTransfers(i, off) {
 	return moved;
 }
 
+function mapeFoodFlowMultiplier(r) {
+	return r === MAPE_RES.FOOD ? MAPE_FOOD_FLOW_MULT : 1;
+}
+
 function mapeRouteQueues(r, dt) {
 	const off = r * world.n;
-	const fraction = Math.min(MAPE_STEP_FRAC_MAX, MAPE_QUEUE_FLOW_SPEED * tune.haul * dt);
+	const fraction = Math.min(MAPE_STEP_FRAC_MAX, MAPE_QUEUE_FLOW_SPEED * mapeFoodFlowMultiplier(r) * tune.haul * dt);
 	const { requests, room, accepted, land, landCount } = mapeMarketFlow;
 	requests.fill(0);
 	room.fill(-1);

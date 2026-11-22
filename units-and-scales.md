@@ -35,7 +35,8 @@ also displayed and asserted.
   than it has, so the rule is identical for 0.1 or 1000 items, never goes negative, and needs no
   amount cap for stability.
 - Shipped speeds (cells/s): haul 1.8, market flow 6.5, queue flow 7, workforce walk 1.8, sites
-  transit 2.0 — all <= 10 cells/s, i.e. at most 0.35 of a cell crossed per tick.
+  transit 2.0 — all <= 10 cells/s, i.e. at most 0.35 of a cell crossed per tick. Food stock
+  in field engines uses one quarter of the corresponding haul speed; pull diffusion is unchanged.
 
 ## diffusion — one Jacobi pass per tick
 

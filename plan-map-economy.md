@@ -198,6 +198,7 @@ MAPE_CO2_DIFFUSE = 0.5625        // atmospheric CO2 pairwise stock diffusion, ce
 MAPE_CATCHMENT_DIFFUSE = 3       // A: import pull diffusion, cells²/s (reach kept with decay 0.1)
 MAPE_QUEUE_DIFFUSE = 2           // B: import pull diffusion, cells²/s (reach kept with decay 0.1)
 MAPE_FLOW_SPEED = 1.8            // max goods advection rate /s up normalized gradient
+MAPE_FOOD_FLOW_MULT = 0.25       // food stock moves at one quarter of the field-engine rate
 MAPE_GRAD_REF = 0.02             // Michaelis-Menten half-saturation for demand gradient
 MAPE_WORK_SIGNAL = 3.2           // workforce demand gain per unmet worker per s
 MAPE_WORK_DECAY = 0.10           // workforce field decay per s
@@ -255,7 +256,7 @@ MAPE_SAWMILL_FOREST_PER_LOG = 0.3 // forest cover consumed per log; a full cell 
 MAPE_FARM_RADIUS = 2             // half-width of the farmland field: a 5×5 square
 MAPE_FARM_TILL_SEC = 2           // worker-seconds per clearing visit, hit or miss
 MAPE_FARM_SEASON_SEC = 8         // seconds between whole-field harvests
-MAPE_FARM_YIELD = 3              // food per quality-1 farmland cell per season
+MAPE_FARM_YIELD = 6              // food per quality-1 farmland cell per season
 MAPE_FARM_MOISTURE_OPTIMUM = 0.6 // root-zone moisture the crop peaks at (the forest optimum is 0.5)
 MAPE_FARM_MOISTURE_WIDTH = 0.3   // quality falls to 0 at optimum ± width
 MAPE_FARM_MIN_FIELD = 0.35       // mean potential quality over the field to site a farm
@@ -975,8 +976,10 @@ precomputed once per rebuild (right and down edge per cell, `2n` floats).
 **Where it applies.**
 
 - *Stock haulage* (coal, iron, goods, logs, food in every field engine): the
-  uphill split becomes `g_k · c_k / (Σ g · c + ref)`, so goods move slowly
-  through swamp and prefer a faster route with a comparable gradient. Transport
+  uphill transfer becomes `budget · g_k · c_k / (Σ g + ref)`, so goods move
+  slowly through swamp and prefer a faster route with a comparable gradient.
+  The unweighted denominator prevents conductance from cancelling out when
+  every outgoing edge is equally slow. Transport
   effort per unit moved scales by `1 / c`, so slow ground also costs more
   labour.
 - *Pull diffusion* (signed demand, A/B import pull, workforce pull): the same
@@ -1312,6 +1315,12 @@ mechanics, puts one worker on each farmland cell as a constant demand, and
 brings the whole crop in at once every season. Towns gain a hauled good that
 lifts them above the subsistence line.
 
+**Food transport.** Food stock moves at a quarter of the ordinary haul rate in
+Diffusion, A and B; the multiplier applies before the stock-fraction cap and
+the haul tuning multiplier. Food demand signals still diffuse at the ordinary
+rate. A can consume stock directly within its four-step catchment without
+physical delivery; Sites uses its own shipment speed.
+
 **Food as a household commodity.** `MAPE_RES.FOOD = 5`, `MAPE_R = 6`; the view
 item ids after the resources move up by one. Households use
 `MAPE_NEED_FOOD = 0.03` food/person/s in Diffusion and `MAPE_MARKET_FOOD_USE =
@@ -1403,8 +1412,8 @@ line like any other disturbed cell. An off-map or water pick drops that
 season's waste.
 
 **Budget.** A full 25-cell field at scene-flat soil `0.5`
-(`q = 1 − 0.1/0.3 ≈ 0.67`) with a full crew of 25 yields about 50 food per
-8 s season — 6.25 food/s, roughly 200 people at the household rate. The field
+(`q = 1 − 0.1/0.3 ≈ 0.67`) with a full crew of 25 yields about 100 food per
+8 s season — 12.5 food/s, roughly 400 people at the household rate. The field
 starts at one cell and grows with the crew that clears it. Per farm per tick:
 two multiply-adds and an occasional clearing sample; per season: one 25-cell
 pass plus one ring pick. A 32-plant cap keeps this far below one field
@@ -1522,7 +1531,7 @@ full suite unchanged with an all-`1` speed map.
   cells go bare and turn to farmland while the build eats their logs. Once
   active, every season the whole field drops food at once and it moves toward
   the town. Add a second town: the crew and the farmland grow; glut the farm
-  cell with food: the crew falls to one and the worst cells regrow forest. A
+  cell with food: the farmland and its worker demand remain. A
   waste speck appears just outside the outline each season, never inside.
 - The workforce segment opens on **Fluid field**: fresh workforce gathers at the
   mine, depleted pool returns to settlements, and a hamlet founds itself
