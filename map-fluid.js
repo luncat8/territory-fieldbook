@@ -128,8 +128,6 @@ function mapeDepletedPass(src, dst, size, terrain, mix) {
 			const right = x < end && terrain[i + 1] !== water ? Math.max(0, cur - src[i + 1]) * mix : 0;
 			const up = y > 0 && terrain[i - size] !== water ? Math.max(0, cur - src[i - size]) * mix : 0;
 			const down = y < end && terrain[i + size] !== water ? Math.max(0, cur - src[i + size]) * mix : 0;
-			mape.wfFlowX[1][i] += right - left;
-			mape.wfFlowY[1][i] += down - up;
 			mapeFluidRecordMove(i, i - 1, left);
 			mapeFluidRecordMove(i, i + 1, right);
 			mapeFluidRecordMove(i, i - size, up);
@@ -138,13 +136,35 @@ function mapeDepletedPass(src, dst, size, terrain, mix) {
 	}
 }
 
+// One pass per tick (mix = D · dt ≤ MAPE_MIX_MAX by the units rule, units-and-scales.md), then
+// blit back so the caller keeps its buffer identity. Water cells stay 0: the pass writes them.
 function mapeFluidDiffuse(dt, size, terrain, depleted, depletedNext) {
-	const passes = mapeDiffusePasses(MAPE_WF_DIFFUSE, dt);
-	const edgeMix = passes > 0 ? MAPE_WF_DIFFUSE * dt / passes : 0;
-	for (let p = 0; p < passes; p++) {
-		const src = (p & 1) === 0 ? depleted : depletedNext;
-		const dst = (p & 1) === 0 ? depletedNext : depleted;
-		mapeDepletedPass(src, dst, size, terrain, edgeMix);
+	if (dt <= 0) return;
+	mapeDepletedPass(depleted, depletedNext, size, terrain, MAPE_WF_DIFFUSE * dt);
+	depleted.set(depletedNext);
+	mapeFluidRecordDiffusionFlow(size, terrain, depleted);
+}
+
+// Flow marks read the blended wavefront — where the spread content sits against its neighbours
+// is where it travels next tick, so a fresh blob records outward transfer on both flanks.
+function mapeFluidRecordDiffusionFlow(size, terrain, src) {
+	const water = TERRAIN.WATER;
+	const end = size - 1;
+	const flowX = mape.wfFlowX[1];
+	const flowY = mape.wfFlowY[1];
+	for (let y = 0; y < size; y++) {
+		const row = y * size;
+		for (let x = 0; x < size; x++) {
+			const i = row + x;
+			const cur = src[i];
+			if (cur === 0 || terrain[i] === water) continue;
+			const left = x > 0 && terrain[i - 1] !== water ? Math.max(0, cur - src[i - 1]) : 0;
+			const right = x < end && terrain[i + 1] !== water ? Math.max(0, cur - src[i + 1]) : 0;
+			const up = y > 0 && terrain[i - size] !== water ? Math.max(0, cur - src[i - size]) : 0;
+			const down = y < end && terrain[i + size] !== water ? Math.max(0, cur - src[i + size]) : 0;
+			flowX[i] += right - left;
+			flowY[i] += down - up;
+		}
 	}
 }
 

@@ -1,7 +1,6 @@
 // owns: bounded coal/goods demand, stock feedback and household uptake
 // edit for: catchment pressure, signal speed and queue service
 
-const MAPE_MARKET_STEP = 0.05;
 const MAPE_MARKET_COAL_USE = 0.045;
 const MAPE_MARKET_GOODS_USE = 0.036;
 const MAPE_MARKET_FOOD_USE = 0.036;
@@ -9,12 +8,15 @@ const MAPE_MARKET_RESERVE = 1.5;
 const MAPE_CATCHMENT_STOCK_SECONDS = 9;
 const MAPE_CATCHMENT_RESPONSE = 0.9;
 const MAPE_CATCHMENT_STRENGTH = 5;
-const MAPE_CATCHMENT_DECAY = 0.8;
-const MAPE_CATCHMENT_DIFFUSE = 24;
+// Pull diffusion obeys the units rule (units-and-scales.md): one Jacobi pass per canonical tick
+// with mix = D · SIM_STEP_SEC ≤ MAPE_MIX_MAX, so D ≤ 3 cells²/s. D and decay are scaled together
+// to keep reach sqrt(D / decay): 24 / 0.8 → 3 / 0.1 = 5.5 cells, 16 / 0.8 → 2 / 0.1 = 4.5 cells.
+const MAPE_CATCHMENT_DECAY = 0.1;
+const MAPE_CATCHMENT_DIFFUSE = 3;
 const MAPE_QUEUE_STOCK_SECONDS = 12;
 const MAPE_QUEUE_RESPONSE = 1.6;
-const MAPE_QUEUE_DECAY = 0.8;
-const MAPE_QUEUE_DIFFUSE = 16;
+const MAPE_QUEUE_DECAY = 0.1;
+const MAPE_QUEUE_DIFFUSE = 2;
 const MAPE_QUEUE_SECONDS = 0.25;
 const MAPE_QUEUE_SERVICE_SECONDS = 0.1;
 const MAPE_QUEUE_COOLING = 0.32;
@@ -157,7 +159,9 @@ function mapeDriftMarketSlice(off, dt, queue) {
 	const { land, landCount } = mapeMarketFlow;
 	const { demand, goods, localPressure, marketFill } = mape;
 	const ambient = localPressure ? Math.max(MAPE_MARKET_AMBIENT, marketFill) : marketFill;
-	const recover = 1 - Math.exp(-(localPressure ? 0.12 : mapeMarketDecay(queue)) * dt);
+	// The pressure-mode return scales with the diffusion rescale (0.12 / 8) so its wider reach,
+	// sqrt(D / recover) ≈ 14 cells, is unchanged.
+	const recover = 1 - Math.exp(-(localPressure ? 0.015 : mapeMarketDecay(queue)) * dt);
 	for (let k = 0; k < landCount; k++) {
 		const p = off + land[k];
 		const here = demand[p];
@@ -168,18 +172,20 @@ function mapeDriftMarketSlice(off, dt, queue) {
 	if (queue) mapeMarketPinQueues(demand, off);
 }
 
+// One Jacobi pass per tick, mix = D · dt inside the units budget (units-and-scales.md). The pass
+// reads demand and writes demandNext; queue cells are pinned in the destination so the spread
+// starts from the settlement signal, then the land slice is copied back for the drift step.
 function mapeUpdateMarketSlice(r, dt, queue) {
 	const off = r * world.n;
 	const { demand, demandNext } = mape;
-	const rate = queue ? MAPE_QUEUE_DIFFUSE : MAPE_CATCHMENT_DIFFUSE;
-	const passes = mapeDiffusePasses(rate, dt);
-	const mix = passes > 0 ? rate * dt / passes : 0;
+	const mix = (queue ? MAPE_QUEUE_DIFFUSE : MAPE_CATCHMENT_DIFFUSE) * dt;
 	mapePullMarketSlice(r, dt, queue);
-	for (let pass = 0; pass < passes; pass += 2) {
-		mapeMarketJacobi(demand, demandNext, off, mix);
-		if (queue) mapeMarketPinQueues(demandNext, off);
-		mapeMarketJacobi(demandNext, demand, off, mix);
-		if (queue) mapeMarketPinQueues(demand, off);
+	mapeMarketJacobi(demand, demandNext, off, mix);
+	if (queue) mapeMarketPinQueues(demandNext, off);
+	const { land, landCount } = mapeMarketFlow;
+	for (let k = 0; k < landCount; k++) {
+		const p = off + land[k];
+		demand[p] = demandNext[p];
 	}
 	mapeDriftMarketSlice(off, dt, queue);
 }

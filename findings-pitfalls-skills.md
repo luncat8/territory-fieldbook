@@ -187,10 +187,14 @@ it a fixed halo invite someone to clamp the field to keep it.
 The A/B pull mixed `0.2 · dt / 0.05` per Jacobi pass and the signed kernel mixed
 `0.72 · 0.25 · dt / 0.2`. Both were fine at today's numbers and both were one tuning step from
 exploding: per-pass mix above `0.25` oscillates, and a 0.2 s A/B step blew the 0–1 pull to
-`3e38`. A hard-coded even pass count was also load-bearing — an odd count leaves the result in
-the scratch buffer. Configure a coefficient in cells²/s and derive passes from it
-(`mapeDiffusePasses`): speed or step changes then cost passes, never stability. Fade with
-`exp(−k · dt)` for the same reason.
+`3e38`. Multipass splitting hid the problem — the pass count made any coefficient "safe" while
+the units were wrong. The fix that stuck is scale, not passes (**units-and-scales.md**): one
+Jacobi pass per canonical tick, every shipped `D · SIM_STEP_SEC ≤ MAPE_MIX_MAX = 0.15` by
+construction (a rate above it fails `experiments/mape_diffusion_speed.js` instead of quietly
+splitting), and a speed change rescales `decay` with `D` so `sqrt(D / decay)` — the reach —
+stays put. Fade with `exp(−k · dt)` for the same reason. Trade-off to remember: reach is
+preserved but transients slow with the rescale, so scene gates that watch a pull re-aim need
+seconds, not one tick.
 
 ## never scale a physical need by the signal that decides where supply goes
 

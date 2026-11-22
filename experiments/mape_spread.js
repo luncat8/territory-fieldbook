@@ -16,7 +16,9 @@ for (const file of scripts) {
 
 const metrics = vm.runInThisContext(`
 (function () {
-	const dt = MAPE_MAX_STEP;
+	// Measurement window per iteration: mapeStep advances it as whole canonical ticks, so every
+	// s · dt below stays a true simulated second.
+	const dt = 4 * SIM_STEP_SEC;
 	const size = world.size;
 	const n = world.n;
 	// Physics unit tests: the placement scan would drop job sites mid-measurement.
@@ -341,11 +343,11 @@ const metrics = vm.runInThisContext(`
 		if (!Number.isFinite(mape.pop[i]) || mape.pop[i] < -1e-6 || !Number.isFinite(mape.workforce[i]) || mape.workforce[i] < -1e-6) badValues++;
 	}
 
-	// 5. Timing: live 64x64 R=4 mapeStep(0.2) + kernel scaling across R in {1,4,8} and size in {64,128,256}.
-	for (let w = 0; w < 50; w++) mapeStep(dt);
+	// 5. Timing: one canonical tick on the live 64x64 R=4 map + kernel scaling across R in {1,4,8} and size in {64,128,256}.
+	for (let w = 0; w < 200; w++) mapeStep(SIM_STEP_SEC);
 	const liveTicks = 400;
 	const t0 = performance.now();
-	for (let t = 0; t < liveTicks; t++) mapeStep(dt);
+	for (let t = 0; t < liveTicks; t++) mapeStep(SIM_STEP_SEC);
 	const liveMs = (performance.now() - t0) / liveTicks;
 
 	const scaling = [];
@@ -372,10 +374,10 @@ const metrics = vm.runInThisContext(`
 					if ((i + r * 11) % 31 === 0) gds[off + i] = 6.0;
 				}
 			}
-			for (let w = 0; w < 10; w++) mapeKernelStep(sz, rCount, terr, dem, demNext, gds, gdsNext, pop, work, workNext, dt);
+			for (let w = 0; w < 10; w++) mapeKernelStep(sz, rCount, terr, dem, demNext, gds, gdsNext, pop, work, workNext, SIM_STEP_SEC);
 			const runs = sz === 256 ? 40 : sz === 128 ? 100 : 300;
 			const s0 = performance.now();
-			for (let k = 0; k < runs; k++) mapeKernelStep(sz, rCount, terr, dem, demNext, gds, gdsNext, pop, work, workNext, dt);
+			for (let k = 0; k < runs; k++) mapeKernelStep(sz, rCount, terr, dem, demNext, gds, gdsNext, pop, work, workNext, SIM_STEP_SEC);
 			scaling.push({ size: sz, r: rCount, ms: (performance.now() - s0) / runs });
 		}
 	}

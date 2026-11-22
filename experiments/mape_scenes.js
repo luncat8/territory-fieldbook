@@ -67,7 +67,9 @@ function verifyReroute() {
 	const east = mape.flowX[source] / mape.flowDt;
 	edit(3, 42, 32);
 	edit(2, 18, 32);
-	advance(1);
+	// Two seconds: the rescaled pull (reach kept, transient slower — units-and-scales.md) aims the
+	// source at the new buyer within this window and the stock has not drained yet.
+	advance(2);
 	const west = mape.flowX[source] / mape.flowDt;
 	assert.ok(east > 0.1 && west < -0.1, 'replacing the buyer reverses the actual shipments');
 	const stored = mapeGoodsTotal();
@@ -75,7 +77,7 @@ function verifyReroute() {
 	assert.equal(mapeGoodsTotal(), stored);
 	assert.equal(mape.mineCount, 0);
 	validateScene();
-	console.log(`reroute_net_east_units_per_s=${east.toFixed(2)} reroute_net_after_1s=${west.toFixed(2)}`);
+	console.log(`reroute_net_east_units_per_s=${east.toFixed(2)} reroute_net_after_2s=${west.toFixed(2)}`);
 }
 
 for (const id of ['a', 'b']) {

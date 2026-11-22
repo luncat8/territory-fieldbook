@@ -6,7 +6,6 @@ const MAPE_TRANSPORT_SPEED = 2.0;   // transit speed in cells/s (~10 s across 20
 const MAPE_SHIPMENT_CAP = 512;      // fixed SoA transit pool slots
 const MAPE_SITE_HOLD_SEC = 10;      // seconds of forward need a cell keeps unsold
 const MAPE_SITE_ORDER_MIN = 0.5;    // smallest batch worth a shipment
-const MAPE_SITE_STEP = 0.05;
 
 const mapeSites = {
 	shipRes: null,
@@ -304,10 +303,11 @@ function mapeSitesSubstep(dt) {
 	mapeRecoverMoney(dt);
 }
 
+// Whole canonical ticks, same runner shape as mapeStepDiffusion (units-and-scales.md).
 function mapeStepSites(seconds) {
 	let left = seconds;
 	while (left > 1e-9) {
-		const dt = Math.min(MAPE_SITE_STEP, left);
+		const dt = Math.min(SIM_STEP_SEC, left);
 		mapeSitesSubstep(dt);
 		left -= dt;
 	}

@@ -192,11 +192,11 @@ MAPE_SAT_SCALE = 4                // satisfaction response timescale in seconds
 MAPE_DEMAND_GAIN = 8.0           // demand signal scale for unmet need rates
 MAPE_STOCK_SIGNAL = 0.25       // negative demand per stock unit per s
 MAPE_DIFFUSE = 1.8               // signed demand and workforce pull diffusion coefficient, cells²/s
-MAPE_MIX_MAX = 0.2               // per-pass mix ceiling; passes = what a coefficient and step need
+MAPE_MIX_MAX = 0.15              // single-pass mix budget D·dt at the canonical tick (hard bound 0.25)
 MAPE_DECAY = 0.008               // signed demand fade per s (resulting reach sqrt(D/decay) ≈ 15 cells)
 MAPE_CO2_DIFFUSE = 0.5625        // atmospheric CO2 pairwise stock diffusion, cells²/s
-MAPE_CATCHMENT_DIFFUSE = 24      // A: import pull diffusion, cells²/s
-MAPE_QUEUE_DIFFUSE = 16          // B: import pull diffusion, cells²/s
+MAPE_CATCHMENT_DIFFUSE = 3       // A: import pull diffusion, cells²/s (reach kept with decay 0.1)
+MAPE_QUEUE_DIFFUSE = 2           // B: import pull diffusion, cells²/s (reach kept with decay 0.1)
 MAPE_FLOW_SPEED = 1.8            // max goods advection rate /s up normalized gradient
 MAPE_GRAD_REF = 0.02             // Michaelis-Menten half-saturation for demand gradient
 MAPE_WORK_SIGNAL = 3.2           // workforce demand gain per unmet worker per s
@@ -297,7 +297,6 @@ MAPE_TRANSPORT_SPEED = 2.0       // site engine: transit speed in cells/s
 MAPE_SHIPMENT_CAP = 512          // site engine: fixed transit pool capacity
 MAPE_SITE_HOLD_SEC = 10          // site engine: household/factory hold window (s)
 MAPE_SITE_ORDER_MIN = 0.5        // site engine: minimum order quantity
-MAPE_SITE_STEP = 0.05            // site engine: order/arrival substep (s)
 ```
 
 State:
@@ -334,9 +333,10 @@ land stencil, catchment reach and queue scratch are built once per layout.
 
 ## Diffusion engine (Phases 1–3)
 
-The shared tick runs at 0.05 s in the survey. The signed reference kernel can
-also step in chunks of up to 0.2 s (`MAPE_MAX_STEP`); `mapeWarmDemand` relaxes the signed fields over 8 s at boot without
-moving stocks or people:
+The shared tick runs at 0.05 s (`SIM_STEP_SEC`) and is the only step size the
+economy has: engines take a duration in seconds and advance whole canonical
+ticks, never a larger dt (**units-and-scales.md**). `mapeWarmDemand` relaxes the
+signed fields over 8 s at boot without moving stocks or people:
 
 1. **Demand injection.** Cells with `pop > 0` inject `GOODS` and `COAL`
    need rates and negative `CO2`
@@ -344,12 +344,12 @@ moving stocks or people:
    factories inject `IRON` demand; active factories inject `COAL` and
    `IRON` demand and negative `CO2` demand. Water cells stay at 0.
 2. **Stock feedback (checkbox, on by default).** Each land cell subtracts `stock * MAPE_STOCK_SIGNAL * dt` from its item’s demand field at that cell (stock is the cell total). Switching off removes only this source. Existing signals continue to diffuse and decay.
-3. **Demand diffusion.** Symmetric zero-flux Jacobi passes with coefficient
-   `MAPE_DIFFUSE = 1.8 cells²/s` and fade `MAPE_DECAY = 0.008/s` (subnormal
-   clamp `1e-12`). Demand is not a distance field with a cutoff: a signal
-   spreads and fades over time, and how far it carries — `sqrt(D / decay)`,
+3. **Demand diffusion.** One symmetric zero-flux Jacobi pass per tick with
+   coefficient `MAPE_DIFFUSE = 1.8 cells²/s` and fade `MAPE_DECAY = 0.008/s`
+   (subnormal clamp `1e-12`). Demand is not a distance field with a cutoff: a
+   signal spreads and fades over time, and how far it carries — `sqrt(D / decay)`,
    about 15 cells here — is a result of the two rates. See **Diffusion speed
-   and stability** for how a coefficient becomes passes. `COAL`,
+   and stability** for the mix budget a coefficient must sit inside. `COAL`,
    `IRON`, `GOODS` and `workforce` diffuse over walkable 4-neighbours only;
    `CO2` demand and pairwise `CO2` stock diffuse across all cells including water.
 4. **Gradient goods and worker transport.** For `COAL`, `IRON`, `GOODS`, stock
@@ -390,30 +390,31 @@ moving stocks or people:
 Every diffusing field — signed demand, workforce pull, rest pull, depleted
 workforce, CO2 stock and the A/B import pull — is configured by a coefficient
 `D` in cells²/s plus, where it fades, a decay rate per second. Neither names a
-distance. A step of `dt` needs a total mix of `D · dt`; explicit 4-neighbour
-mixing is unstable above `0.25` per pass, so `mapeDiffusePasses(D, dt)` splits
-the step into the fewest passes that keep each one at or below
-`MAPE_MIX_MAX = 0.2`. Ping-pong fields round the count up to an even number so
-the last pass lands in the field, never in the scratch buffer; the pairwise
-CO2 stock pass works in place and accepts any count. Fade multiplies by
-`exp(−decay · dt)`, so a fast fade on a long step cannot go negative.
+distance. A tick of `dt` applies exactly one Jacobi pass with mix `D · dt`;
+explicit 4-neighbour mixing is unstable above `0.25` (convex weights), so the
+design budget `MAPE_MIX_MAX = 0.15` must hold by construction: `dt ≤ SIM_STEP_SEC`
+and every shipped `D ≤ 3 cells²/s`. Stability is a property of the units, not of
+a pass count — coefficients are scaled into the budget, never split into passes
+and never absorbed by substeps (**units-and-scales.md**). Fade multiplies by
+`exp(−decay · dt)`, so a fast fade on any legal tick cannot go negative.
 
 Consequences that keep future tuning safe:
 
-- raising a speed, or lengthening the step, costs passes, never stability: 50×
-  the shipped coefficient on a `0.2 s` step stays positive, conservative and
-  blocked by water;
-- variance grows as `2 D t`, so four times `D` spreads four times as wide, and
-  the fade reach `sqrt(D / decay)` doubles with it. Reach-based remarks in this
-  plan (A/B pull about five cells, signed demand about fifteen) are measured
+- `experiments/mape_diffusion_speed.js` audits every shipped coefficient against
+  the budget and shows one pass at the fastest legal rate stays positive,
+  conservative and blocked by water;
+- variance grows as `2 D t`, so twice the `D` spreads twice as wide, and the
+  fade reach `sqrt(D / decay)` grows with it. Reach-based remarks in this plan
+  (A/B pull about five cells, signed demand about fifteen) are measured
   outcomes of the current rates, not limits any code enforces;
+- a coefficient above the budget is a units error: lower `D` and scale `decay`
+  with it to keep reach, or shorten the tick — never add passes;
 - the only absolute thresholds read on a diffused field are the sawmill's log
   pull floor and the view ramps; retune them when a speed change moves the
   field level, nothing else depends on the field's size.
 
-`experiments/mape_diffusion_speed.js` gates all of the above. A per-cell
-transport speed map (see **Transport speed map**) plugs into the same rule:
-the pass count follows the fastest edge.
+A per-cell transport speed map (see **Transport speed map**) plugs into the
+same budget: conductances multiply `D`, so `D · max(c) · dt` stays inside it.
 
 ## Population dynamics
 
@@ -901,10 +902,12 @@ ledger, and the last 1.5 units of settlement goods are reserved for player
 supply purchases. Iron, CO2 and workforce keep the shared field rules.
 
 The field outside the settlements fades back toward the ambient fill at
-`MAPE_CATCHMENT_DECAY` (`0.8/s`) while it diffuses; with the A coefficient that
-fade leaves a town's pull readable about five cells out (`sqrt(24 / 0.8)`), a
+`MAPE_CATCHMENT_DECAY` (`0.1/s`) while it diffuses; with the A coefficient that
+fade leaves a town's pull readable about five cells out (`sqrt(3 / 0.1)`), a
 measured outcome rather than a cutoff — change either rate and the reach moves
-with it. The rate was tuned against town density: at the seeded 2% density the
+with it. `D` and the decay are one knob in two parts: their ratio fixes the
+reach, and the decay sets how long a fresh halo takes to form (seconds at
+`0.1/s`), which is why scene reroutes are gated over a two-second window. The rate was tuned against town density: at the seeded 2% density the
 nearest neighbour is 2–5 cells, and a ten-cell fade merged neighbouring towns
 into one flat sheet so every town read the same. An active plant also
 advertises a graded coal pull over `MAPE_FACTORY_YARD` (half-width 4,
@@ -916,8 +919,8 @@ pull. A single pinned cell lost its coal to a larger town pull next door.
   `1 / (1 + stock / max(1, 9 × rate))` at `0.9/s`. Stock is the total reachable
   in four cardinal steps — the intake catchment, where households fetch from,
   not a demand limit. Apply that signal over the same catchment with falloff,
-  then spread it with `MAPE_CATCHMENT_DIFFUSE = 24 cells²/s` (six passes per
-  0.05 s today). The
+  then spread it with `MAPE_CATCHMENT_DIFFUSE = 3 cells²/s` (one pass per
+  canonical tick, mix 0.15). The
   3x3 filtered demand steers uncapped, conservative uphill hauling at up to
   `6.5 cells/s`. After hauling, the town consumes its need,
   `rate × dt`, proportionally from reachable stock; the need is fixed, because
@@ -925,8 +928,8 @@ pull. A single pinned cell lost its coal to a larger town pull next door.
   uptake, so towns hoarded coal and the field died.
 - **B · Queue:** the target senses falloff-weighted stock within four steps
   and cools further as the settlement fills its short intake buffer. The
-  center relaxes at `1.6/s` and holds its value through every pass of
-  `MAPE_QUEUE_DIFFUSE = 16 cells²/s` (four passes per 0.05 s today). Eight-neighbor uphill transfer can use diagonal routes
+  center relaxes at `1.6/s` and is pinned through the single Jacobi pass of
+  `MAPE_QUEUE_DIFFUSE = 2 cells²/s` (mix 0.10 per canonical tick). Eight-neighbor uphill transfer can use diagonal routes
   without cutting water corners. Intake room is `0.25 × rate`; service uses
   `min(rate × dt, stock × (1 − exp(−dt / 0.1)))` before arrivals. Service
   doesn't slow merely because import pull is cool. Competing shipments use
@@ -994,11 +997,13 @@ precomputed once per rebuild (right and down edge per cell, `2n` floats).
 - *Not applied*: CO2 moves in the air; waste leachate and hydrology keep their
   own rules.
 
-**Stability.** Pass counts already follow the coefficient (**Diffusion speed and
-stability**); with conductance they follow `D · max(c) · dt`. Speeds at or below
-`1` add no passes; a road at `3` triples them on its own instead of breaking
-the field. Haul fractions keep `MAPE_STEP_FRAC_MAX` by dividing the base
-fraction by `max(c)` when it exceeds `1`.
+**Stability.** One pass per tick either way (**Diffusion speed and
+stability**); with conductance the budget is `D · max(c) · dt ≤ MAPE_MIX_MAX`.
+Terrain speeds at or below `1` only shrink the mix; a road above `1` has to fit
+the same budget — a `3x` road needs a base `D ≤ 1`, so roads and coefficients
+share one scale instead of buying extra passes. Haul fractions keep
+`MAPE_STEP_FRAC_MAX` by dividing the base fraction by `max(c)` when it exceeds
+`1`.
 
 **Display.** An amount-side `transport speed` layer with a fixed 0–1 legend
 (roads above `1` saturate), and the cell inspector lists speed beside terrain.
@@ -1055,8 +1060,9 @@ HUD and atmospheric CO2 diffusion, replacing goods routing and placement scoring
 - Household and factory holds (`MAPE_SITE_HOLD_SEC` windows) bound what may leave
   a counterparty's stock; orders below `MAPE_SITE_ORDER_MIN` wait.
 - Population satisfaction and growth read delivered settlement stocks directly.
-- `mapeStepSites` substeps at ≤ `MAPE_SITE_STEP`: population and atmosphere
-  first, then arrivals, metabolism and production, then orders.
+- `mapeStepSites` advances whole canonical ticks (`SIM_STEP_SEC`,
+  **units-and-scales.md**): population and atmosphere first, then arrivals,
+  metabolism and production, then orders.
 
 ## Selectable interface
 
@@ -1125,8 +1131,8 @@ player's job, and the towns beyond a workshop's catchment stay on subsistence.
 Target: `< 2 ms` for one 64×64, `R = 4` field tick (up to ~160 ms of
 simulation CPU time per real second at 4×). The raster and batched trace paths
 paint on animation frames, independently of simulation and HUD cadence. The
-0.2 s signed reference kernel also has a scaling gate in
-`experiments/mape_spread.js`; larger maps can stagger the solve rather than
+signed reference kernel also has a scaling gate in
+`experiments/mape_spread.js` (measured at the canonical tick); larger maps can stagger the solve rather than
 increasing per-frame work proportionally.
 
 ## Visualization and HUD

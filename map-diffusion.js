@@ -1,11 +1,12 @@
 // owns: diffusion map-economy step — demand/workforce Jacobi fields, gradient goods/worker flow, mine output
 // edit for: diffusion and decay constants, advection speed, workforce recruitment, scaling kernel
 
-const MAPE_MAX_STEP = 0.2;
 // Diffusion speeds are coefficients in cells²/s; a field fades by its decay rate, and its reach
-// sqrt(D / decay) is a result of the two, never a cutoff. Passes come from mapeDiffusePasses.
+// sqrt(D / decay) is a result of the two, never a cutoff. Stability comes from units, not from
+// passes: one Jacobi pass per canonical tick, mix = D · SIM_STEP_SEC ≤ MAPE_MIX_MAX (0.15, hard
+// bound 0.25) — units-and-scales.md; audited by experiments/mape_diffusion_speed.js.
 const MAPE_DIFFUSE = 1.8;
-const MAPE_MIX_MAX = 0.2;
+const MAPE_MIX_MAX = 0.15;
 const MAPE_DECAY = 0.008;
 const MAPE_DEMAND_GAIN = 8.0;
 const MAPE_STOCK_SIGNAL = 0.25;
@@ -222,27 +223,19 @@ function mapeDiffuseAllPass(src, dst, off, size, edgeMix, keep) {
 	return loss * decay;
 }
 
-// Explicit 4-neighbour mixing turns unstable above 0.25 per pass, so a faster coefficient or a
-// longer step buys more passes instead of a bigger mix. Ping-pong buffers ask for an even count
-// so the last pass lands in the field.
-function mapeDiffusePasses(rate, dt, multiple = 2) {
-	const total = rate * dt;
-	return total > 0 ? multiple * Math.ceil(total / (multiple * MAPE_MIX_MAX)) : 0;
-}
-
+// One Jacobi pass per tick. mix = rate · dt must sit at or below MAPE_MIX_MAX by construction
+// (units-and-scales.md): rates are scaled so a single pass is always stable — no pass count, no
+// substeps. The pass reads field and writes scratch, then the slice is copied back so callers
+// keep their buffer identities (demandView subarrays point into mape.demand).
 function mapeDiffuseSlice(field, scratch, off, size, terrain, landOnly, rate, decayRate, dt) {
-	const passes = mapeDiffusePasses(rate, dt);
-	const edgeMix = passes > 0 ? rate * dt / passes : 0;
+	if (rate <= 0 || dt <= 0) return 0;
+	const edgeMix = rate * dt;
 	const keep = decayRate > 0 ? Math.exp(-decayRate * dt) : 1;
-	let loss = 0;
-	for (let p = 0; p < passes; p++) {
-		const k = p + 1 === passes ? keep : 1;
-		const src = (p & 1) === 0 ? field : scratch;
-		const dst = (p & 1) === 0 ? scratch : field;
-		loss += landOnly
-			? mapeDiffuseLandPass(src, dst, off, size, terrain, edgeMix, k)
-			: mapeDiffuseAllPass(src, dst, off, size, edgeMix, k);
-	}
+	const loss = landOnly
+		? mapeDiffuseLandPass(field, scratch, off, size, terrain, edgeMix, keep)
+		: mapeDiffuseAllPass(field, scratch, off, size, edgeMix, keep);
+	const end = off + size * size;
+	for (let p = off; p < end; p++) field[p] = scratch[p];
 	return loss;
 }
 
@@ -273,11 +266,11 @@ function mapeApplyTransfer(next, srcIdx, dstIdx, amount, dstMax) {
 	return moved;
 }
 
-// Pairwise transfers stay conservative; later passes read the already-mixed stock.
+// Pairwise stock transfer in one pass: mix = D · dt ≤ MAPE_MIX_MAX by the units rule. Transfers
+// stay conservative and are bounded by what each cell holds.
 function mapeDiffuseCo2Stock(goods, next, off, size, dt) {
-	const passes = mapeDiffusePasses(MAPE_CO2_DIFFUSE, dt, 1);
-	const edgeMix = passes > 0 ? MAPE_CO2_DIFFUSE * dt / passes : 0;
-	for (let pass = 0; pass < passes; pass++) mapeCo2Pass(pass === 0 ? goods : next, next, off, size, edgeMix);
+	if (dt <= 0) return;
+	mapeCo2Pass(goods, next, off, size, MAPE_CO2_DIFFUSE * dt);
 }
 
 function mapeCo2Pass(src, next, off, size, edgeMix) {
@@ -428,7 +421,7 @@ function mapeTransportWorkers(dt) {
 	mapeRebuildSettlements();
 }
 
-function mapeDiffusionSubstep(dt) {
+function mapeDiffusionTick(dt) {
 	mapePopulationBeginStep();
 	const size = world.size;
 	const n = world.n;
@@ -474,12 +467,14 @@ function mapeDiffusionSubstep(dt) {
 	mapeRecoverMoney(dt);
 }
 
+// Advance a duration in whole canonical ticks: one tick (SIM_STEP_SEC) is the only step size the
+// economy has, and a final partial tick is never longer than the tick — so every mix stays inside
+// the units budget no matter how long the caller asks for.
 function mapeStepDiffusion(seconds) {
-	const step = mape.engine === MAPE_ENGINE.DIFFUSION ? MAPE_MAX_STEP : MAPE_MARKET_STEP;
 	let left = seconds;
 	while (left > 1e-9) {
-		const dt = Math.min(step, left);
-		mapeDiffusionSubstep(dt);
+		const dt = Math.min(SIM_STEP_SEC, left);
+		mapeDiffusionTick(dt);
 		left -= dt;
 	}
 }
@@ -490,16 +485,16 @@ function mapeWarmDemand(marketsOnly) {
 	const fieldMarkets = mapeMarketEngine();
 	if (!marketsOnly || !fieldMarkets) {
 		const dissipated = mape.dissipated;
-		const steps = Math.round((marketsOnly ? MAPE_SWITCH_WARM_SEC : MAPE_WARM_SEC) / MAPE_MAX_STEP);
+		const steps = Math.round((marketsOnly ? MAPE_SWITCH_WARM_SEC : MAPE_WARM_SEC) / SIM_STEP_SEC);
 		for (let s = 0; s < steps; s++) {
-			mapeInjectDemand(MAPE_MAX_STEP, marketsOnly);
-			mapeDiffuseFields(MAPE_MAX_STEP, marketsOnly);
+			mapeInjectDemand(SIM_STEP_SEC, marketsOnly);
+			mapeDiffuseFields(SIM_STEP_SEC, marketsOnly);
 		}
 		mape.dissipated = dissipated;
 	}
 	if (!fieldMarkets) return;
-	const marketSteps = Math.round((marketsOnly ? MAPE_SWITCH_WARM_SEC : MAPE_MARKET_WARM_SEC) / MAPE_MARKET_STEP);
-	for (let s = 0; s < marketSteps; s++) mapeUpdateMarketFields(MAPE_MARKET_STEP);
+	const marketSteps = Math.round((marketsOnly ? MAPE_SWITCH_WARM_SEC : MAPE_MARKET_WARM_SEC) / SIM_STEP_SEC);
+	for (let s = 0; s < marketSteps; s++) mapeUpdateMarketFields(SIM_STEP_SEC);
 }
 
 // Exercises the exact diffusion + advection kernels at arbitrary R and grid size for Phase 1 scaling gates.
@@ -528,6 +523,6 @@ function mapeKernelStep(size, rCount, terrain, demand, demandNext, goods, goodsN
 if (typeof module !== 'undefined') {
 	module.exports = {
 		mapeStepDiffusion, mapeWarmDemand, mapeKernelStep,
-		mapeDiffusePasses, MAPE_DIFFUSE, MAPE_MIX_MAX, MAPE_DECAY, MAPE_FLOW_SPEED
+		MAPE_DIFFUSE, MAPE_MIX_MAX, MAPE_DECAY, MAPE_FLOW_SPEED
 	};
 }
