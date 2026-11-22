@@ -52,7 +52,7 @@ function mapeFluidAdvect(dt, size, terrain, pull, fresh, freshNext, cond) {
 		for (let x = 0; x < size; x++) {
 			const i = row + x;
 			if (terrain[i] === water || freshNext[i] <= MAPE_WF_EPS) continue;
-			mapePushUpGradient(x, y, i, i, size, terrain, pull, freshNext, fresh[i] * frac, MAPE_WF_GRAD_REF, 0, null, mape.wfFlowX[0], mape.wfFlowY[0], true, cond);
+			mapePushUpGradient(x, y, i, i, size, pull, freshNext, fresh[i] * frac, MAPE_WF_GRAD_REF, 0, null, mape.wfFlowX[0], mape.wfFlowY[0], true, cond);
 		}
 	}
 	fresh.set(freshNext);
@@ -212,7 +212,7 @@ function mapeFluidAdvectDepleted(dt, size, terrain, depleted, depletedNext, cond
 		for (let x = 0; x < size; x++) {
 			const i = row + x;
 			if (terrain[i] === TERRAIN.WATER || depletedNext[i] <= MAPE_WF_EPS) continue;
-			mapePushUpGradient(x, y, i, i, size, terrain, mape.wfRestPull, depletedNext, depleted[i] * frac, MAPE_WF_REST_GRAD_REF, 0, null, mape.wfFlowX[1], mape.wfFlowY[1], true, cond);
+			mapePushUpGradient(x, y, i, i, size, mape.wfRestPull, depletedNext, depleted[i] * frac, MAPE_WF_REST_GRAD_REF, 0, null, mape.wfFlowX[1], mape.wfFlowY[1], true, cond);
 		}
 	}
 	depleted.set(depletedNext);
