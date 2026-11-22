@@ -40,35 +40,22 @@ function mapeScanUnmetCoal(idx) {
 	return mape.pop[idx] * (1 - mape.satCoal[idx]);
 }
 
-// Walking distance from one cell over the land the market hauls across: 4-neighbour,
-// water blocks. The field doubles as the haul term for both the deposit anchor and
-// the snap score's stock term.
+// Travel time in meadow steps from one cell over the land the market hauls across (-1 where
+// unreachable). The field doubles as the haul term for the deposit anchor and the snap score.
 function mapeScanWalkField(sx, sy) {
-	const size = world.size;
-	const n = world.n;
-	const dist = new Int32Array(n).fill(-1);
-	const queue = new Int32Array(n);
-	const start = sy * size + sx;
+	const dist = new Float32Array(world.n).fill(-1);
+	const start = sy * world.size + sx;
 	if (world.terrain[start] === TERRAIN.WATER) return dist;
-	let head = 0;
-	let tail = 0;
-	dist[start] = 0;
-	queue[tail++] = start;
-	while (head < tail) {
-		const i = queue[head++];
-		const x = i % size;
-		const y = (i / size) | 0;
-		const d = dist[i] + 1;
-		if (x > 0 && dist[i - 1] < 0 && world.terrain[i - 1] !== TERRAIN.WATER) { dist[i - 1] = d; queue[tail++] = i - 1; }
-		if (x + 1 < size && dist[i + 1] < 0 && world.terrain[i + 1] !== TERRAIN.WATER) { dist[i + 1] = d; queue[tail++] = i + 1; }
-		if (y > 0 && dist[i - size] < 0 && world.terrain[i - size] !== TERRAIN.WATER) { dist[i - size] = d; queue[tail++] = i - size; }
-		if (y + 1 < size && dist[i + size] < 0 && world.terrain[i + size] !== TERRAIN.WATER) { dist[i + size] = d; queue[tail++] = i + size; }
+	const count = transportTravel(start, Infinity);
+	for (let k = 0; k < count; k++) {
+		const cell = transport.order[k];
+		dist[cell] = transport.time[cell];
 	}
 	return dist;
 }
 
 // Every stock-carrying deposit of the inputs a general plant consumes, each with
-// its walking-distance field. Population enters the anchor through the haul term.
+// its travel-time field. Population enters the anchor through the haul term.
 function mapeScanDepositFields() {
 	const out = [];
 	for (let m = 0; m < mape.mineCount; m++) {
