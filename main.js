@@ -4,10 +4,11 @@
 const $ = id => document.getElementById(id);
 
 const SIM_STEP_SEC = 0.05;
-const CLOCK_RATES = [0, 1, 2, 4];
+const CLOCK_RATES = [0, 1, 2, 4, 16];
 const CLOCK_DEFAULT_SPEED = 3;
 const FRAME_MAX_SECONDS = 0.15;
-const FRAME_MAX_ACC = 0.4;
+// 16x at 30 fps needs 0.53 s accumulated per frame; 0.8 still caps stall catch-up.
+const FRAME_MAX_ACC = 0.8;
 const START_SEED = 20261117;
 
 const clock = {

@@ -23,3 +23,12 @@ validation: node --check land.js pass; smoke 13/13 seed 20261117 (disturbed_cell
 decisions: recovery speed = terrain rate × (1 − d), so fully disturbed land needs active restoration and natural recovery cannot outrun deposit/factory disturbance
 pitfalls: none
 next: browser playtest and tuning; then take one open question from the plan
+
+plan: plan-prototype.md — speed rail pause/1×/2×/4×/16×
+changed: main.js — CLOCK_RATES [0,1,2,4,16], CLOCK_DEFAULT_SPEED stays 3, FRAME_MAX_ACC 0.5 → 0.8 (16× at 30 fps needs 0.53 s accumulated per frame)
+changed: hud.js — HUD_SPEED_LABEL gains '16×' (button loop auto-extends); plan-prototype.md:304 and units-and-scales.md:13 document the rail
+changed: experiments/dom_smoke.js — Step chip found by textContent, time_controls = 5, initial-clock control count
+validation: node --check main.js hud.js dom_smoke.js; dom_smoke and smoke exit 0; full suite 18/18 exit 0
+decisions: default stays 4×; frame cap 0.8 bounds stall catch-up at ~2.4 canonical ticks per frame
+pitfalls: index.html static 'day 1 · 0s · 4×' label must match CLOCK_DEFAULT_SPEED
+next: none — speed rail complete

@@ -8,6 +8,7 @@ Open **Test scene A** or **Test scene B** from the map header.
 - `node experiments/mape_scenes.js`, `node experiments/mape_population.js` — scenes and settlement behavior
 - `node experiments/mape_fluid.js`, `node experiments/mape_forestry.js` — workforce and industry chains
 - `node experiments/map_views.js` — paired maps, looks and overlays
+- `node experiments/mape_co2.js` — CO2 sources, demand band, flow trails and conservation
 
 Amount → **transport speed** shows the fixed 0–1 terrain-speed map (meadow 0.5; water blocked).
 Terrain multipliers are in **Tuning**; they affect haulage, pull and workforce together.

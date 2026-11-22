@@ -217,7 +217,7 @@ function checkSceneDom() {
 	run('actionsSetSpeed(0)');
 	elements.get('ui-replay').children[1].click();
 	const sceneFill = run('clock.speed === 0 && clock.seconds === 0 && mapeGoodsTotal() === 0 && mape.demandView[MAPE_RES.COAL].every(v => v === 0.5)');
-	const step = elements.get('ui-time').children[4];
+	const step = elements.get('ui-time').children.find(child => child.textContent === 'Step 0.05s');
 	step.click();
 	const sceneStep = run('clock.seconds === 0.05 && mape.minedTotal > 0');
 	const tools = elements.get('ui-tools').children[0].children;
@@ -272,7 +272,7 @@ check('boot_ok', !result.bootError);
 check('no_runtime_error', !result.runtimeError);
 check('frames_advance_at_4x', result.clockSec >= 7.8 && result.clockSec <= 8.1 && result.initialClock === 'day 1 · 0s · 4×' && /^day 8 · 7s/.test(result.clockText || ''));
 check('canvas_painted', result.litCells > 3000);
-check('time_controls', result.timeButtons === 4);
+	check('time_controls', result.timeButtons === 5);
 check('view_controls', result.viewRadios === 8 && result.distinctViews === 7);
 check('item_controls', result.startsOnSupply && result.itemRadios === 15 && result.demandItemRadios === 8 && result.itemHiddenOnTerrain && result.itemShownOnDemand && result.distinctItems >= 5);
 check('engine_controls', result.engineRadios === 4 && result.engineCatchmentChecked && result.engineSitesDisabled && result.engineClickOnly);

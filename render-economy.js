@@ -6,6 +6,8 @@ const RENDER_STYLE_NAME = ['Fieldbook', 'Prototype A', 'Prototype B'];
 const RENDER_DEMAND_MAX = 6;
 const RENDER_STOCK_MAX = 8;
 const RENDER_A_STOCK_MAX = 10;
+// CO2 is a trace gas: its own amount scale so plumes and drawdowns read against ambient.
+const RENDER_CO2_MAX = 2;
 const RENDER_B_EXPOSURE = 6000;
 const RENDER_B_LOG = Math.log1p(RENDER_B_EXPOSURE);
 const RENDER_A_LOG = Math.log1p(RENDER_A_STOCK_MAX);
@@ -129,6 +131,7 @@ function renderItemNorm(item, value, demand) {
 		if (demand) return v / (v + MAPE_VIEW_PULL_REF);
 		return Math.min(1, Math.log1p(v) / RENDER_POOL_LOG);
 	}
+	if (item === MAPE_RES.CO2 && !demand) return Math.sqrt(Math.min(1, v / RENDER_CO2_MAX));
 	return -1;
 }
 
@@ -292,7 +295,7 @@ function renderFlowBand(ctx, time, min, max, bright) {
 }
 
 function renderHasFlowItem(item) {
-	return item < MAPE_RES.CO2 || (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID && (item === MAPE_VIEW_ITEM.FRESH || item === MAPE_VIEW_ITEM.DEPLETED));
+	return item <= MAPE_RES.CO2 || (mape.workforceMode === MAPE_WORKFORCE_MODE.FLUID && (item === MAPE_VIEW_ITEM.FRESH || item === MAPE_VIEW_ITEM.DEPLETED));
 }
 
 function renderGoodsFlow(ctx) {

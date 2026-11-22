@@ -113,7 +113,7 @@ function hudPaintFieldLegend(refs, demand) {
 		refs.range.textContent = '0 → 100% · linear';
 	} else if (item > MAPE_RES.CO2) hudPaintWorkerLegend(refs, item, demand, scale);
 	else if (demand) hudPaintPullLegend(refs, item, scale);
-	else hudPaintStockLegend(refs, style, scale);
+	else hudPaintStockLegend(refs, item, style, scale);
 	hudPaintLegendKey(refs, item, demand, style);
 }
 
@@ -137,11 +137,12 @@ function hudPaintPullLegend(refs, item, scale) {
 	refs.range.textContent = bounded ? '0 → 1 pull' : '−6 surplus → +6 pull';
 }
 
-function hudPaintStockLegend(refs, style, scale) {
-	const stockMax = style === RENDER_STYLE.A ? RENDER_A_STOCK_MAX : RENDER_STOCK_MAX;
+function hudPaintStockLegend(refs, item, style, scale) {
+	const trace = item === MAPE_RES.CO2;
+	const stockMax = trace ? RENDER_CO2_MAX : style === RENDER_STYLE.A ? RENDER_A_STOCK_MAX : RENDER_STOCK_MAX;
 	refs.unit.textContent = 'Amount per cell';
 	refs.scale.className = scale;
-	refs.range.textContent = '0 → ' + stockMax + '/cell' + (style === RENDER_STYLE.FIELDBOOK ? '' : ' · log');
+	refs.range.textContent = '0 → ' + stockMax + '/cell' + (style === RENDER_STYLE.FIELDBOOK || trace ? '' : ' · log');
 }
 
 function hudPaintLegendKey(refs, item, demand, style) {

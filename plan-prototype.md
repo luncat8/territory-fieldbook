@@ -301,7 +301,7 @@ that resolves to no mode is ignored. The group is styled from the shared tokens 
 (`:root`), so the checked, hover, focus-visible and disabled states all come from the palette
 rather than literals.
 
-Side panel, top to bottom: clock (storyline day and seconds) and speeds (pause/1×/2×/4×);
+Side panel, top to bottom: clock (storyline day and seconds) and speeds (pause/1×/2×/4×/16×);
 map display (Fieldbook/A/B look radios and independent overlay checkboxes); economy engine,
 stock feedback, local stock pressure and cell inspector; condition, morale, funds, supplies, items,
 members; skills with unlock marks; member rows; current-cell details, market prices and

@@ -3,7 +3,7 @@
 
 const HUD_REFRESH_SECONDS = 0.2;
 const HUD_LOG_LINES = 8;
-const HUD_SPEED_LABEL = ['pause', '1×', '2×', '4×'];
+const HUD_SPEED_LABEL = ['pause', '1×', '2×', '4×', '16×'];
 const HUD_LOCK_TEXT = ['locked — record 100% and hold cell', 'unlocked', 'unlocked (contested)', 'exhausted'];
 
 const hud = {

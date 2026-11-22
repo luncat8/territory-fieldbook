@@ -70,6 +70,8 @@ check('population_ledger_balanced', Math.abs(mapePopResidual()) < 1e-3);
 	main.setup(START_SEED, 'a', 0, MAPE_ENGINE.CATCHMENT);
 	world.terrain.fill(TERRAIN.MEADOW);
 	mape.pop.fill(0);
+	// Terrain is flat meadow with no rebuilt speed map: an all-1 table is the old c = 1 pass.
+	const ones = { condR: new Float32Array(world.n).fill(1), condD: new Float32Array(world.n).fill(1) };
 	const town = 32 * world.size + 32;
 	const job = town + 8;
 	mape.pop[town] = 1;
@@ -78,16 +80,16 @@ check('population_ledger_balanced', Math.abs(mapePopResidual()) < 1e-3);
 	mape.wfRestPull.fill(0);
 	mape.wfDepleted.fill(0);
 	mape.wfFresh.fill(0);
-	for (let k = 0; k < 2000; k++) mapeFluidRestPull(0.05, world.size, world.terrain);
+	for (let k = 0; k < 2000; k++) mapeFluidRestPull(0.05, world.size, world.terrain, ones);
 	mape.wfDepleted[job] = 10;
 	let directional = false;
 	const before = mape.fluidRested;
 	for (let k = 0; k < 2000; k++) {
 		mape.wfFlowX[1].fill(0);
 		mape.wfFlowY[1].fill(0);
-		mapeFluidAdvectDepleted(0.05, world.size, world.terrain, mape.wfDepleted, mape.wfDepletedNext);
+		mapeFluidAdvectDepleted(0.05, world.size, world.terrain, mape.wfDepleted, mape.wfDepletedNext, ones);
 		if (mape.wfFlowX[1][job] < 0) directional = true;
-		mapeFluidDiffuse(0.05, world.size, world.terrain, mape.wfDepleted, mape.wfDepletedNext);
+		mapeFluidDiffuse(0.05, world.size, world.terrain, mape.wfDepleted, mape.wfDepletedNext, ones);
 		mapeFluidRest(0.05, mape.wfDepleted, mape.wfFresh);
 	}
 	console.log('return_log=distance_cells 8 rested ' + (mape.fluidRested - before).toFixed(3));
@@ -102,13 +104,13 @@ check('population_ledger_balanced', Math.abs(mapePopResidual()) < 1e-3);
 	mape.wfFresh.fill(0);
 	mape.wfFresh[town] = 10;
 	mape.wfFlowX[0].fill(0);
-	mapeFluidAdvect(0.05, world.size, world.terrain, mape.workforce, mape.wfFresh, mape.wfFreshNext);
+	mapeFluidAdvect(0.05, world.size, world.terrain, mape.workforce, mape.wfFresh, mape.wfFreshNext, ones);
 	check('fresh_flow_records_accepted_transfer', mape.wfFlowX[0][town] > 0 && Math.abs(mape.wfFlowX[0][town] - mape.wfFresh[town + 1]) < 1e-6);
 	mape.wfDepleted.fill(0);
 	mape.wfDepleted[town] = 10;
 	mape.wfFlowX[1].fill(0);
 	mape.wfFlowY[1].fill(0);
-	mapeFluidDiffuse(0.05, world.size, world.terrain, mape.wfDepleted, mape.wfDepletedNext);
+	mapeFluidDiffuse(0.05, world.size, world.terrain, mape.wfDepleted, mape.wfDepletedNext, ones);
 	check('diffusion_flow_records_outward_transfer', mape.wfFlowX[1][town + 1] > 0 && mape.wfFlowX[1][town - 1] < 0);
 
 }

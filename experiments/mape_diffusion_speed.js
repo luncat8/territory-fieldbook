@@ -23,6 +23,8 @@ const n = size * size;
 const meadow = new Uint8Array(n).fill(TERRAIN.MEADOW);
 const center = 32 * size + 32;
 const MAX_RATE = MAPE_MIX_MAX / SIM_STEP_SEC; // largest legal coefficient at the canonical tick
+// Kernels require conductance tables; this file audits rates at c = 1, so all-1.
+const ones = { condR: new Float32Array(n).fill(1), condD: new Float32Array(n).fill(1) };
 
 // Units audit: every shipped diffusion rate at the canonical tick stays inside the budget, the
 // budget itself sits below the hard 0.25 bound, and the A/B pull reaches are unchanged from the
@@ -43,13 +45,13 @@ budgetOk = budgetOk && Math.abs(reachA - Math.sqrt(24 / 0.8)) < 0.05 && Math.abs
 check('shipped_rates_within_mix_budget', budgetOk,
 	'maxMix=' + worst.toFixed(4) + '/' + MAPE_MIX_MAX + ' reachA=' + reachA.toFixed(2) + ' reachB=' + reachB.toFixed(2));
 
-function spread(rate, decay, seconds, dt, terrain, source) {
+function spread(rate, decay, seconds, dt, terrain, source, cond = ones) {
 	const field = new Float64Array(n);
 	const scratch = new Float64Array(n);
 	if (!source) field[center] = 1000;
 	for (let t = 0; t < Math.round(seconds / dt); t++) {
 		if (source) field[center] += source * dt;
-		mapeDiffuseSlice(field, scratch, 0, size, terrain, true, rate, decay, dt);
+		mapeDiffuseSlice(field, scratch, 0, size, terrain, true, rate, decay, dt, cond);
 	}
 	return field;
 }
@@ -95,10 +97,11 @@ const farReach = reach(spread(MAX_RATE, decay, 30, SIM_STEP_SEC, meadow, 10));
 check('reach_follows_speed', Math.abs(farReach / nearReach - Math.SQRT2) < 0.3,
 	'reach=' + nearReach.toFixed(2) + '->' + farReach.toFixed(2) + ' sqrt(D/k)=' + Math.sqrt(MAX_RATE / decay).toFixed(2));
 
-// Water stays a zero-flux wall at the fastest legal rate.
+// Water stays a zero-flux wall at the fastest legal rate — c = 0 comes from the
+// built conductance table, not from a terrain check inside the kernel.
 const walled = new Uint8Array(meadow);
 for (let y = 0; y < size; y++) walled[y * size + 40] = TERRAIN.WATER;
-const wall = spread(MAX_RATE, 0, 4, SIM_STEP_SEC, walled);
+const wall = spread(MAX_RATE, 0, 4, SIM_STEP_SEC, walled, 0, transportBuild(walled, size));
 let beyond = 0;
 for (let y = 0; y < size; y++) {
 	for (let x = 40; x < size; x++) beyond += wall[y * size + x];

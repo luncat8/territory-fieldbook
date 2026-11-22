@@ -32,7 +32,7 @@ Stock feedback cools log demand, so surplus logs suppress additional cutting.
 In the factory phase, factories appear where goods need and coal/iron surplus overlap, build
 over 10–30 s while demanding iron, then consume coal and iron ore to produce
 goods plus waste plus CO2; settlements consuming goods leave waste and burning
-coal releases CO2; waste is disturbed land (`land.js`); CO2 feeds forest growth;
+coal releases CO2; waste is disturbed land (`land.js`) and dumps CO2; CO2 feeds forest growth;
 production and transport create workforce demand; a town that cannot staff the
 work it owns draws residents from one that can, though the map total only moves
 on food, and population grows where needs are met and declines where they are
@@ -96,7 +96,8 @@ fields (`territory.js`), disturbed fraction (`land.js`), biomass and oxygen
   standing water and bank seepage. Hills retain less recharge than meadows. Flat
   reference scenes hold soil at 0.5 and do not advance weather.
   Each shared economy substep runs the forest cycle in every engine, including scenes.
-  Coal burning emits CO2; forest growth removes it and dieback returns it.
+  Coal burning and disturbed waste land emit CO2; forest growth removes it and
+  dieback returns it.
   Oxygen production/use follows the signed carbon exchange.
 
 ## Core concepts
@@ -194,7 +195,7 @@ MAPE_STOCK_SIGNAL = 0.25       // negative demand per stock unit per s
 MAPE_DIFFUSE = 1.8               // signed demand and workforce pull diffusion coefficient, cells²/s
 MAPE_MIX_MAX = 0.15              // single-pass mix budget D·dt at the canonical tick (hard bound 0.25)
 MAPE_DECAY = 0.008               // signed demand fade per s (resulting reach sqrt(D/decay) ≈ 15 cells)
-MAPE_CO2_DIFFUSE = 0.5625        // atmospheric CO2 pairwise stock diffusion, cells²/s
+MAPE_CO2_DIFFUSE = 0.9             // atmospheric CO2 pairwise stock diffusion, cells²/s (mix 0.045/tick)
 MAPE_CATCHMENT_DIFFUSE = 3       // A: import pull diffusion, cells²/s (reach kept with decay 0.1)
 MAPE_QUEUE_DIFFUSE = 2           // B: import pull diffusion, cells²/s (reach kept with decay 0.1)
 MAPE_FLOW_SPEED = 3.6            // max goods advection rate /s at c = 1 (meadow moves half)
@@ -239,7 +240,8 @@ MAPE_FACTORY_IDLE_SEC = 40       // starved duration before idling (40 s)
 MAPE_FACTORY_COAL = 0.5          // coal consumed /s per active factory
 MAPE_FACTORY_IRON = 0.5          // iron consumed /s per active factory
 MAPE_FACTORY_YIELD = 1.0         // goods produced /s per active factory (feeds 50 pop)
-MAPE_FACTORY_CO2 = 0.5           // CO2 emitted /s per active factory
+MAPE_FACTORY_CO2 = 1.5           // CO2 emitted /s per active factory
+MAPE_WASTE_CO2 = 0.05            // CO2 dumped /s per unit disturbed (waste) land
 MAPE_FACTORY_DISTURB = 0.004     // disturbance /s while producing, spills onto neighbours
 MAPE_FACTORY_BUILD_DISTURB = 0.0015 // disturbance /s while building, spills onto neighbours
 MAPE_MINE_WASTE = 0.0016         // spoil /s on the ring of an active mine shaft
@@ -341,9 +343,11 @@ signed fields over 8 s at boot without moving stocks or people:
 
 1. **Demand injection.** Cells with `pop > 0` inject `GOODS` and `COAL`
    need rates and negative `CO2`
-   emission demand; biosphere cells inject positive `CO2` uptake demand. Building
+   emission demand; biosphere cells inject positive `CO2` uptake demand; disturbed
+   land injects negative `CO2` dump demand (`MAPE_WASTE_CO2`). Building
    factories inject `IRON` demand; active factories inject `COAL` and
-   `IRON` demand and negative `CO2` demand. Water cells stay at 0.
+   `IRON` demand and negative `CO2` demand at their live emission rate (charcoal
+   kilns report their actual CO2 output). Water cells stay at 0.
 2. **Stock feedback (checkbox, on by default).** Each land cell subtracts `stock * MAPE_STOCK_SIGNAL * dt` from its item’s demand field at that cell (stock is the cell total). Switching off removes only this source. Existing signals continue to diffuse and decay.
 3. **Demand diffusion.** One symmetric zero-flux Jacobi pass per tick with
    coefficient `MAPE_DIFFUSE = 1.8 cells²/s` and fade `MAPE_DECAY = 0.008/s`
@@ -878,7 +882,7 @@ forest gate landed with Phase 3.
    `MAPE_BUILD_WOOD_RATE` per builder (a sawmill fells raw forest on its own
    footprint instead); construction stalls while the material is missing and
    disturbs at `0.0003/s`.
-3. **Active**: consumes `0.5 coal + 0.5 iron/s`, produces `1.0 goods + 0.5 CO2/s`,
+3. **Active**: consumes `0.5 coal + 0.5 iron/s`, produces `1.0 goods + 1.5 CO2/s`,
    disturbs at `0.0006/s` (above natural recovery so active industry requires
    restoration or management). Idles after `MAPE_FACTORY_IDLE_SEC` (`40 s`) of
    starvation with no arriving inputs and wakes on the first tick that has them.
@@ -1184,6 +1188,10 @@ and paired radios instead of hiding them.
 - **Workforce pools**: dark → amber-gold by `log1p` over `MAPE_VIEW_POOL_MAX`
   (200), water blocked like other land fields. Pooled exhaustion that is about
   to found a hamlet reads bright.
+- **CO2 amount**: `sqrt` over `RENDER_CO2_MAX` (2 per cell) so factory and town
+  plumes, waste dumps and forest drawdown read against the 0.4 ambient instead
+  of flattening into one midtone; the amount side draws the pairwise CO2 flux
+  trails (`renderHasFlowItem`) and the cell inspector reports their net rate.
 - **Fieldbook look**: navy/cyan-white stock, warm demand and moving flow traces.
 - **Prototype A look**: crisp logarithmic blue-white stock (0–10/cell),
   red/orange/yellow demand, green sources and white settlement rings.

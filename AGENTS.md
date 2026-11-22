@@ -87,7 +87,7 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	hud-tune.js — left tuning panel: sliders, copy/apply settings text, saved knobs.
 	actions.js — player verbs spanning features (move, work, sell, hire, restore, declare).
 	experiments/ — smoke (sim), dom_smoke + dom_fixture (boot/UI), map_views (display),
-	mape_compare (engines), mape_sites (site engine), mape_scenes (scenes), mape_population (settlements), mape_fluid (workforce), mape_fluid_migration (capacity and migration), mape_forestry (logs and forest production), mape_factory (placement scan), mape_farm (farms), mape_diffusion_speed (single-pass mix budget audit and reach); never loaded by the page.
+	mape_compare (engines), mape_sites (site engine), mape_scenes (scenes), mape_population (settlements), mape_fluid (workforce), mape_fluid_migration (capacity and migration), mape_forestry (logs and forest production), mape_factory (placement scan), mape_farm (farms), mape_diffusion_speed (single-pass mix budget audit and reach), mape_co2 (CO2 sources, demand band, flow trails and ledger); never loaded by the page.
 - new code goes to its owner, never appended "because the file is already there". no owner exists -> new file + header + map entry.
 - file > ~500 lines = defect. split by feature within the same plan.
 - moves are pure moves: contiguous ranges, snap to enclosing declarations, no behavior change.

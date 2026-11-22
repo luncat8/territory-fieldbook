@@ -22,6 +22,8 @@ const size = 64;
 const n = size * size;
 const meadow = new Uint8Array(n).fill(TERRAIN.MEADOW);
 const center = 32 * size + 32;
+// Kernels require conductance tables; tests that do not model terrain pass all-1.
+const ones = { condR: new Float32Array(n).fill(1), condD: new Float32Array(n).fill(1) };
 
 // The absolute scale leaves headroom for roads/ships even on maps without meadow.
 {
@@ -43,7 +45,7 @@ const center = 32 * size + 32;
 	check('mix_budget_holds', ok, 'maxSpeed=' + built.maxSpeed.toFixed(3) + ' maxCond=' + built.maxCond.toFixed(3));
 }
 
-// All-1 map reproduces the old kernels bit for bit.
+// A hand-made all-1 table matches transportBuild's uniform-meadow table bit for bit.
 {
 	const built = transportBuild(meadow, size, { groundMeadow: 2 });
 	const mk = () => ({
@@ -63,39 +65,33 @@ const center = 32 * size + 32;
 		s.pop[center] = 20;
 	}
 	for (let t = 0; t < 20; t++) {
-		mapeKernelStep(size, 1, meadow, a.demand, a.demandNext, a.goods, a.goodsNext, a.pop, a.work, a.workNext, SIM_STEP_SEC);
+		mapeKernelStep(size, 1, meadow, a.demand, a.demandNext, a.goods, a.goodsNext, a.pop, a.work, a.workNext, SIM_STEP_SEC, ones);
 		mapeKernelStep(size, 1, meadow, b.demand, b.demandNext, b.goods, b.goodsNext, b.pop, b.work, b.workNext, SIM_STEP_SEC, built);
 	}
 	let maxDiff = 0;
 	for (let i = 0; i < n; i++) {
 		maxDiff = Math.max(maxDiff, Math.abs(a.demand[i] - b.demand[i]), Math.abs(a.goods[i] - b.goods[i]), Math.abs(a.work[i] - b.work[i]));
 	}
-	check('all_one_reproduces', maxDiff === 0, 'maxDiff=' + maxDiff.toExponential(2));
+	check('all_one_table_matches_build', maxDiff === 0, 'maxDiff=' + maxDiff.toExponential(2));
 }
 
-// Water at c = 0 matches the old water barrier bit for bit.
+// Water at c = 0 is a zero-flux wall: mass is conserved and nothing crosses.
 {
 	const walled = new Uint8Array(meadow);
 	for (let y = 0; y < size; y++) walled[y * size + 40] = TERRAIN.WATER;
 	const built = transportBuild(walled, size, { groundMeadow: 2 });
-	const spread = (cond) => {
-		const field = new Float64Array(n);
-		const scratch = new Float64Array(n);
-		field[center] = 1000;
-		for (let t = 0; t < 80; t++) mapeDiffuseSlice(field, scratch, 0, size, walled, true, MAPE_DIFFUSE, 0, SIM_STEP_SEC, cond);
-		return field;
-	};
-	const oldF = spread(null);
-	const newF = spread(built);
-	let maxDiff = 0;
+	const field = new Float64Array(n);
+	const scratch = new Float64Array(n);
+	field[center] = 1000;
+	for (let t = 0; t < 80; t++) mapeDiffuseSlice(field, scratch, 0, size, walled, true, MAPE_DIFFUSE, 0, SIM_STEP_SEC, built);
+	let sum = 0;
 	let beyond = 0;
-	for (let i = 0; i < n; i++) {
-		maxDiff = Math.max(maxDiff, Math.abs(oldF[i] - newF[i]));
-	}
+	for (let i = 0; i < n; i++) sum += field[i];
 	for (let y = 0; y < size; y++) {
-		for (let x = 40; x < size; x++) beyond += newF[y * size + x];
+		for (let x = 40; x < size; x++) beyond += field[y * size + x];
 	}
-	check('water_barrier_bit_for_bit', maxDiff === 0 && beyond === 0, 'maxDiff=' + maxDiff.toExponential(2) + ' beyond=' + beyond);
+	check('water_barrier_holds', beyond === 0 && Math.abs(sum - 1000) < 1e-6,
+		'beyond=' + beyond + ' sum=' + sum.toFixed(6));
 }
 
 // RMS pull reach has no grid-threshold bias: for a homogeneous medium it scales as sqrt(c).
@@ -144,7 +140,7 @@ const center = 32 * size + 32;
 		mapeKernelStep(size, 1, terr, demand, demandNext, goods, goodsNext, pop, work, workNext, SIM_STEP_SEC, cond);
 		return { east: goods[32 * size + 33], west: goods[32 * size + 31] };
 	};
-	const plain = run(null);
+	const plain = run(ones);
 	const slowed = run(built);
 	const plainShare = plain.east / (plain.east + plain.west);
 	const slowedShare = slowed.east / (slowed.east + slowed.west);
@@ -204,7 +200,7 @@ const center = 32 * size + 32;
 	const next = new Float64Array(9);
 	pull[5] = 1;
 	next[4] = 100;
-	const effort = mapePushUpGradient(1, 1, 4, 4, sz, terr, pull, next, 10, MAPE_GRAD_REF, 0, null, null, null, false, cond);
+	const effort = mapePushUpGradient(1, 1, 4, 4, sz, pull, next, 10, MAPE_GRAD_REF, 0, null, null, null, false, cond);
 	const expected = next[5] / cond.condR[4] * MAPE_WORKFORCE_PER_UNIT;
 	check('haul_effort_inverse_c', next[5] > 0 && Math.abs(effort - expected) < 1e-9);
 }

@@ -10,7 +10,7 @@ wrong (see the audit in experiments/mape_diffusion_speed.js).
 
 - One sim tick = SIM_STEP_SEC = 0.05 s (main.js). Engines take a duration in seconds and advance
   whole canonical ticks; a final partial tick is never longer than the tick.
-- Game speed multiplies tick count (CLOCK_RATES 0/1/2/4x), never dt.
+- Game speed multiplies tick count (CLOCK_RATES 0/1/2/4/16x), never dt.
 - Every rate in the code is per sim-second: the per-tick amount is rate x dt with dt <= 0.05 s.
 
 ## fields
@@ -73,7 +73,7 @@ also displayed and asserted.
 | constant | D cells^2/s | mix | reach sqrt(D/k) |
 | --- | --- | --- | --- |
 | MAPE_DIFFUSE — signed demand, workforce pull | 1.8 | 0.09 | ~15 cells (k = MAPE_DECAY 0.008) |
-| MAPE_CO2_DIFFUSE — CO2 stock | 0.5625 | 0.028 | pairwise, no fade |
+| MAPE_CO2_DIFFUSE — CO2 stock | 0.9 | 0.045 | pairwise, no fade |
 | MAPE_CATCHMENT_DIFFUSE — A pull | 3 | 0.15 | ~5.5 cells (k = MAPE_CATCHMENT_DECAY 0.1) |
 | MAPE_QUEUE_DIFFUSE — B pull | 2 | 0.10 | ~4.5 cells (k = MAPE_QUEUE_DECAY 0.1) |
 | MAPE_WF_DIFFUSE — fluid depleted pool | 0.875 | 0.044 | pools, no fade |

@@ -26,6 +26,7 @@ function blank(x = 10, y = 10) {
 	mapeRebuildSettlements();
 	mapeSetWorkforceMode(MAPE_WORKFORCE_MODE.RESIDENTS);
 	mape.scanOn = false;
+	transportRebuild();
 	return cell(x, y);
 }
 
@@ -355,7 +356,7 @@ function verifyFoodTransport() {
 				if (mode === 'queue') mapeRouteQueues(r, SIM_STEP_SEC);
 				else mapeTransportSlice(r, world.size, world.terrain, mape.demand, mape.goods,
 					mape.goodsNext, mape.pop, mape.workforce, mape.workforceNext, SIM_STEP_SEC,
-					mode === 'catchment', mape.flowX, mape.flowY);
+					mode === 'catchment', mape.flowX, mape.flowY, transport);
 				const off = r * world.n;
 				const moved = mape.goodsNext[off + dest];
 				assert.ok(moved > 0 && moved <= 100, 'transport is positive and bounded');
