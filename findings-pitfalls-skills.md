@@ -321,3 +321,19 @@ so one crew of 32 out-cut a dozen works and the scan read the piles as surplus a
 consumers to the cap. A local stock check — uncollected logs in the cutting patch hold the crew
 — ties output to what haulage takes away. Count only free stock as surplus: a works' input
 buffer on its own cell is spoken for.
+
+## a weighted share denominator cancels the speed it weights
+
+Hauling as g·c / (Σg·c + ref) saturates once Σg·c ≫ ref, so a uniform swamp sent 0.92 of
+what meadow sent on a steep gradient (queue admission 0.996) — conductance only steered
+routes. The speed map passed every route and detour gate anyway; only a uniform-slow test
+exposes it (`uniform_slow_ground_sends_less`). Saturate on raw slopes (Σg + ref) and let c
+weight the send, then express shipped rates at c = 1 so the reference ground keeps its pace.
+
+## guard before the debit, never after it
+
+`mapeSitesShip` took stock from the seller and only then returned on a dust shipment
+(`shipped <= MAPE_EPS`), so each dropped order vanished from the ledger: a steady
+−6e-9/s drift that sat just under the 1e-6 gate until an unrelated balance change
+crossed it. A linear residual is a leak, not float noise — wrap each tick phase with a
+ledger delta (`mapeLedgerResidual` before/after) to find it in one run.
