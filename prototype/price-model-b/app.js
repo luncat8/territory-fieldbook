@@ -22,10 +22,11 @@ const TOOL_KINDS = { inspect:0, erase:0, mine:ECONOMY_MINE, factory:ECONOMY_FACT
 const RESOURCE_TITLES = {
 	coal:['Coal stock','Available stock per cell','Coal price','Diffused buyer bid per cell'],
 	goods:['Goods stock','Available stock per cell','Goods price','Diffused buyer bid per cell'],
-	labor:['Labor force','Available workers per cell','Wage','Diffused firm wage bid per cell'],
+	labor:['Labor force','Fresh workers commuting to firms','Wage','Diffused firm wage bid per cell'],
+	depleted:['Depleted workforce','Tired or displaced workers seeking a town','Living appeal','Diffused low-tax town settlement signal'],
 	gold:['Gold held','Purses and payments in transit','Payment ask','Where owed gold is headed']
 };
-const TOOL_HINTS = { inspect:'Select a cell on either map to inspect its values.', mine:'Select an empty cell on either map to place a mine.', factory:'Select an empty cell on either map to place a factory.', town:'Select an empty cell on either map to place a town. Residents supply labor, pay taxes and draw supplies.', gold:'Select an empty cell on either map to place a gold mine. It hires workers while digging gold is profitable.', erase:'Select an actor to remove it. Stored stock stays in its cell.' };
+const TOOL_HINTS = { inspect:'Select a cell on either map to inspect its values.', mine:'Select an empty cell on either map to place a mine.', factory:'Select an empty cell on either map to place a factory.', town:'Select an empty cell on either map to place a town. Profitable towns lower tax to attract residents.', gold:'Select an empty cell on either map to place a gold mine. It expands workforce demand while profitable.', erase:'Select an actor to remove it. Stored stock stays in its cell.' };
 
 function bootEconomy() {
 	for (const node of document.querySelectorAll('[data-icon]')) node.outerHTML = labIcon(node.dataset.icon);

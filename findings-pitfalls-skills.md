@@ -384,3 +384,24 @@ Three traps surfaced together in `prototype/price-model-b/`:
   whenever `ambient > here && ambient > relaxed` passes steeper external bids across while
   leaving lonely-buyer cooling unchanged.
 
+## cost-basis asks, joint input budgets and civic tax rebates
+
+Four traps surfaced when unifying firms and towns in `prototype/price-model-b/actors.js`:
+
+- **Seller ask floors must gate `planOutflow`, never inject into diffused buyer prices.**
+  Writing `sell[i]` into `priceGoods` turns an expensive unsold warehouse into a local price
+  peak that pulls neighboring goods *toward* the seller. Keep `price*` purely buyer-driven and
+  test `price[to] > Math.max(price[i], sell[i])` at departure while carrying input `cost[i]`
+  into output stock so conversion never pauses and inventory never ships at a loss.
+- **Independent complement-margin bids (`priceOut − otherCost`) overbid 130 % on startup.**
+  When `priceCoal = 0` and `priceLabor = 0`, two inputs bidding `0.65 · outValue` each commit
+  `1.30 · outValue` before costs settle. Normalize `rawSum` against `JOINT_BUDGET_SHARE · outValue`
+  when `derived` is active, and keep a profit-driven wage floor (`0.35 · drive`) on labor so
+  full shift buffers do not collapse wages at profitable firms.
+- **Unconditional treasury rebates manufacture fake town profit.** Paying `civic` from town
+  `purse` into `workerPurse` while `comfort` is low lets an unsupplied town tax back its own
+  rebate and report positive `profit[i]`. Gate `civic` on `comfort > 0.4 && taxMult <= 1.1`,
+  and price `adaptTownTax` against actual consumed rations (`sat * need`), not hypothetical
+  full-need rations, or partially supplied profitable towns never lower `taxMult` below `1`.
+
+

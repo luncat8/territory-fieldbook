@@ -1,5 +1,5 @@
 // Owns: gold money — town and worker purses, gold mining, bills, payment streams, wages, taxes and the gold ledger.
-// Edit for: starting price calibration, worker tax horizon, firm reserves and payment steering.
+// Edit for: starting price calibration, adaptive living tax collection, firm reserves and payment steering.
 'use strict';
 
 const START_PRICE = 4;
@@ -26,8 +26,8 @@ function makeStream(receiver) {
 	};
 }
 
-// Gold is conserved: firms pay workers into PAY_WAGE, workers pay taxes to live in towns,
-// and towns and factories pay coal and goods bills up the sellers' asks.
+// Gold is conserved: firms pay workers into PAY_WAGE, workers pay living taxes in towns,
+// and buyers pay coal and goods bills up the sellers' asks.
 class GoldMoney {
 	constructor(model) {
 		this.model = model;
@@ -105,18 +105,21 @@ class GoldMoney {
 	}
 
 	taxPerPop(i) {
-		return (this.workerPurse[i] / WORKER_SECONDS) / Math.max(1, this.model.pop[i]);
+		const mult = this.model.derived ? (this.model.taxMult[i] || 1) : 1;
+		return (this.workerPurse[i] / WORKER_SECONDS) * mult / Math.max(1, this.model.pop[i]);
 	}
 
-	// Residents pay taxes only in proportion to the living comfort the town supplies;
-	// fiscal surplus above the municipal reserve circulates back as local civic wages.
+	// Residents pay the town's adaptive living tax in proportion to supplied comfort;
+	// surplus above the municipal reserve circulates back to residents as civic wages.
 	collectTax(i, comfort) {
-		const taxPaid = this.workerPurse[i] * this.taxShare * comfort;
+		const mult = this.model.derived ? (this.model.taxMult[i] || 1) : 1;
+		const share = Math.min(0.5, this.taxShare * mult);
+		const taxPaid = this.workerPurse[i] * share * comfort;
 		this.workerPurse[i] -= taxPaid;
 		this.purse[i] += taxPaid;
 		this.taxes += taxPaid;
-		const reserve = INPUT_SHARE * (this.workerPurse[i] / WORKER_SECONDS) * PURSE_SECONDS;
-		const civic = comfort * Math.max(0, this.purse[i] - reserve) * this.payoutShare;
+		const reserve = INPUT_SHARE * (this.workerPurse[i] / WORKER_SECONDS) * mult * PURSE_SECONDS;
+		const civic = (comfort > 0.4 && mult <= 1.1 ? comfort : 0) * Math.max(0, this.purse[i] - reserve) * this.payoutShare;
 		this.purse[i] -= civic;
 		this.workerPurse[i] += civic;
 		return taxPaid / ECONOMY_DT;
@@ -147,12 +150,13 @@ class GoldMoney {
 	}
 
 	updateAsks() {
-		const { actors, pop } = this.model;
+		const { actors, pop, taxMult, derived } = this.model;
 		const decay = this.model.decay ? PRICE_DECAY : 0;
 		for (const stream of this.streams) {
 			const { ask, nextAsk, receiver } = stream;
 			for (let i = 0; i < ECONOMY_SIZE; i++) {
-				const level = actors[i] === receiver ? (receiver === ECONOMY_TOWN ? ASK_LEVEL * (pop[i] / START_POP) : ASK_LEVEL) : -1;
+				const tax = derived ? (taxMult[i] || 1) : 1;
+				const level = actors[i] === receiver ? (receiver === ECONOMY_TOWN ? ASK_LEVEL * (pop[i] / START_POP) / tax : ASK_LEVEL) : -1;
 				nextAsk[i] = stepBid(ask, i, ask[i], level, decay);
 			}
 			stream.ask = nextAsk;
@@ -184,12 +188,13 @@ class GoldMoney {
 		if (actor !== ECONOMY_TOWN) this.payFirmSurplus(i, actor);
 	}
 
-	// Firms keep working capital for upcoming coal and wage bills and pay surplus profit to townsfolk.
+	// Firms keep working capital scaled to their active throughput and pay surplus profit to townsfolk.
 	payFirmSurplus(i, actor) {
-		const { priceCoal, priceLabor } = this.model;
+		const { priceCoal, priceLabor, scale } = this.model;
+		const unitRate = (actor === ECONOMY_FACTORY ? FACTORY_RATE : SOURCE_RATE) * (scale[i] || 1);
 		const costRate = actor === ECONOMY_FACTORY
-			? (priceCoal[i] / FACTORY_YIELD + priceLabor[i] * FACTORY_LABOR) * FACTORY_RATE
-			: priceLabor[i] * SOURCE_RATE * (actor === ECONOMY_GOLD ? GOLD_LABOR : MINE_LABOR);
+			? (priceCoal[i] / FACTORY_YIELD + priceLabor[i] * FACTORY_LABOR) * unitRate
+			: priceLabor[i] * unitRate * (actor === ECONOMY_GOLD ? GOLD_LABOR : MINE_LABOR);
 		const payout = Math.max(0, this.purse[i] - costRate * RESERVE_SECONDS) * this.payoutShare;
 		this.purse[i] -= payout;
 		this.streams[PAY_WAGE].coin[i] += payout;

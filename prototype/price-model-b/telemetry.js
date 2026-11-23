@@ -19,6 +19,9 @@ class EconomyTelemetry {
 		this.laborMade = $('labor-made');
 		this.laborUsed = $('labor-used');
 		this.laborHeld = $('labor-held');
+		this.depletedMade = $('depleted-made');
+		this.depletedRested = $('depleted-rested');
+		this.depletedHeld = $('depleted-held');
 		this.goldSeeded = $('gold-seeded');
 		this.goldMined = $('gold-mined');
 		this.goldHeld = $('gold-held');
@@ -31,11 +34,12 @@ class EconomyTelemetry {
 	}
 
 	measure(model) {
-		let coal = 0, goods = 0, labor = 0, coalPrice = 0, goodsPrice = 0;
+		let coal = 0, goods = 0, labor = 0, depleted = 0, coalPrice = 0, goodsPrice = 0;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			coal += model.coal[i];
 			goods += model.goods[i];
 			labor += model.labor[i];
+			depleted += model.depleted[i];
 			coalPrice += model.priceCoal[i];
 			goodsPrice += model.priceGoods[i];
 		}
@@ -45,6 +49,7 @@ class EconomyTelemetry {
 		this.values[3] = goodsPrice / ECONOMY_SIZE;
 		this.values[4] = model.money.total();
 		this.laborTotal = labor;
+		this.depletedTotal = depleted;
 	}
 
 	record(model) {
@@ -90,6 +95,9 @@ class EconomyTelemetry {
 		this.laborMade.textContent = model.suppliedLabor.toFixed(3);
 		this.laborUsed.textContent = model.workedLabor.toFixed(3);
 		this.laborHeld.textContent = this.laborTotal.toFixed(3);
+		this.depletedMade.textContent = model.emittedDepleted.toFixed(3);
+		this.depletedRested.textContent = model.restedDepleted.toFixed(3);
+		this.depletedHeld.textContent = this.depletedTotal.toFixed(3);
 		this.goldSeeded.textContent = model.money.seeded.toFixed(2);
 		this.goldMined.textContent = model.money.mined.toFixed(2);
 		this.goldHeld.textContent = this.values[4].toFixed(2);

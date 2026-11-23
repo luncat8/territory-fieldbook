@@ -114,6 +114,7 @@ class FieldPlot {
 
 	fieldFor(model) {
 		if (this.resource === 'gold') return this.goldView(model.money);
+		if (this.resource === 'depleted') return this.isStock ? model.depleted : model.priceHome;
 		if (this.resource === 'labor') return this.isStock ? model.labor : model.priceLabor;
 		if (this.isStock) return this.resource === 'coal' ? model.coal : model.goods;
 		return this.resource === 'coal' ? model.priceCoal : model.priceGoods;
@@ -141,7 +142,7 @@ class FieldPlot {
 
 	showScale(key) {
 		this.legendKey = key;
-		const unit = this.resource === 'gold' ? (this.isStock ? ' g' : '') : ' g/u';
+		const unit = this.resource === 'gold' ? (this.isStock ? ' g' : '') : this.resource === 'depleted' ? '' : ' g/u';
 		if (key === 'stock') this.scaleLabel.innerHTML = 'Log scale <b>0 – 1</b>';
 		else this.scaleLabel.innerHTML = `${this.isStock ? 'Log' : 'Linear'} scale <b>0 – ${this.scale}${unit}</b>`;
 	}
@@ -205,6 +206,7 @@ class FieldPlot {
 		if (this.resource === 'coal') this.drawVectors(model, model.coalFlow);
 		else if (this.resource === 'goods') this.drawVectors(model, model.goodsFlow);
 		else if (this.resource === 'labor') this.drawVectors(model, model.laborFlow);
+		else if (this.resource === 'depleted') this.drawVectors(model, model.depletedFlow);
 		else for (const stream of model.money.streams) this.drawVectors(model, stream.scratch);
 	}
 
@@ -274,9 +276,12 @@ class FieldPlot {
 		tip.hidden = i < 0;
 		if (i < 0) return;
 		const { money, actors } = model, actor = actors[i];
-		const head = `${pinned ? 'Pinned · ' : ''}${ACTOR_NAMES[actor]} ${cellName(i)}${actor === ECONOMY_TOWN ? ` · Pop ${model.pop[i].toFixed(1)}` : ''}`;
-		const stocks = `Coal ${model.coal[i].toFixed(3)} · Goods ${model.goods[i].toFixed(3)} · Labor ${model.labor[i].toFixed(3)}`;
-		const prices = `Coal ${model.priceCoal[i].toFixed(2)} · Goods ${model.priceGoods[i].toFixed(2)} · Wage ${model.priceLabor[i].toFixed(2)}`;
+		const detail = actor === ECONOMY_TOWN
+			? ` · Pop ${model.pop[i].toFixed(1)} · Tax ${Math.round((model.taxMult[i] || 1) * 100)}%`
+			: actor ? ` · Scale ${(model.scale[i] || 1).toFixed(2)}×${actor === ECONOMY_GOLD ? '' : ` · Ask ${model.sellPrice(i).toFixed(2)}`}` : '';
+		const head = `${pinned ? 'Pinned · ' : ''}${ACTOR_NAMES[actor]} ${cellName(i)}${detail}`;
+		const stocks = `Coal ${model.coal[i].toFixed(3)} · Goods ${model.goods[i].toFixed(3)} · Labor ${model.labor[i].toFixed(3)} · Depl ${model.depleted[i].toFixed(3)}`;
+		const prices = `Coal ${model.priceCoal[i].toFixed(2)} · Goods ${model.priceGoods[i].toFixed(2)} · Wage ${model.priceLabor[i].toFixed(2)} · Appeal ${model.priceHome[i].toFixed(2)}`;
 		const wallet = actor === ECONOMY_TOWN
 			? `Town ${money.purse[i].toFixed(2)}g · Workers ${money.workerPurse[i].toFixed(2)}g · Profit ${model.profit[i].toFixed(2)}/s`
 			: `Gold ${money.held(i).toFixed(2)}g · Owed ${money.owedAt(i).toFixed(2)}g${actor ? ` · Profit ${model.profit[i].toFixed(2)}/s` : ''}`;

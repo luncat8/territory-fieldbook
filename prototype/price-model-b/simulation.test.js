@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-for (const file of ['simulation.js', 'gold.js']) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
+for (const file of ['simulation.js', 'actors.js', 'gold.js']) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 
 const sum = (values) => values.reduce((total, value) => total + value, 0);
 const closeTo = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-8, `${actual} ≠ ${expected}`);
@@ -20,14 +20,17 @@ function checkLedger(model) {
 	assert.ok(model.coal.every((value) => value >= 0 && value <= 1));
 	assert.ok(model.goods.every((value) => value >= 0 && value <= 1));
 	assert.ok(model.labor.every((value) => value >= 0 && value <= 1));
+	assert.ok(model.depleted.every((value) => value >= 0 && value <= 1));
 	assert.ok(model.priceCoal.every((value) => value >= 0));
 	assert.ok(model.priceGoods.every((value) => value >= 0));
 	assert.ok(model.priceLabor.every((value) => value >= 0));
+	assert.ok(model.priceHome.every((value) => value >= 0));
 	assert.ok(model.money.purse.every((value) => value >= 0));
 	assert.ok(model.money.workerPurse.every((value) => value >= 0));
 	closeTo(sum(model.coal), model.producedCoal - model.burnedCoal);
 	closeTo(sum(model.goods), model.producedGoods - model.consumedGoods);
 	closeTo(sum(model.labor), model.suppliedLabor - model.workedLabor);
+	closeTo(sum(model.depleted), model.emittedDepleted - model.restedDepleted);
 	assert.ok(Math.abs(model.money.total() - model.money.seeded - model.money.mined) < 1e-7);
 }
 
@@ -35,6 +38,8 @@ function clearedMap() {
 	const model = new PriceEconomy();
 	model.actors.fill(0);
 	model.pop.fill(0);
+	model.scale.fill(0);
+	model.taxMult.fill(0);
 	model.money.reset();
 	return model;
 }
@@ -80,18 +85,22 @@ test('price is depleted with distance: decay emulates transport cost', () => {
 	checkLedger(noDecay);
 });
 
-test('a factory derives coal and wage bids from output price less the complementary input cost', () => {
+test('a factory derives coal and wage bids from output price within a profitable combined budget', () => {
 	const model = clearedMap();
 	const factory = economyIndex(24, 14);
 	model.setActor(factory, ECONOMY_FACTORY);
 	model.priceGoods[factory] = 3;
 	const cheapLabor = model.factoryCoalBid(factory);
+	const emptyWage = model.factoryLaborBid(factory);
+	assert.ok(cheapLabor + emptyWage * FACTORY_LABOR <= 3 * JOINT_BUDGET_SHARE + 1e-12);
 	model.priceLabor[factory] = 4;
 	const dearLabor = model.factoryCoalBid(factory);
 	assert.ok(cheapLabor > dearLabor);
-	closeTo(cheapLabor, 3 * INPUT_SHARE);
 
 	model.priceLabor[factory] = 0;
+	model.labor[factory] = FACTORY_RATE * FACTORY_LABOR * BUFFER_SECONDS;
+	closeTo(model.factoryCoalBid(factory), 3 * INPUT_SHARE);
+	model.labor[factory] = 0;
 	model.derived = false;
 	model.priceGoods[factory] = 0.5;
 	closeTo(model.factoryCoalBid(factory), START_PRICE * INPUT_SHARE);
@@ -380,4 +389,86 @@ test('mined gold inflates prices around the gold mine while distant towns stay s
 	assert.ok(model.priceGoods[near] > START_PRICE);
 	assert.ok(model.priceGoods[near] > model.priceGoods[far] * 1.5);
 	checkLedger(model);
+});
+
+test('factories convert owned stock without pausing, hold product above cost basis and adapt buy prices', () => {
+	const model = clearedMap();
+	const factory = economyIndex(24, 14);
+	const neighbor = economyIndex(25, 14);
+	model.setActor(factory, ECONOMY_FACTORY);
+	model.coal[factory] = 0.2;
+	model.coalFlow.cost[factory] = 0.4;
+	model.labor[factory] = 0.05;
+	model.laborFlow.cost[factory] = 0.1;
+	model.producedCoal = 0.2;
+	model.suppliedLabor = 0.05;
+	model.priceGoods[factory] = 0.8;
+	model.priceGoods[neighbor] = 1.0;
+	model.priceCoal[factory] = 3.0;
+
+	model.step();
+	assert.ok(model.producedGoods > 0);
+	assert.ok(model.sellPrice(factory) >= 2.5);
+	assert.equal(model.goods[neighbor], 0);
+	assert.ok(model.factoryCoalBid(factory) + model.factoryLaborBid(factory) * FACTORY_LABOR < 0.8);
+
+	model.priceGoods[neighbor] = 3.2;
+	model.transport(model.goodsFlow, model.goods, model.priceGoods);
+	assert.ok(model.goods[neighbor] > 0);
+	assert.ok(model.earned[factory] > 0);
+	checkLedger(model);
+});
+
+test('profitable companies raise workforce demand and expand scale; losing ones cut worker pay and scale back', () => {
+	const model = clearedMap();
+	const thriving = economyIndex(12, 14);
+	const losing = economyIndex(36, 14);
+	model.setActor(thriving, ECONOMY_FACTORY);
+	model.setActor(losing, ECONOMY_FACTORY);
+	model.priceGoods[thriving] = model.priceGoods[losing] = 3;
+	model.labor[thriving] = model.labor[losing] = FACTORY_RATE * FACTORY_LABOR * BUFFER_SECONDS * 0.95;
+	model.suppliedLabor = model.labor[thriving] + model.labor[losing];
+	model.profit[thriving] = 0.6;
+	model.profit[losing] = -0.4;
+
+	assert.ok(model.factoryLaborBid(thriving) > model.factoryLaborBid(losing) * 4);
+	model.earned[thriving] = 0.6;
+	model.earned[losing] = -0.4;
+	model.optimizer.adaptActors();
+	assert.ok(model.scale[thriving] > 1);
+	assert.ok(model.scale[losing] < 1);
+	checkLedger(model);
+});
+
+test('profitable towns lower living taxes while struggling towns raise taxes so depleted workforces migrate', () => {
+	const paired = clearedMap();
+	const solo = clearedMap();
+	const mine = economyIndex(8, 14);
+	const f1 = economyIndex(11, 13);
+	const f2 = economyIndex(11, 15);
+	const thriving = economyIndex(14, 14);
+	const struggling = economyIndex(20, 14);
+	for (const model of [paired, solo]) {
+		model.setActor(mine, ECONOMY_MINE);
+		model.setActor(f1, ECONOMY_FACTORY);
+		model.setActor(f2, ECONOMY_FACTORY);
+		model.setActor(thriving, ECONOMY_TOWN);
+	}
+	paired.setActor(struggling, ECONOMY_TOWN);
+	paired.money.seeded -= paired.money.purse[struggling] + paired.money.workerPurse[struggling];
+	paired.money.purse[struggling] = 0;
+	paired.money.workerPurse[struggling] = 0;
+
+	run(paired, 16);
+	run(solo, 16);
+	assert.ok(paired.taxMult[thriving] < 1);
+	assert.ok(paired.taxMult[struggling] > 1.3);
+	assert.ok(paired.priceHome[thriving] > paired.priceHome[struggling] * 3);
+	assert.ok(paired.depletedFlow.flowX[economyIndex(17, 14)] < 0);
+	assert.ok(paired.emittedDepleted > 0.2);
+	assert.ok(paired.restedDepleted > solo.restedDepleted);
+	assert.ok(paired.pop[struggling] < START_POP * 0.7);
+	assert.ok(paired.pop[thriving] > solo.pop[thriving]);
+	checkLedger(paired);
+	checkLedger(solo);
 });
