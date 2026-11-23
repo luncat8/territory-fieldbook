@@ -404,4 +404,16 @@ Four traps surfaced when unifying firms and towns in `prototype/price-model-b/ac
   and price `adaptTownTax` against actual consumed rations (`sat * need`), not hypothetical
   full-need rations, or partially supplied profitable towns never lower `taxMult` below `1`.
 
+## stock-suppressed bids are only safe when the price drives its own transport
+
+In `prototype/price-model-b`, a bid is suppressed to 0 when local stock exceeds a buffer target,
+and that is safe because the price it feeds also drives the transport that drains the stock. When
+porting the price model into a game whose resource transport is **separate and demand-driven**
+(goods/coal move on their own diffusion/catchment tick), the same suppression is a trap: the
+game's transport keeps delivering, stock stays above target, the bid stays pinned to 0, and the
+price field never leaves 0 - so every derived price (goods, then labour, which reads the goods
+price) is frozen and the economy is silently dead. Drive bids by marginal value plus a cash
+(`cool`) term instead, and let the separate transport handle delivery. Test that every price
+slot the HUD reads is non-zero after a few ticks.
+
 

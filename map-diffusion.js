@@ -319,7 +319,7 @@ function mapeDiffusionTick(dt) {
 	mapeStepFactories(dt);
 	mapeStepWorkshops(dt);
 	economyStep(dt);
-	mapeMoneyStep(dt);
+	mapeStepMoney(dt);
 }
 
 // Advance a duration in whole canonical ticks: one tick (SIM_STEP_SEC) is the only step size the

@@ -82,6 +82,7 @@ const MAPE_VIEW_POOL_MAX = 200;
 
 const mape = {
 	engine: MAPE_ENGINE.CATCHMENT,
+	moneyEngine: 'gold',
 	workforceMode: MAPE_WORKFORCE_MODE.FLUID,
 	surplusFeedback: true,
 	localPressure: false,
@@ -224,6 +225,7 @@ function mapeInit(mode, fixedResidents = false) {
 	if (mode === MAPE_ENGINE.SITES || mapeEngineAvailable(mode)) mape.engine = mode;
 	mape.fixedResidents = fixedResidents;
 	mapeMoneyPrepare();
+	mapeGoldPrepare();
 	mapeReset();
 	transportRebuild();
 	mapeMarketFlowPrepare();
@@ -261,6 +263,7 @@ function mapeReset() {
 	mape.dissipated = 0;
 	mapeSitesReset();
 	mapeMoneyReset();
+	mapeGoldReset();
 }
 
 function mapeSeedSurvey() {
@@ -289,6 +292,7 @@ function mapeFinishSetup(fill, warm) {
 	mapeResetMarketFields(fill);
 	if (warm) mapeWarmDemand();
 	mapeMoneyFinishSetup();
+	mapeGoldFinishSetup();
 }
 
 // All four engines are selectable at runtime. Sites is a discrete-shipment engine, so its
@@ -383,6 +387,13 @@ function mapeStep(seconds) {
 	mapeScanStep(seconds);
 }
 
+// Money engine dispatch: the gold economy (price-model-b) is the default; the legacy minted
+// money model stays callable but is separated so it is not stepped unless explicitly selected.
+function mapeStepMoney(dt) {
+	if (mape.moneyEngine === 'gold') mapeGoldStep(dt);
+	else mapeMoneyStep(dt);
+}
+
 function mapeIsIndustry(idx) {
 	return idx >= 0 && (mape.cellExport[idx] & MAPE_CELL_INDUSTRY) !== 0;
 }
@@ -426,7 +437,7 @@ function mapePopResidual() {
 
 if (typeof module !== 'undefined') {
 	module.exports = {
-		mape, mapeInit, mapeStep, mapeField, mapeSetEngine, mapeEngineAvailable, mapeMarketEngine, mapeSetWorkforceMode, mapeWorkPresent,
+		mape, mapeInit, mapeStep, mapeStepMoney, mapeField, mapeSetEngine, mapeEngineAvailable, mapeMarketEngine, mapeSetWorkforceMode, mapeWorkPresent,
 		mapeFinishSetup, mapeSeedSurvey, mapeLedgerResidual, mapePopResidual, MAPE_R, MAPE_RES, MAPE_RES_NAME, MAPE_ENGINE, MAPE_ENGINE_NAME, MAPE_FIELD, MAPE_FACTORY_STATE, MAPE_FACTORY_STATE_NAME, MAPE_FACTORY_KIND, MAPE_FACTORY_KIND_NAME, MAPE_WORKFORCE_MODE, MAPE_WORKFORCE_MODE_NAME, MAPE_FACTORY_WORKERS, MAPE_FACTORY_BUILD_WORKERS, MAPE_FACTORY_BUILD_SEC,
 		MAPE_VIEW_ITEM, MAPE_VIEW_ITEM_NAME, MAPE_VIEW_ITEM_LABEL, MAPE_VIEW_AMOUNT_IDS, MAPE_VIEW_DEMAND_IDS, MAPE_VIEW_AMOUNT_NAMES, MAPE_VIEW_DEMAND_NAMES,
 		MAPE_VIEW_POP_MAX, MAPE_VIEW_JOB_MAX, MAPE_VIEW_PULL_REF, MAPE_VIEW_POOL_MAX

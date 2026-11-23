@@ -69,7 +69,8 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	map-market-flow.js — land stencil, catchment reach and joint intake admission.
 	map-market-demand.js — bounded A/B pull, stock feedback and household use.
 	map-population.js — settlement intake, satisfaction, population dynamics and waste.
-	map-money.js — money: big-town minting, local price field, household bills, wages, payment flow, purses, investment, money ledger.
+	map-money.js — shared money interface: the mapeMoney container, price-slot layout, and the read/access helpers the HUD, trade, industry and render use. The default engine is map-money-gold.js; the old minted-money engine is separated in archive/map-money-legacy.js.
+	map-money-gold.js — default money economy (price-model-b gold engine): conserved gold, town/firm/mine bids, price diffusion + gradient transport, wages, taxes, payment flow. Dispatched by map-economy.js's mapeStepMoney when mape.moneyEngine === 'gold'.
 	map-fluid.js — optional fluid workforce model: fresh/depleted pools, settlement rest, hamlet spawn.
 	map-scenes.js — seeded coal scenes and actor edits.
 	investigate.js — investigation progress, float radius, Euclidean falloff, survey push, nearby list.

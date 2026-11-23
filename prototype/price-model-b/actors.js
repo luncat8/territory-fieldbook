@@ -141,7 +141,8 @@ class ActorOptimizer {
 		const fit = m.derived && rawSum > budgetCap && rawSum > 0 ? budgetCap / rawSum : 1;
 		for (let k = 0; k < inputs.length; k++) {
 			this.bidOut[k] = (this.rawOut[k] * fit) / (inputs[k].need * cool);
-			if (this.bidOut[k] > this.maxOut[k]) this.maxOut[k] = this.bidOut[k];
+			// maxOut is the per-unit walk-away price (margin / need): never bid above it.
+			if (this.bidOut[k] > this.maxOut[k]) this.bidOut[k] = this.maxOut[k];
 		}
 	}
 
