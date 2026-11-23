@@ -416,4 +416,24 @@ price) is frozen and the economy is silently dead. Drive bids by marginal value 
 (`cool`) term instead, and let the separate transport handle delivery. Test that every price
 slot the HUD reads is non-zero after a few ticks.
 
+## companion worker-gold fields, appeal scaling and dominated-town hold release
 
+Three traps surfaced when giving cell-based workforce real carried money in `prototype/price-model-b2/`:
+
+- **Never attach resident savings to idle commuting `labor` leaving a town.** Fresh `labor` fills a
+  standing neighborhood buffer even when no firm pulls it; bleeding a per-tick share of
+  `workerPurse` onto `laborFlow.gold` drains town savings into unpulled rings. Keep household
+  savings in `workerPurse` until a town actually shrinks (`deltaPop < 0` attaches proportional
+  savings to emigrating `depleted`), while firms pay wages directly into `depletedFlow.gold` at
+  the work cell. Sweep subnormal (`stock <= 1e-12`) remainder gold into orphan remittance rather
+  than zeroing it so machine-precision gold conservation holds.
+- **Scale `priceHome` appeal to `START_PRICE` and divide by actual gold tax, never `taxMult` alone.**
+  Dividing appeal by dimensionless `taxMult` while multiplying by `workerPurse` makes inflated
+  high-gold-tax towns near a gold mine look more attractive than cheap towns; an unscaled `[0, 1]`
+  appeal also produces per-cell slopes below `GRADIENT_KNEE` (`0.006`) that lose to `DEPLETED_SPREAD`.
+  Injecting `START_PRICE · shelter · popRoom · (START_TAX_PER_POP / goldTax)` keeps slopes above
+  the knee and trades off real gold tax against distance fade.
+- **Buyer `holds` must release `depleted` on dominated towns (`hasHigherNeighbor`).** Giving every
+  town a small `BASE_SHELTER` appeal lets lonely mining towns bring workers home, but a unconditional
+  buyer hold on `ECONOMY_TOWN` would trap shed migrants on a struggling town's own cell. Hold
+  `depleted` only at local `priceHome` maxima (`!hasHigherNeighbor(priceHome, i)`).

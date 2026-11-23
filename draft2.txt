@@ -262,6 +262,12 @@ i suggest firstly do all plan with one of engine : diffusion or sites. to choose
 
 so i.e. diffusion of products amount over swamp will be slower
 
+##### transport company
+
+map has end price of item by design as price fade during time. who receive this money? this is open question. transport company single on whole map who live in towns and facilities and receive cost.
+next possible to make few transport companies to faction of player or be managed by player himself as his business. but need to think how companies compete: divide map by zones according to influence or use additional layer (cell engine) or particles properties (in case of particle-based item movement engine).
+
+
 ##### deferred: if ships enabled diffusion over deep enough surface water and sea will be faster
 
 #### LLM thoughts: Engine order — diffusion first (P0–P3), then sites (P4), comparison & integration (P5):
@@ -433,10 +439,30 @@ improve this behavior.
 this is how population migrate and some settlement growth.
 think should we preserve population == workforce, or do some average. i think average is better so gradually if settlement dispatch more workforce then receive it loose population. less population - less send workforce on map.
 
+#### price-model-b
+prototype/price-model-b
+
+we move in direction to make all companies: factories, settlements, etc to be universal:
+they set buy and sell price to be in profit.
+price (demand) diffuse by map and fade by time to emulate transportation cost. this is how items in each cell know where (in what direction) to move items amount.
+
+if company (factory, town, etc) has profit it want to increase product: set high demand price on hire workforce or increase population (set low tax for live in town).
+if loose or cant fit population needs - then decrease payment to workers and increase tax for live in city so depleted workforces will move somewhere else.
+company should adopt sell/buy price to stay in profit. (and better to not sell already stock resources->product with loose)
+need to review and improve if need.
+
+town prices demand. example: town should not need unlimited coal even if it is price 0.
+factory pay workers.
+workers pay for live in town.
+town set buy prices (as any fab do) to optimize it function.
+sawmill optimize to get more profit, town optimize in same way - make more profit by attract more population to live and pay taxes. 
+
+
 #### waste
 waste area landfills should decrease settlement capacity. 100% waste - 0 population.
-factories, mines and settlement place waste around it.
-factories, mines - no settlement (0 population) in their cells.
+factories, mines and settlement place waste around it. 
+waste dump CO2. so coal mining partially compensated of factory and statements dump waste. balance can be positive and negative this is important part of gameplay, because CO2 is limited and plants cant growth without it.
+factories, mines - cant be in town cell, no settlements in their cells.
 
 #### GUI
 
