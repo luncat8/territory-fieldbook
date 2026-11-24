@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const ENGINE_FILES = ['simulation.js', 'particles.js', 'actors.js', 'gold.js', 'workforce.js', 'land.js', 'settlement.js'];
+const ENGINE_FILES = ['simulation.js', 'steering.js', 'particles.js', 'actors.js', 'gold.js', 'workforce.js', 'land.js', 'settlement.js'];
 for (const file of ENGINE_FILES) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 
 const sum = values => values.reduce((total, value) => total + value, 0);

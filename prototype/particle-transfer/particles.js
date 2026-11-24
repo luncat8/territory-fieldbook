@@ -1,5 +1,5 @@
-// Owns: preallocated SoA goods particles, spawn accumulators, terrain-weighted steering, spoilage and buyer arrival split.
-// Edit for: batch sizing (SPAWN_UNIT), haul cost, terrain speed conductance, underwater consignment/spot-sell and room admission.
+// Owns: preallocated SoA goods particles, spawn accumulators, haul-cost accrual, spoilage and buyer arrival split.
+// Edit for: batch sizing (SPAWN_UNIT), haul cost, underwater consignment/spot-sell and room admission. Steering: steering.js.
 'use strict';
 
 const GOODS_KINDS = 2;
@@ -10,7 +10,6 @@ const PARTICLE_SPEED = 6;
 const HAUL_COST_RATE = 0.024;
 const HAUL_PER_CELL = HAUL_COST_RATE / PARTICLE_SPEED;
 const DUST_FLOOR = 1e-12;
-const TERRAIN_SPEED = [1, 0.85, 0.55];
 
 class GoodsParticles {
 	constructor(model) {
@@ -42,7 +41,7 @@ class GoodsParticles {
 		this.wantBuy = new Float64Array(ECONOMY_SIZE);
 		this.flowX = new Float64Array(GOODS_KINDS * ECONOMY_SIZE);
 		this.flowY = new Float64Array(GOODS_KINDS * ECONOMY_SIZE);
-		this.grad = new Float64Array(3);
+		this.steer = new ParticleSteering(model);
 		this.reset();
 	}
 
@@ -164,62 +163,6 @@ class GoodsParticles {
 		this.arriveCell[p] = this.arriveCell[last];
 	}
 
-	edgeConductance(from, to) {
-		const terrain = this.model.land.terrain;
-		const a = TERRAIN_SPEED[terrain[from]], b = TERRAIN_SPEED[terrain[to]];
-		return a > 0 && b > 0 ? 2 * a * b / (a + b) : 0;
-	}
-
-	hasHigherNeighbor(price, i) {
-		const here = price[i];
-		const base = i * DEGREE;
-		for (let k = 0; k < DEGREE; k++) {
-			const to = NEIGHBORS[base + k];
-			if (to >= 0 && price[to] > here + 1e-9) return true;
-		}
-		return false;
-	}
-
-	hasNeighborClearing(price, i, ask) {
-		const here = price[i];
-		const base = i * DEGREE;
-		for (let k = 0; k < DEGREE; k++) {
-			const to = NEIGHBORS[base + k];
-			if (to >= 0 && price[to] > here + 1e-9 && price[to] >= ask) return true;
-		}
-		return false;
-	}
-
-	// Direction shares use unweighted gradient sum g*c / (gSum + knee) so uniformly slow ground moves slower.
-	sampleGradient(price, i, minThere) {
-		const here = price[i];
-		const base = i * DEGREE;
-		let gSum = 0, steepest = 0;
-		for (let k = 0; k < DEGREE; k++) {
-			const to = NEIGHBORS[base + k];
-			if (to < 0 || price[to] < minThere || price[to] <= here + 1e-9) continue;
-			const g = (price[to] - here) * DIRECTIONS[k].inv;
-			gSum += g;
-			if (g > steepest) steepest = g;
-		}
-		this.grad[0] = this.grad[1] = this.grad[2] = 0;
-		if (steepest <= 1e-9) return false;
-		const denom = gSum + GRADIENT_KNEE;
-		let gx = 0, gy = 0;
-		for (let k = 0; k < DEGREE; k++) {
-			const to = NEIGHBORS[base + k];
-			if (to < 0 || price[to] < minThere || price[to] <= here + 1e-9) continue;
-			const dir = DIRECTIONS[k];
-			const share = (price[to] - here) * dir.inv * this.edgeConductance(i, to) / denom;
-			gx += dir.ux * share;
-			gy += dir.uy * share;
-		}
-		this.grad[0] = gx;
-		this.grad[1] = gy;
-		this.grad[2] = steepest;
-		return true;
-	}
-
 	step() {
 		this.spawnKind(ITEM_COAL, this.model.priceCoal);
 		this.spawnKind(ITEM_GOODS, this.model.priceGoods);
@@ -245,7 +188,7 @@ class GoodsParticles {
 			const readyFlush = this.spawnIdle[idx] >= IDLE_FLUSH_SECONDS;
 			if (!readyBatch && !readyFlush) continue;
 			const minThere = Math.max(price[i], floor);
-			if (!this.sampleGradient(price, i, minThere + 1e-12)) continue;
+			if (!this.steer.sampleGradient(price, null, 0, i, minThere + 1e-12)) continue;
 			if (this.count >= PARTICLE_CAP) return;
 
 			let emit, emitCost;
@@ -261,47 +204,36 @@ class GoodsParticles {
 				this.spawnAmount[idx] = after;
 				this.spawnCost[idx] = Math.max(0, this.spawnCost[idx] - emitCost);
 			}
-			this.emit(k, i, emit, emitCost, i, PARTICLE_SPEED * this.grad[0], PARTICLE_SPEED * this.grad[1]);
+			this.emit(k, i, emit, emitCost, i, PARTICLE_SPEED * this.steer.grad[0], PARTICLE_SPEED * this.steer.grad[1]);
 		}
 	}
 
 	advanceAll() {
-		const m = this.model;
+		const m = this.model, steer = this.steer;
 		for (let p = 0; p < this.count; p++) {
 			this.arriveCell[p] = -1;
 			const k = this.kind[p];
 			if (this.spoilParticle(p, k)) continue;
-			const px = this.x[p], py = this.y[p];
-			const cx = Math.round(px), cy = Math.round(py);
+			const cx = Math.round(this.x[p]), cy = Math.round(this.y[p]);
 			const ci = economyIndex(cx, cy);
 			const price = m.pricesAt(k);
-			const here = price[ci];
 			const ask = this.priceOf(p);
-			const atPeak = !this.hasHigherNeighbor(price, ci);
-			if (atPeak) {
-				this.stepAtPeak(p, k, ci, cx, cy, here, ask);
+			if (!steer.hasHigherNeighbor(price, null, 0, ci)) {
+				this.stepAtPeak(p, k, ci, cx, cy, price[ci], ask);
 				continue;
 			}
-			const minThere = this.hasNeighborClearing(price, ci, ask) ? ask : -Infinity;
-			if (!this.sampleGradient(price, ci, minThere)) {
+			const minThere = steer.hasNeighborClearing(price, ci, ask) ? ask : -Infinity;
+			if (!steer.sampleGradient(price, null, 0, ci, minThere)) {
 				this.vx[p] = this.vy[p] = 0;
 				continue;
 			}
-			this.vx[p] += STEERING_BLEND * (PARTICLE_SPEED * this.grad[0] - this.vx[p]);
-			this.vy[p] += STEERING_BLEND * (PARTICLE_SPEED * this.grad[1] - this.vy[p]);
-			const nx = Math.min(ECONOMY_WIDTH - 1, Math.max(0, px + this.vx[p] * ECONOMY_DT));
-			const ny = Math.min(ECONOMY_HEIGHT - 1, Math.max(0, py + this.vy[p] * ECONOMY_DT));
-			const ds = Math.hypot(nx - px, ny - py);
-			this.x[p] = nx;
-			this.y[p] = ny;
-			if (ds > 0) {
-				const to = economyIndex(Math.round(nx), Math.round(ny));
-				const c = this.edgeConductance(ci, to);
-				if (c > 0) this.transportCost[p] += HAUL_PER_CELL * (ds / c) * this.amount[p];
-				const fIdx = k * ECONOMY_SIZE + ci;
-				this.flowX[fIdx] += this.vx[p] * this.amount[p];
-				this.flowY[fIdx] += this.vy[p] * this.amount[p];
-			}
+			const ds = steer.advance(this, p, PARTICLE_SPEED);
+			if (ds <= 0) continue;
+			const c = steer.edgeConductance(ci, steer.toCell);
+			if (c > 0) this.transportCost[p] += HAUL_PER_CELL * (ds / c) * this.amount[p];
+			const fIdx = k * ECONOMY_SIZE + ci;
+			this.flowX[fIdx] += this.vx[p] * this.amount[p];
+			this.flowY[fIdx] += this.vy[p] * this.amount[p];
 		}
 	}
 
@@ -429,4 +361,4 @@ class GoodsParticles {
 	}
 }
 
-if (typeof module === 'object') module.exports = { GoodsParticles, SPAWN_UNIT, PARTICLE_SPEED, HAUL_COST_RATE, TERRAIN_SPEED };
+if (typeof module === 'object') module.exports = { GoodsParticles, SPAWN_UNIT, PARTICLE_SPEED, HAUL_COST_RATE };
