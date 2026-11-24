@@ -1,8 +1,8 @@
 # 06 Worker Money B2 Worklog
-plan: `prototype/price-model-b2/archive/06-worker-money-b2-plan.md`, `draft-price_model_p-population-items-particles.md`
+plan: `prototype/price-model-b2/archive/06-worker-money-b2-plan.md`, `draft/particle_transfer_model.md`
 changed:
 - `prototype/price-model-b2/{simulation,actors,gold,fields,telemetry,app}.js`, `{index.html,styles.css,README.md}`, `{simulation,worker-money}.test.js` — standalone B2 worker-gold lab.
-- `draft-price_model_p-population-items-particles.md`, `findings-pitfalls-skills.md` — refined `price_model_p` particle/Transport Company rules and logged B2 pitfalls.
+- `draft/particle_transfer_model.md`, `findings-pitfalls-skills.md` — refined `particle_transfer_model` particle/Transport Company rules and logged B2 pitfalls.
 validation:
 - L0 `node --check prototype/price-model-b2/*.js`: pass (8/8 files, all <485 lines).
 - L1 `(cd prototype/price-model-b2 && node --test)`: pass 34/34; DOM/canvas UI smoke across all 5 views: pass.
@@ -12,4 +12,4 @@ decisions and why:
 pitfalls:
 - Unscaled `[0, 1]` appeal stalls below `GRADIENT_KNEE`; unconditional town `holds` trap shed migrants unless released when `hasHigherNeighbor(priceHome, i)`.
 next step suggestion:
-- Prototype `price_model_p` (SoA goods/worker particles + map-wide Transport Company) per `draft-price_model_p-population-items-particles.md`, or port B2/tax fixes into `map-money-gold.js`.
+- Prototype `particle_transfer_model` (SoA goods/worker particles + map-wide Transport Company) per `draft/particle_transfer_model.md`, or port B2/tax fixes into `map-money-gold.js`.

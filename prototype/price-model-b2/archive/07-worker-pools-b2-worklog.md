@@ -12,4 +12,4 @@ decisions and why:
 - Sized firm labor pools and town wait pools from smoothed real shift/rest throughput (`workLoad`) so active routes bridge commute lag while idle sites stay lean; removed the `0.35 * drive` wage floor and `popRoom` factor so pool overflow drops wages to `0` and town crowding acts through gold living tax.
 pitfalls:
 - Settling `PAY_WAGE` into `depletedFlow.gold` alone front-loads cohort pay onto tick-1 departures and starves later pool shifts; linear `popRoom` locks commuters out at `POP_MAX`.
-next step suggestion: port B2 tax collection, `GOLD_NEIGHBORS` rebuild, and occupancy-balanced pools into `map-money-gold.js` (splitting under 500 lines), or prototype `price_model_p`.
+next step suggestion: port B2 tax collection, `GOLD_NEIGHBORS` rebuild, and occupancy-balanced pools into `map-money-gold.js` (splitting under 500 lines), or prototype `particle_transfer_model`.

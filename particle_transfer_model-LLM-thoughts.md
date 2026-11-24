@@ -13,6 +13,13 @@ Diffused fields remain solely for **prices and living appeal** (steering signals
   - **Worker particles:** `{ state (FRESH | DEPLETED), x, y, vx, vy, amount, gold, homeTown }`
   - **Settled town residents:** remain in town cell `pop[i]` (with household savings `workerPurse[i]`), spawning `FRESH` particles to commute up `priceLabor` and `DEPLETED` migrant particles (carrying proportional `workerPurse`) when a town shrinks (`deltaPop < 0`). Resident savings never attach to idle commuting `FRESH` particles; they leave only with emigrating `DEPLETED` particles.
 
+**Reuse, not re-derivation (picked from B2).** `prototype/price-model-b2` now runs smooth (46/46 tests) and
+proves the pricing, pool, rest, tax and settlement rules on a pure cell field. Its `workforce.js`
+(`WorkerPolicy`) and `settlement.js` (`Settlements`) are engine-neutral — they read only shared fields and are
+applied per cell. The particle engine applies the same classes **per particle** and changes only the transport
+substrate (Eulerian field advection → Lagrangian SoA particles). New code is limited to the particle pool,
+spawn accumulators, per-particle cost/spoilage/transport accrual, arrival split and particle rendering.
+
 ## 2. Goods Particle Cost, Transport & Depletion
 
 - **At producer spawn (`owner`):**
@@ -30,7 +37,9 @@ Diffused fields remain solely for **prices and living appeal** (steering signals
 
 Because diffused buyer bids fade with distance from buyer to producer, a viable route's buyer price `buyerUnitPrice` sits above the producer's doorstep price by the spatial fade spread.
 
-When a particle arrives at a buyer with storage room:
+When a particle arrives at a buyer with storage room (a buyer cell accepts incoming particles only up to
+`cap - stock`, normalized across competing requests — mirrors B2's `receiving`/`room` admission, so a full
+town never over-accepts):
 - Buyer pays `buyerPay = amount * buyerUnitPrice` from its gold purse.
 - **Conserved gold split:**
   1. `transportPaid = min(buyerPay, transportCost)` goes to a **single map-wide Transport Company** vault (representing carriers based across towns and facilities; later iteration will let the Transport Company hire/pay workers in towns and facilities or fund roads, and until then a gentle dividend/wage drip back to active towns prevents vault hoarding).
@@ -59,6 +68,35 @@ If local market price drops while a particle is mid-flight (e.g. a nearer suppli
   - On arrival, the worker pays the town's gold living/rest tax out of `particle.gold` into municipal `purse[town]`, banks leftover wages into `workerPurse[town]`, and rests back into town workforce. High-tax towns price out broke workers, pushing them toward cheaper towns.
   - **Grace and shelter rest prevent stranding:** low-tax towns (`mult <= 1.15`) grant a small free rest share; towns with near-zero comfort still accept funded workers via shelter rest (banking savings, no tax) so penniless workers are never locked out of all towns. Settled residents pay ongoing living tax in proportion to supplied comfort and wait-pool crowding; surplus above the municipal reserve circulates back to residents only in healthy, uncrowded towns.
   - Town tax adapts from profit drive, comfort, ration cost, wait-pool excess and population fullness, so profitable supplied towns lower living tax while struggling towns raise it and shed migrants.
+  - **Town wealth class (picked from B2):** every town gets a deterministic strategy — **cheap** drops living tax
+    to fill vacant slots and keeps its built size; **med** buys needs then grows; **rich** holds a cozy occupancy
+    (queue ≈ 0) and cuts size first when it cannot meet resident needs. This replaces the old "town wants to
+    shrink" premise.
+  - **Resident target shrink guards (picked from B2):** cheap/med never shed residents just for being poor (tax
+    is the lever that keeps them full); they shrink slowly only when long-vacant or broke. Full housing still
+    offers a rest floor, and an uncrowded town rests workers better (free-space comfort lift).
+  - **Still-particle measure (picked from B2):** a worker's stillness derives from the local price slope (B2's
+    `still` field). Still `DEPLETED` particles rest slowly for free (shelter floor) so nobody strands, and they
+    are the pool that founds new settlements (see §5.1).
+
+### 5.1 Settlement founding from still particles (picked from B2)
+
+Penniless still workers found a new low-tier settlement where no town home field reaches them. B2's tested
+mechanics, adapted from per-cell to per-particle:
+
+- **Still tally:** sum `amount` of `DEPLETED` particles whose stillness is high, within a small radius
+  (B2: radius 2) of a candidate empty cell.
+- **Reach gate:** only found where the local `priceHome + priceRest` is below a reach threshold (B2: 0.25), so
+  founding happens in the wilderness beyond town signal, not inside an existing town's halo.
+- **Threshold & cadence:** found when the gathered still sum clears a floor (B2: 0.35); scan every ~5 s, not
+  every tick, so a new settlement's home field spreads before the next scan (1 s scans tiled the map).
+- **Conversion:** gathered workers become residents via the migrant conversion rate, capped at the tier pop cap
+  (B2: `0.2 / LABOR_PER_POP`); they bring their carried savings — no vault gold is minted, so the young town
+  starts broke and lives on tax. Fresh labor queueing at a full firm is waiting for work, not homeless, so only
+  `DEPLETED` counts.
+- **Young-town build:** a settlement under the wood tier cap builds from its own forest (idle residents fell
+  nearby wood) before bought comfort lifts the tier; tier floors scale rest, tax, bids and housing. Founding
+  assigns the deterministic wealth class of its cell.
 
 ## 6. Spawn Accumulators & Particle Sizing
 
@@ -90,8 +128,8 @@ If local market price drops while a particle is mid-flight (e.g. a nearer suppli
 
 Minimal first, one resource cycle at a time:
 
-1. **Goods particles only:** coal → goods chain (one mine, one factory, one town). Price diffusion, spawn accumulators, cost-basis sell gate, arrival split with Transport Company vault. Verify mass and gold conservation to machine precision.
-2. **Worker particles:** `FRESH`/`DEPLETED` cycle with carried gold, proportional wage settlement, rest tax, occupancy-balanced pools, gold-tax appeal, dominated-town release, grace/shelter rest.
+1. **Goods particles only:** coal → goods chain (one mine, one factory, one town). Price diffusion, spawn accumulators, cost-basis sell gate, buyer room admission, arrival split with Transport Company vault. Verify mass and gold conservation to machine precision.
+2. **Worker particles:** `FRESH`/`DEPLETED` cycle with carried gold, proportional wage settlement, rest tax, occupancy-balanced pools, gold-tax appeal, dominated-town release, grace/shelter rest — reusing B2's `WorkerPolicy`/`Settlements` classes per particle, plus wealth-class tax and settlement founding from still particles (§5.1).
 3. **Full engine:** multiple kinds, spoilage rates per kind, Transport Company dividend drip, particle rendering, 64×64 sizing pass.
 
 ## 11. Validation

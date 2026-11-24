@@ -28,8 +28,8 @@ i see 4 solutions:
 - emulate worker's money with same fresh-deplete mechanics. this looks promising: more money - more fresh , worker pay some part of fresh before exit town - so spawn in cell as different conditions based on money. But problem to keep state.
 - some field (i dont know how better do it)
 - worker has associated object with properties and somehow linked to cell-value. looks straightforward, but not canonical TRUE cell-approach.
-- workers and items are particles, looks straightforward. particle engine based economy price_model_p is planned later, so this is out of scope, but keep in mind.
-along with this review draft-price_model_p-population-items-particles.md , think what should be improved, ask if something not clear.
+- workers and items are particles, looks straightforward. particle engine based economy `particle_transfer_model` is planned later, so this is out of scope, but keep in mind.
+along with this review `draft/particle_transfer_model.md`, think what should be improved, ask if something not clear.
 
 map already should has end price of item by design as price fade during time. who receive this money? this is open question. lets make some transport company single on whole map who live in towns and facilities and receive cost. we will work on it later
 
