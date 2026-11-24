@@ -39,7 +39,7 @@ select { width: 100%; } .buttons { display: flex; gap: 5px; flex-wrap: wrap; mar
     <div class="group"><h2>Settlement demand</h2><label for="feedback">Response to nearby coal</label><select id="feedback"><option value="stock">Stock feedback</option><option value="fixed">Fixed demand</option></select><p class="note">Stock feedback reduces a settlement's signal as coal accumulates. Fixed demand is a comparison without that feedback.</p><label><input id="settlements" type="checkbox" checked> Enable settlements</label></div>
     <div class="group"><h2>Resource feedback</h2><label><input id="sinkDem" type="checkbox"> Coal lowers demand</label><p class="note">When enabled, ambient demand slowly recovers toward 0.3. Coal depresses it locally, so mines can spread even without settlements. Without this baseline, a field at 0 cannot be lowered further.</p></div>
     <div class="group"><h2>Map tools</h2><div class="buttons"><button data-actor="off" aria-pressed="true">Inspect</button><button data-actor="mine" aria-pressed="false">Mine</button><button data-actor="site" aria-pressed="false">Settlement</button><button data-actor="erase" aria-pressed="false">Erase</button></div><p class="note" id="note">Editing is off; maps only inspect.</p></div>
-    <div class="group"><h2>Simulation</h2><div class="buttons"><button id="pause">Pause</button><button id="step">Step 0.05 s</button></div><label for="speed">Speed</label><select id="speed"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option></select><p class="note">Step while paused. Closed boundaries; no evaporation or storage cap. Hover either map to inspect a cell.</p></div>
+    <div class="group"><h2>Simulation</h2><div class="buttons"><button id="pause">Pause</button><button id="step">Step 0.05 s</button></div><label for="speed">Speed</label><select id="speed"><option value="1">1×</option><option value="2">2×</option><option value="4" selected>4×</option></select><p class="note">Step while paused. Closed boundaries; no evaporation or storage cap. Hover either map to inspect a cell.</p></div>
   </aside>
 </div>
 <div class="hud" id="hud" aria-live="off"></div><p id="inspect">Hover over a map to inspect a cell.</p>
@@ -61,7 +61,7 @@ const filtered = new Float64Array(CELLS);
 const sources = [], consumers = [], layout = [];
 let sinkEnabled = false, settlementsEnabled = true, feedback = 'stock';
 let seed = 1337, rng = seed, time = 0, produced = 0, consumed = 0;
-let paused = false, speed = 1, accumulator = 0;
+let paused = false, speed = 4, accumulator = 0;
 const idx = (x, y) => y * N + x;
 function rand() { rng = (Math.imul(rng, 1664525) + 1013904223) >>> 0; return rng / 4294967296; }
 function clamp01(v) { return Math.max(0, Math.min(1, v)); }

@@ -248,7 +248,7 @@ class FieldPlot {
 		const { ctx:g, cw, ch, priceRef } = this;
 		const { particles } = model;
 		const wantKind = this.resource === 'coal' ? ITEM_COAL : ITEM_GOODS;
-		const baseR = Math.max(2.1, Math.min(4.6, Math.min(cw, ch) * 0.28));
+		const baseR = Math.max(1.0, Math.min(2.0, Math.min(cw, ch) * 0.1));
 		g.lineWidth = 1.1;
 		g.lineCap = 'round';
 		for (let p = 0; p < particles.count; p++) {
