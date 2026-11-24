@@ -56,9 +56,9 @@ function bootEconomy() {
 		const counts = [0,0,0,0,0];
 		for (const kind of model.actors) counts[kind]++;
 		const [, mines, factories, towns, gold] = counts;
-		let hamlets = 0;
-		for (let i = 0; i < ECONOMY_SIZE; i++) if (model.settlements.isHamlet(i)) hamlets++;
-		$('actor-count').textContent = `${mines} M · ${factories} F · ${towns} T${hamlets ? ` (${hamlets} hamlet)` : ''} · ${gold} G`;
+		let young = 0;
+		for (let i = 0; i < ECONOMY_SIZE; i++) if (model.settlements.isYoungTown(i)) young++;
+		$('actor-count').textContent = `${mines} M · ${factories} F · ${towns} T${young ? ` (${young} young)` : ''} · ${gold} G`;
 		clearButton.disabled = !towns;
 		for (const plot of plots) plot.readActors(model.actors);
 		dirty = true;

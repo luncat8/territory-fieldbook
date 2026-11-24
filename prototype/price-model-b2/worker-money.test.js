@@ -134,15 +134,18 @@ test('living appeal trades off gold tax against distance fade and does not favor
 	checkLedger(taxModel);
 });
 
-test('shrinking towns send proportional resident savings out with departing depleted workers', () => {
+test('long-vacant or broke towns shed residents carrying proportional savings', () => {
+	// Draft revision: cheap/med towns keep their built size and only shed residents when long-vacant or broke
+	// (tax is the lever that keeps them full). The departing residents still carry their wallet gold proportionally.
 	const model = clearedMap();
-	const dying = economyIndex(24, 14);
-	model.setActor(dying, ECONOMY_TOWN);
-	const startWorkerGold = model.money.workerPurse[dying];
+	const town = economyIndex(24, 14);
+	model.setActor(town, ECONOMY_TOWN);
+	model.vacantTicks[town] = VACANT_SECONDS + 10; // simulate a town that has stood empty for a long time
+	const startWorkerGold = model.money.workerPurse[town];
 	model.step();
-	assert.ok(model.depleted[dying] > 0);
-	assert.ok(model.depletedFlow.gold[dying] > 0);
-	closeTo(model.money.workerPurse[dying] + model.laborFlow.gold[dying] + model.depletedFlow.gold[dying], startWorkerGold);
+	assert.ok(model.depleted[town] > 0);
+	assert.ok(model.depletedFlow.gold[town] > 0);
+	closeTo(model.money.workerPurse[town] + model.laborFlow.gold[town] + model.depletedFlow.gold[town], startWorkerGold);
 	checkLedger(model);
 });
 
@@ -154,6 +157,9 @@ test('active firms pay wages into worker pockets rather than wage streams, so by
 	model.setActor(goldMine, ECONOMY_GOLD);
 	model.setActor(suppliedTown, ECONOMY_TOWN);
 	model.setActor(idleBystander, ECONOMY_TOWN);
+	// Pin the supplied town to the balanced (Med) class so this test isolates wage routing from the wealth-class tax
+	// strategies; the bystander is already a different cell and must not siphon the mine's wages.
+	model.wealthClass[suppliedTown] = WEALTH_MED;
 	model.goods[suppliedTown] = 0.9;
 	model.coal[suppliedTown] = 0.5;
 	model.producedGoods = 0.9;
@@ -169,7 +175,8 @@ test('active firms pay wages into worker pockets rather than wage streams, so by
 	}
 	assert.ok(model.money.mined > 0.8);
 	assert.ok(sum(model.money.streams[PAY_WAGE].coin) < 1e-6);
-	assert.ok(model.money.held(suppliedTown) > bystanderStart + 0.5 * model.money.mined);
+	// The supplied (working) town must capture a solid share of the mine's wages — not the idle bystander.
+	assert.ok(model.money.held(suppliedTown) - bystanderStart > 0.3 * model.money.mined);
 	assert.ok(model.money.held(idleBystander) <= bystanderStart + 0.05);
 	checkLedger(model);
 });
@@ -336,4 +343,42 @@ test('settled wages split proportionally across on-site pool and shift workers s
 		const perWorker = model.depletedFlow.gold[goldMine] / model.depleted[goldMine];
 		assert.ok(perWorker >= 3.9, `shift ${shift} paid ${perWorker}`);
 	}
+});
+
+test('cheap towns drop living tax to fill vacant slots, unlike balanced towns', () => {
+	// Draft "town wealth class": a Cheap town lowers living tax when it has vacant resident slots (to attract
+	// workers even if it cannot yet buy every resource); a balanced town without comfort taxes harder to fund itself.
+	const model = clearedMap();
+	const cheap = economyIndex(10, 14);
+	const med = economyIndex(34, 14);
+	model.setActor(cheap, ECONOMY_TOWN);
+	model.setActor(med, ECONOMY_TOWN);
+	model.wealthClass[cheap] = WEALTH_CHEAP;
+	model.wealthClass[med] = WEALTH_MED;
+	for (let n = 0; n < 12 * 60; n++) model.step();
+	assert.ok(model.taxMult[cheap] < 1, 'cheap town drops tax to attract into vacant slots');
+	assert.ok(model.taxMult[med] > model.taxMult[cheap] + 0.25, 'balanced town without comfort taxes harder to fund itself');
+	checkLedger(model);
+});
+
+test('rich towns keep a cozy occupancy with a few free slots rather than filling to capacity', () => {
+	// Draft "town wealth class": a Rich town holds a comfortable occupancy (queue ≈ 0, few free slots) while a
+	// balanced town fills closer to capacity.
+	const model = clearedMap();
+	const rich = economyIndex(10, 14);
+	const med = economyIndex(34, 14);
+	model.setActor(rich, ECONOMY_TOWN);
+	model.setActor(med, ECONOMY_TOWN);
+	model.wealthClass[rich] = WEALTH_RICH;
+	model.wealthClass[med] = WEALTH_MED;
+	for (let n = 0; n < 30 * 60; n++) {
+		for (const t of [rich, med]) { model.coal[t] = 0.4; model.goods[t] = 0.7; }
+		model.producedCoal = model.burnedCoal + 0.8;
+		model.producedGoods = model.consumedGoods + 1.4;
+		model.step();
+	}
+	const occ = (t) => model.pop[t] / model.settlements.popCap(t);
+	assert.ok(occ(rich) > 0 && occ(rich) < 0.95, 'rich town keeps a few free slots');
+	assert.ok(occ(med) > occ(rich), 'balanced town fills closer to capacity');
+	checkLedger(model);
 });

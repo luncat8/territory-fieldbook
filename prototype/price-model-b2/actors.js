@@ -23,6 +23,17 @@ const TAX_MIN = 0.55;
 const TAX_MAX = 2.4;
 const TAX_ADAPT = 0.6;
 
+// Town wealth classes (draft: "town wealth class" — 3 random strategies assigned per town).
+const WEALTH_CHEAP = 0;
+const WEALTH_MED = 1;
+const WEALTH_RICH = 2;
+const WEALTH_NAMES = ['Cheap', 'Med', 'Rich'];
+const RICH_OCC = 0.85;        // rich towns hold a few free resident slots, so the wait queue stays ~0
+const SPACE_COMFORT = 0.25;   // free housing lifts a town's rest comfort
+const VACANT_OCC = 0.3;       // occupancy below this counts as vacant
+const VACANT_SECONDS = 25;    // vacant this long → slow size decay
+const NEED_FLOOR = 0.25;      // comfort floor a rich town keeps before cutting size
+
 function optimalBid(value, stock, target, cool, suppress, share = INPUT_SHARE) {
 	if (value <= 0 || target <= 0 || !Number.isFinite(cool)) return 0;
 	const need = suppress ? Math.max(0, 1 - stock / target) : 1;
@@ -387,10 +398,14 @@ class ActorOptimizer {
 		const taxIncome = (m.money.taxes - taxesBefore) / ECONOMY_DT;
 		m.earned[i] += taxIncome - (coalCost + goodsCost) / ECONOMY_DT;
 
-		const goalPop = this.townGoalPop(i, comfort);
-		const migrantBoost = restedWork > 0 && pop < goalPop ? Math.min(goalPop - pop, (restedWork / LABOR_PER_POP) * 0.2 * comfort) : 0;
-		const deltaPop = ECONOMY_DT * POP_RATE * (goalPop - pop) + migrantBoost;
+		const target = this.townResidentTarget(i);
+		const deltaPop = ECONOMY_DT * POP_RATE * (target - pop);
 		m.pop[i] = Math.min(POP_MAX, Math.max(0, pop + deltaPop));
+		// Track vacancy so cheap/med towns only shed size when long-empty or broke (upkeep is deferred, see draft).
+		const cap = m.settlements.popCap(i);
+		const occ = cap > 1e-9 ? m.pop[i] / cap : 0;
+		if (occ < VACANT_OCC && restedWork <= 1e-12) m.vacantTicks[i] += ECONOMY_DT;
+		else m.vacantTicks[i] = Math.max(0, m.vacantTicks[i] - ECONOMY_DT * 2);
 		if (deltaPop < 0 && pop > 1e-9) {
 			const shed = Math.min(1 - m.depleted[i], -deltaPop * LABOR_PER_POP);
 			if (shed > 0) {
@@ -413,14 +428,31 @@ class ActorOptimizer {
 		m.depletedFlow.cap[i] = m.pop[i] > 0 ? Math.min(0.95, Math.max(m.depleted[i], waitPool * WAIT_POOL_OVERFLOW)) : 0;
 	}
 
-	townGoalPop(i, comfort) {
+	// Target resident population for a town. Comfort/affordability still gate how many residents a town can
+	// actually serve, so a starved town shrinks; cheap/med keep their built size (they do not shed residents just
+	// because they are poor — tax is the lever that keeps them full), while rich holds a cozy occupancy with a few
+	// free slots (queue ≈ 0). Cheap/med only shed slowly when long-vacant or broke; rich also cuts size first
+	// when the wait pool overflows yet it cannot meet resident needs.
+	townResidentTarget(i) {
 		const m = this.model;
+		const pop = m.pop[i];
+		const comfort = COAL_COMFORT * m.satCoal[i] + GOODS_COMFORT * m.satGoods[i];
 		const mult = m.derived ? (m.taxMult[i] || 1) : 1;
 		const workerGold = m.money.workerPurse[i] + m.workerGoldAt(i);
-		const afford = workerGold / (workerGold + m.pop[i] * 0.25 * mult);
+		const afford = workerGold / (workerGold + pop * 0.25 * mult);
 		const taxDrag = mult > 1 ? 1 / (1 + 0.5 * (mult - 1)) : 1 + 0.18 * (1 - mult);
 		const popCap = m.settlements.popCap(i);
-		return Math.min(popCap, POP_BASE + (popCap - POP_BASE) * comfort * afford * taxDrag);
+		let target = Math.min(popCap, POP_BASE + (popCap - POP_BASE) * comfort * afford * taxDrag);
+		const cls = m.wealthClass[i];
+		if (cls === WEALTH_RICH) {
+			target *= RICH_OCC;
+			if (this.poolOccupancy(i) > 1 && comfort < NEED_FLOOR) target = Math.min(target, pop * 0.6);
+		} else {
+			// Cheap/med keep their built size: do not shrink with comfort, only hold or grow.
+			target = Math.max(target, pop);
+		}
+		if (m.vacantTicks[i] > VACANT_SECONDS || workerGold < 1e-6) target = Math.min(target, pop * 0.985);
+		return Math.min(popCap, Math.max(POP_BASE, Math.max(0, target)));
 	}
 
 	adaptTownTax(i) {
@@ -430,25 +462,56 @@ class ActorOptimizer {
 			return;
 		}
 		const pop = Math.max(1, m.pop[i]);
+		const cap = m.settlements.popCap(i);
 		const comfort = COAL_COMFORT * m.satCoal[i] + GOODS_COMFORT * m.satGoods[i];
 		const drive = this.townDrive(i);
+		const cls = m.wealthClass[i];
+		const poolOcc = this.poolOccupancy(i);
+		const queue = Math.max(0, poolOcc - 1);
+		const occ = cap > 1e-9 ? pop / cap : 0;
+		const housingFree = Math.max(0, 1 - occ);
 		const cCoal = m.coal[i] > 1e-6 ? m.unitCostAt(ITEM_COAL, i) : m.priceCoal[i];
 		const cGoods = m.goods[i] > 1e-6 ? m.unitCostAt(ITEM_GOODS, i) : m.priceGoods[i];
 		const rationCost = TOWN_COAL_NEED * m.satCoal[i] * cCoal + TOWN_GOODS_NEED * m.satGoods[i] * cGoods;
 		const workerGold = m.money.workerPurse[i] + m.workerGoldAt(i);
 		const baseTax = (workerGold / WORKER_SECONDS) / pop;
 		const minProfitTax = baseTax > 1e-9 && comfort > 0.05 ? (rationCost * 1.12) / (baseTax * Math.max(0.25, comfort)) : TAX_MIN;
-		const waitExcess = Math.max(0, this.poolOccupancy(i) - WAIT_POOL_FREE);
-		const popFull = Math.max(0, m.pop[i] / m.settlements.popCap(i) - 0.8) / 0.2;
+		const waitExcess = Math.max(0, poolOcc - WAIT_POOL_FREE);
+		const popFull = Math.max(0, occ - 0.8) / 0.2;
 		const crowdPush = WAIT_TAX_ADAPT * waitExcess + POP_FULL_TAX * popFull * popFull;
 
-		let target = 1;
-		if (drive > 0.02 && comfort > 0.55) {
-			target = Math.max(TAX_MIN, minProfitTax, 1 - 0.42 * drive * comfort) + crowdPush;
+		// Town wealth class decides how taxes react to a full wait pool vs vacant slots (draft "town wealth class").
+		let target;
+		if (cls === WEALTH_CHEAP) {
+			// Cheap (poor-worker) towns: drop tax to fill vacant slots, even if they cannot yet buy every resource;
+			// when the pool queues, hold a modest tax and let size grow to absorb workers.
+			if (housingFree > 0.01) {
+				target = Math.max(TAX_MIN, minProfitTax * 0.6, 1 - 0.5 * housingFree) + crowdPush * 0.3;
+			} else if (queue > 0) {
+				target = Math.max(TAX_MIN, minProfitTax, 1 + 0.1 * queue) + crowdPush * 0.5;
+			} else {
+				target = Math.max(TAX_MIN, minProfitTax, 1) + crowdPush * 0.5;
+			}
+		} else if (cls === WEALTH_RICH) {
+			// Rich towns: rise tax (no growth) when the pool queues and fit needs; if still short, size is cut in
+			// townResidentTarget. With free slots and few workers they ease tax to refill toward a cozy occupancy.
+			if (queue > 0) {
+				target = Math.max(TAX_MIN, minProfitTax, 1 + 0.4 * queue + 0.15 * comfort) + crowdPush;
+			} else if (occ < RICH_OCC) {
+				const fillNeed = RICH_OCC - occ;
+				target = Math.max(TAX_MIN, minProfitTax * 0.7, 1 - 1.2 * fillNeed) + crowdPush * 0.3;
+			} else {
+				target = Math.max(TAX_MIN, minProfitTax, 1 + 0.1) + crowdPush * 0.5;
+			}
 		} else {
-			const shortage = Math.max(0, 0.6 - comfort) / 0.6;
-			const loss = Math.max(0, -drive);
-			target = Math.max(minProfitTax, 1 + 1.15 * Math.max(shortage, loss) + crowdPush);
+			// Med (balanced): buy most resources to fit needs, then grow — the prior single behaviour.
+			if (drive > 0.02 && comfort > 0.55) {
+				target = Math.max(TAX_MIN, minProfitTax, 1 - 0.42 * drive * comfort) + crowdPush;
+			} else {
+				const shortage = Math.max(0, 0.6 - comfort) / 0.6;
+				const loss = Math.max(0, -drive);
+				target = Math.max(minProfitTax, 1 + 1.15 * Math.max(shortage, loss) + crowdPush);
+			}
 		}
 		m.taxMult[i] += ECONOMY_DT * TAX_ADAPT * (Math.min(TAX_MAX, Math.max(TAX_MIN, target)) - m.taxMult[i]);
 	}

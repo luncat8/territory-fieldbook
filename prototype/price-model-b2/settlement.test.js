@@ -1,4 +1,4 @@
-// Owns: regression checks for still-worker shelter rest, hamlet founding without minted gold and tier growth.
+// Owns: regression checks for still-worker shelter rest, young-town founding without minted gold and tier growth.
 'use strict';
 
 const test = require('node:test');
@@ -52,17 +52,17 @@ function goldBalanced(model) {
 	closeTo(sum(model.labor), model.suppliedLabor - model.workedLabor);
 }
 
-test('gathered tired workers beyond town reach found a hamlet with their own savings', () => {
+test('gathered tired workers beyond town reach found a young town with their own savings', () => {
 	const model = emptyMap();
 	strand(model, 20, 14, 0.4, 0.5);
 	const savings = 9 * 0.5;
 	run(model, 6);
 	assert.equal(towns(model), 1);
-	const hamlet = model.actors.indexOf(ECONOMY_TOWN);
-	assert.ok(model.settlements.isHamlet(hamlet));
-	assert.ok(model.pop[hamlet] <= model.settlements.popCap(hamlet) + 1e-9);
+	const young = model.actors.indexOf(ECONOMY_TOWN);
+	assert.ok(model.settlements.isYoungTown(young));
+	assert.ok(model.pop[young] <= model.settlements.popCap(young) + 1e-9);
 	assert.equal(model.money.mined, 0);
-	assert.ok(model.money.held(hamlet) + model.workerGoldAt(hamlet) <= savings + 1e-9);
+	assert.ok(model.money.held(young) + model.workerGoldAt(young) <= savings + 1e-9);
 	goldBalanced(model);
 });
 
@@ -77,7 +77,7 @@ test('a few tired workers only rest slowly where they stand', () => {
 	goldBalanced(model);
 });
 
-test('fresh labor waiting for work never founds a hamlet', () => {
+test('fresh labor waiting for work never founds a young town', () => {
 	const model = emptyMap();
 	strand(model, 20, 14, 0.4, 0.5, 'labor');
 	run(model, 6);
@@ -96,17 +96,17 @@ test('tired workers inside a town home field go home instead of founding', () =>
 	assert.equal(model.settlements.founded, 0);
 });
 
-test('a hamlet fells forest up to half tier, then only comfort lifts it', () => {
+test('a young town fells forest up to half tier, then only comfort lifts it', () => {
 	const model = emptyMap();
 	strand(model, 20, 14, 0.4, 0.5);
 	run(model, 6);
-	const hamlet = model.actors.indexOf(ECONOMY_TOWN);
-	const forest = model.settlements.sumAround(model.settlements.forest, hamlet);
+	const young = model.actors.indexOf(ECONOMY_TOWN);
+	const forest = model.settlements.sumAround(model.settlements.forest, young);
 	run(model, 60);
-	const tier = model.settlements.tier[hamlet];
+	const tier = model.settlements.tier[young];
 	assert.ok(model.settlements.felled > 0);
-	assert.ok(model.settlements.sumAround(model.settlements.forest, hamlet) < forest);
+	assert.ok(model.settlements.sumAround(model.settlements.forest, young) < forest);
 	assert.ok(tier > 0.2 && tier <= WOOD_TIER_CAP + 1e-9, `tier ${tier}`);
-	assert.ok(model.settlements.restFactor(hamlet) < 1 && model.settlements.taxFactor(hamlet) < 1);
+	assert.ok(model.settlements.restFactor(young) < 1 && model.settlements.taxFactor(young) < 1);
 	goldBalanced(model);
 });

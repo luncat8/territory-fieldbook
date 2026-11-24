@@ -1,11 +1,11 @@
-// Owns: settlement tiers, forest stock, still-worker tally, hamlet founding and hamlet growth.
-// Edit for: hamlet threshold and spacing, forest-felling build, tier effects on rest, tax, bids and housing.
+// Owns: settlement tiers, forest stock, still-worker tally, young-town founding and tier growth.
+// Edit for: founding threshold and spacing, forest-felling build, tier effects on rest, tax, bids and housing.
 'use strict';
 
-const HAMLET_RADIUS = 2;
-const HAMLET_TOWN_GAP = 5;
-const HAMLET_REACH = 0.25;
-const HAMLET_STILL = 0.35;
+const FOUND_RADIUS = 2;
+const FOUND_TOWN_GAP = 5;
+const FOUND_REACH = 0.25;
+const FOUND_STILL = 0.35;
 const STILL_SECONDS = 2;
 const SETTLE_SCAN_TICKS = 300;
 const SETTLER_POP = 0.2 / LABOR_PER_POP;
@@ -54,7 +54,9 @@ class Settlements {
 		this.tier[i] = kind === ECONOMY_TOWN ? 1 : 0;
 	}
 
-	isHamlet(i) {
+	// A "young town" is a settlement still in construction (tier below WOOD_TIER_CAP). It can gather resources
+	// itself — felling nearby forest — instead of buying them, which is why founding does not mint gold.
+	isYoungTown(i) {
 		return this.model.actors[i] === ECONOMY_TOWN && this.tier[i] < WOOD_TIER_CAP;
 	}
 
@@ -73,10 +75,10 @@ class Settlements {
 			this.forest[i] += this.regrowShare * (this.forestCap[i] - this.forest[i]);
 			if (a === ECONOMY_TOWN && this.tier[i] < 1) this.growTier(i);
 		}
-		if (++this.ticks % SETTLE_SCAN_TICKS === 0) this.scanHamlet();
+		if (++this.ticks % SETTLE_SCAN_TICKS === 0) this.scanFounding();
 	}
 
-	// Wood raises a hamlet to the cap; beyond it only bought comfort (goods, coal) lifts the tier. Tiers never decay.
+	// Wood raises a young town to the cap; beyond it only bought comfort (goods, coal) lifts the tier. Tiers never decay.
 	growTier(i) {
 		if (this.tier[i] < WOOD_TIER_CAP) {
 			this.buildFromForest(i);
@@ -86,7 +88,7 @@ class Settlements {
 		if (goal > this.tier[i]) this.tier[i] = Math.min(1, this.tier[i] + ECONOMY_DT * TIER_RATE * (goal - this.tier[i]));
 	}
 
-	// Like a sawmill site, a hamlet builds from its own forest with its own idle residents:
+	// Like a sawmill site, a young town builds from its own forest with its own idle residents:
 	// still labor at home fells the surrounding wood and returns tired.
 	buildFromForest(i) {
 		const m = this.model;
@@ -113,8 +115,8 @@ class Settlements {
 	sumAround(field, i) {
 		const cx = i % ECONOMY_WIDTH, cy = Math.floor(i / ECONOMY_WIDTH);
 		let total = 0;
-		for (let y = Math.max(0, cy - HAMLET_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, cy + HAMLET_RADIUS); y++) {
-			for (let x = Math.max(0, cx - HAMLET_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, cx + HAMLET_RADIUS); x++) total += field[economyIndex(x, y)];
+		for (let y = Math.max(0, cy - FOUND_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, cy + FOUND_RADIUS); y++) {
+			for (let x = Math.max(0, cx - FOUND_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, cx + FOUND_RADIUS); x++) total += field[economyIndex(x, y)];
 		}
 		return total;
 	}
@@ -122,47 +124,48 @@ class Settlements {
 	fellAround(i, wood) {
 		const share = wood / this.sumAround(this.forest, i);
 		const cx = i % ECONOMY_WIDTH, cy = Math.floor(i / ECONOMY_WIDTH);
-		for (let y = Math.max(0, cy - HAMLET_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, cy + HAMLET_RADIUS); y++) {
-			for (let x = Math.max(0, cx - HAMLET_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, cx + HAMLET_RADIUS); x++) this.forest[economyIndex(x, y)] *= 1 - share;
+		for (let y = Math.max(0, cy - FOUND_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, cy + FOUND_RADIUS); y++) {
+			for (let x = Math.max(0, cx - FOUND_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, cx + FOUND_RADIUS); x++) this.forest[economyIndex(x, y)] *= 1 - share;
 		}
 	}
 
 	townNear(i) {
 		const { actors } = this.model;
 		const cx = i % ECONOMY_WIDTH, cy = Math.floor(i / ECONOMY_WIDTH);
-		for (let y = Math.max(0, cy - HAMLET_TOWN_GAP); y <= Math.min(ECONOMY_HEIGHT - 1, cy + HAMLET_TOWN_GAP); y++) {
-			for (let x = Math.max(0, cx - HAMLET_TOWN_GAP); x <= Math.min(ECONOMY_WIDTH - 1, cx + HAMLET_TOWN_GAP); x++) {
+		for (let y = Math.max(0, cy - FOUND_TOWN_GAP); y <= Math.min(ECONOMY_HEIGHT - 1, cy + FOUND_TOWN_GAP); y++) {
+			for (let x = Math.max(0, cx - FOUND_TOWN_GAP); x <= Math.min(ECONOMY_WIDTH - 1, cx + FOUND_TOWN_GAP); x++) {
 				if (actors[economyIndex(x, y)] === ECONOMY_TOWN) return true;
 			}
 		}
 		return false;
 	}
 
-	// Enough tired workers standing still in one area become a hamlet once no town signal reaches them; the
-	// home fields measure reach, so the rule is the same for cells and particles. Fresh labor queueing at a full
+	// Enough tired workers standing still in one area found a settlement (town) once no town signal reaches them;
+	// the home fields measure reach, so the rule is the same for cells and particles. Fresh labor queueing at a full
 	// firm is waiting for work, not homeless, so only depleted counts.
-	scanHamlet() {
+	scanFounding() {
 		const { actors, priceHome, priceRest } = this.model;
-		let best = -1, bestSum = HAMLET_STILL;
+		let best = -1, bestSum = FOUND_STILL;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			if (actors[i] || this.still[i] <= 1e-4 || priceHome[i] + priceRest[i] > HAMLET_REACH) continue;
+			if (actors[i] || this.still[i] <= 1e-4 || priceHome[i] + priceRest[i] > FOUND_REACH) continue;
 			const sum = this.sumAround(this.still, i);
 			if (sum > bestSum && !this.townNear(i)) {
 				best = i;
 				bestSum = sum;
 			}
 		}
-		if (best >= 0) this.foundHamlet(best);
+		if (best >= 0) this.foundTown(best);
 	}
 
-	// The gathered workers become residents and bring their savings; no vault gold is minted, so the
-	// hamlet starts broke and lives on tax from the wages its residents earn.
-	foundHamlet(c) {
+	// The gathered workers become residents and bring their savings; no vault gold is minted, so the young
+	// town starts broke and lives on tax from the wages its residents earn. It carries on with the wealth class
+	// of its founding cell.
+	foundTown(c) {
 		const m = this.model;
 		const cx = c % ECONOMY_WIDTH, cy = Math.floor(c / ECONOMY_WIDTH);
 		let settled = 0, savings = 0, workers = 0;
-		for (let y = Math.max(0, cy - HAMLET_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, cy + HAMLET_RADIUS); y++) {
-			for (let x = Math.max(0, cx - HAMLET_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, cx + HAMLET_RADIUS); x++) {
+		for (let y = Math.max(0, cy - FOUND_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, cy + FOUND_RADIUS); y++) {
+			for (let x = Math.max(0, cx - FOUND_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, cx + FOUND_RADIUS); x++) {
 				const n = economyIndex(x, y);
 				if (m.actors[n]) continue;
 				settled += m.depleted[n];
@@ -176,6 +179,8 @@ class Settlements {
 		m.restedDepleted += settled;
 		m.actors[c] = ECONOMY_TOWN;
 		m.scale[c] = m.taxMult[c] = 1;
+		m.wealthClass[c] = wealthClassFor(c);
+		m.vacantTicks[c] = 0;
 		this.tier[c] = 0;
 		m.pop[c] = Math.min(this.popCap(c), Math.max(POP_BASE, (settled + workers) * SETTLER_POP));
 		m.satCoal[c] = m.satGoods[c] = m.workLoad[c] = m.profit[c] = 0;

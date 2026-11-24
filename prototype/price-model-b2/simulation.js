@@ -47,6 +47,14 @@ const GRADIENT_KNEE = 0.006;
 const STEERING_BLEND = ECONOMY_DT / (0.18 + ECONOMY_DT);
 const economyIndex = (x, y) => y * ECONOMY_WIDTH + x;
 
+// Deterministic, reproducible wealth-class assignment (cheap / med / rich) per cell index.
+// Same variety as a random draw but identical across resets and tests (no RNG state to drift).
+function wealthClassFor(i) {
+	let h = (Math.imul(i + 1, 2654435761) >>> 0);
+	h = (Math.imul(h ^ (h >>> 15), 2246822519) >>> 0);
+	return h % 3;
+}
+
 const DIRECTIONS = [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [-1, -1], [1, -1]]
 	.map(([x, y]) => {
 		const inv = x && y ? Math.SQRT1_2 : 1;
@@ -146,6 +154,8 @@ class PriceEconomy {
 		this.pop = new Float64Array(ECONOMY_SIZE);
 		this.scale = new Float64Array(ECONOMY_SIZE);
 		this.taxMult = new Float64Array(ECONOMY_SIZE);
+		this.wealthClass = new Uint8Array(ECONOMY_SIZE);
+		this.vacantTicks = new Float64Array(ECONOMY_SIZE);
 		this.satCoal = new Float64Array(ECONOMY_SIZE);
 		this.satGoods = new Float64Array(ECONOMY_SIZE);
 		this.workLoad = new Float64Array(ECONOMY_SIZE);
@@ -187,6 +197,8 @@ class PriceEconomy {
 		for (const [x, y] of REFERENCE_TOWNS) this.actors[economyIndex(x, y)] = ECONOMY_TOWN;
 		for (const [x, y] of REFERENCE_GOLD) this.actors[economyIndex(x, y)] = ECONOMY_GOLD;
 		for (const field of [this.coal, this.goods, this.labor, this.depleted, this.priceCoal, this.priceGoods, this.priceLabor, this.priceHome, this.priceRest, this.pop, this.scale, this.taxMult, this.satCoal, this.satGoods, this.workLoad, this.profit, this.earned]) field.fill(0);
+		this.wealthClass.fill(0);
+		this.vacantTicks.fill(0);
 		for (const flow of this.flows) clearScratch(flow);
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			if (!this.actors[i]) continue;
@@ -194,6 +206,7 @@ class PriceEconomy {
 			if (this.actors[i] === ECONOMY_TOWN) {
 				this.pop[i] = START_POP;
 				this.taxMult[i] = 1;
+				this.wealthClass[i] = wealthClassFor(i);
 			}
 		}
 		this.money.reset();
@@ -208,6 +221,8 @@ class PriceEconomy {
 		if (!kind && this.actors[i]) {
 			this.money.release(i);
 			this.pop[i] = this.scale[i] = this.taxMult[i] = this.satCoal[i] = this.satGoods[i] = this.workLoad[i] = this.profit[i] = 0;
+			this.wealthClass[i] = 0;
+			this.vacantTicks[i] = 0;
 			for (const flow of this.flows) {
 				flow.sell[i] = 0;
 				if (flow.cost) flow.cost[i] = 0;
@@ -222,6 +237,8 @@ class PriceEconomy {
 		if (kind === ECONOMY_TOWN) {
 			this.pop[i] = START_POP;
 			this.taxMult[i] = 1;
+			this.wealthClass[i] = wealthClassFor(i);
+			this.vacantTicks[i] = 0;
 			this.money.seed(i);
 		}
 		return true;

@@ -317,14 +317,16 @@ test('factories pay workers, workers pay taxes in town, and both factories and t
 	checkLedger(model);
 });
 
-test('an isolated town with no supplies collects zero taxes, earns zero profit and loses population', () => {
+test('an isolated town with no supplies collects zero taxes and earns zero profit but keeps its built size', () => {
+	// Draft revision: cheap/med towns keep their built size and only shed residents when long-vacant or broke
+	// (tax is the lever that keeps them full), so an unsupplied town no longer collapses its population by default.
 	const model = clearedMap();
 	const lonely = economyIndex(24, 14);
 	model.setActor(lonely, ECONOMY_TOWN);
 	run(model, 30);
 	assert.equal(model.money.taxes, 0);
 	assert.equal(model.profit[lonely], 0);
-	assert.ok(model.pop[lonely] < START_POP * 0.5);
+	assert.ok(model.pop[lonely] >= START_POP * 0.5);
 	checkLedger(model);
 });
 

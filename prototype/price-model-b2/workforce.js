@@ -27,12 +27,21 @@ class WorkerPolicy {
 		return COAL_COMFORT * m.satCoal[i] + GOODS_COMFORT * m.satGoods[i];
 	}
 
-	// A town that wants to shrink below its people has no room to offer; a full town at its goal still does.
+	// Rest comfort blends resource comfort with a free-space lift: an uncrowded town rests workers better
+	// (draft: "add some increment to comfort in case of free space in town").
+	restComfort(i) {
+		const m = this.model;
+		const cap = m.settlements.popCap(i);
+		const housingFree = cap > 1e-9 ? Math.max(0, (cap - m.pop[i]) / cap) : 0;
+		return Math.min(1, this.comfortAt(i) + SPACE_COMFORT * housingFree);
+	}
+
+	// A town keeps its room by taxing: full housing still offers a rest floor (tax handles crowding) and empty
+	// housing opens the door. This replaces the old "town wants to shrink, offers less room" premise.
 	shelterAt(i) {
 		const m = this.model;
-		const comfort = this.comfortAt(i);
-		const housing = Math.min(1, m.optimizer.townGoalPop(i, comfort) / m.pop[i]);
-		return (BASE_SHELTER + (1 - BASE_SHELTER) * comfort) * housing * m.settlements.restFactor(i);
+		const comfort = this.restComfort(i);
+		return (BASE_SHELTER + (1 - BASE_SHELTER) * comfort) * m.settlements.restFactor(i);
 	}
 
 	// Quality axis: how well a worker recovers here — comfort, tier and wait-pool crowding, ignoring tax.
