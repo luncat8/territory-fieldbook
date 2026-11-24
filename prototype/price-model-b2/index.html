@@ -73,8 +73,8 @@
 	</main>
 
 	<dialog id="field-guide" aria-labelledby="guide-title"><div class="dialog-head"><div class="eyebrow"><span></span>Model B2 reference</div><button id="close-guide" class="icon-button" type="button" aria-label="Close field guide"><i data-icon="close"></i></button></div><h2 id="guide-title">Field guide</h2>
-		<dl class="guide-notes"><dt><i class="source-key"></i>Worker wallets &amp; fresh pools</dt><dd>Commuting and depleted workers carry conserved gold fields alongside their cell counts. Firms size an on-site fresh-worker pool to real shift occupancy (<b id="source-note"></b> u/s base mine rate), emitting wage demand inversely with pool occupancy down to zero on overflow and splitting settled wages across on-site workers.</dd>
-			<dt><i class="consumer-key"></i>Towns, wait pools &amp; living tax</dt><dd>Towns maintain a return wait pool sized to active occupancy and raise gold living tax when the wait pool crowds, steering excess migrants toward cheaper nearby towns. Resting into fresh labor requires paying the town's gold fee; starter towns bid <b id="start-price-note"></b> g/u for goods and use <b id="uptake-note"></b> goods/s.</dd>
+		<dl class="guide-notes"><dt><i class="source-key"></i>Worker wallets &amp; fresh pools</dt><dd>Commuting and depleted workers carry conserved gold fields alongside their cell counts. Firms size an on-site fresh-worker pool to real shift occupancy (<b id="source-note"></b> u/s base mine rate), emitting wage demand inversely with pool occupancy down to zero on overflow. The wage is paid into the wallet when a worker enters the pool, so later overflow cannot cut it; an empty purse leaves back-pay owed.</dd>
+			<dt><i class="consumer-key"></i>Towns, wait pools &amp; living tax</dt><dd>Towns do not route workers; tired workers climb a home field that trades rest quality against living tax, weighted by their own wallet (poor workers favour cheap, rich ones comfort). A town only rests workers for whom it is the local best home and raises living tax when its wait pool crowds. Resting into fresh labor requires paying the town's gold fee; workers standing still away from towns rest slowly for free. Where enough of them gather beyond any town's reach a hamlet is founded: it fells nearby forest up to half tier, then grows with bought comfort, with lower rest speed, tax, bids and housing until then; starter towns bid <b id="start-price-note"></b> g/u for goods and use <b id="uptake-note"></b> goods/s.</dd>
 			<dt><i class="factory-key"></i>Factories &amp; sell floors</dt><dd>Factories never pause conversion of owned stock. Input book cost carries into finished goods and sets a minimum sell price so stocked product is never sold at a loss; buy prices adapt to output margin and profit.</dd>
 			<dt><i class="gold-key"></i>Gold &amp; payments</dt><dd>Gold is conserved across municipal vaults, resident purses, mobile worker wallets and seller payment streams. Gold mines start at <b id="gold-rate-note"></b> g/s and expand while local wages stay profitable.</dd>
 			<dt>Price decay</dt><dd>Diffused bids, wages and town appeal fade with distance to emulate transport and migration cost. Switch it off and signals reach the whole map at full strength.</dd></dl>
@@ -84,6 +84,8 @@
 	<script src="simulation.js"></script>
 	<script src="actors.js"></script>
 	<script src="gold.js"></script>
+	<script src="workforce.js"></script>
+	<script src="settlement.js"></script>
 	<script src="fields.js"></script>
 	<script src="telemetry.js"></script>
 	<script src="app.js"></script>

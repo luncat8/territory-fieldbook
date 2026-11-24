@@ -1,5 +1,5 @@
-// Owns: universal actor recipes, buy/sell pricing, worker/living wait pools, gold-tax appeal and paid rest.
-// Edit for: firm recipes, pool-occupancy hire demand, wait-pool living taxes and worker wallet cycle.
+// Owns: universal actor recipes, buy/sell pricing, worker/living wait pools, tier-scaled town taxes and paid rest.
+// Edit for: firm recipes, pool-occupancy hire demand, wait-pool living taxes and worker wallet cycle. Home appeal: workforce.js.
 'use strict';
 
 const JOINT_BUDGET_SHARE = 0.78;
@@ -19,7 +19,6 @@ const WAIT_SPOT_TAX = 0.55;
 const WAIT_TAX_ADAPT = 0.95;
 const POP_FULL_TAX = 0.65;
 const REST_TAX_SHARE = 0.35;
-const BASE_SHELTER = 0.15;
 const TAX_MIN = 0.55;
 const TAX_MAX = 2.4;
 const TAX_ADAPT = 0.6;
@@ -105,7 +104,7 @@ class ActorOptimizer {
 
 	townPopPlan(i) {
 		const boost = Math.max(0, this.townDrive(i));
-		return Math.min(POP_MAX, this.model.pop[i] + POP_HEADROOM * (1 + boost));
+		return Math.min(this.model.settlements.popCap(i), this.model.pop[i] + POP_HEADROOM * (1 + boost));
 	}
 
 	townCoalTarget(i) {
@@ -124,22 +123,22 @@ class ActorOptimizer {
 		const m = this.model;
 		if (!m.derived || m.pop[i] <= 0) return 1;
 		const waitExcess = Math.max(0, this.poolOccupancy(i) - WAIT_POOL_FREE);
-		const popFull = Math.max(0, m.pop[i] / POP_MAX - 0.8) / 0.2;
+		const popFull = Math.max(0, m.pop[i] / m.settlements.popCap(i) - 0.8) / 0.2;
 		return 1 + WAIT_SPOT_TAX * waitExcess + 0.35 * popFull * popFull;
 	}
 
 	townEffectiveMult(i) {
 		const m = this.model;
-		return m.derived ? (m.taxMult[i] || 1) * this.townCrowdMult(i) : 1;
+		return m.derived ? (m.taxMult[i] || 1) * this.townCrowdMult(i) * m.settlements.taxFactor(i) : 1;
 	}
 
-	// Posted living tax in gold rises with wait-pool crowding and never drops to zero on empty purses.
+	// Posted living tax in gold rises with wait-pool crowding, falls with low tier and never drops to zero on empty purses.
 	townRestTax(i) {
 		const m = this.model;
 		if (!m.derived) return START_TAX_PER_POP;
 		const crowd = this.townCrowdMult(i);
 		const mult = (m.taxMult[i] || 1) * crowd;
-		return Math.max(START_TAX_PER_POP * mult, this.townTaxRate(i) * crowd);
+		return Math.max(START_TAX_PER_POP * mult, this.townTaxRate(i) * crowd) * m.settlements.taxFactor(i);
 	}
 
 	townShare(i) {
@@ -151,7 +150,7 @@ class ActorOptimizer {
 		const tax = this.townTaxRate(i);
 		const share = this.townShare(i);
 		const cool = m.money.townCool(i, share * tax * m.pop[i] * PURSE_SECONDS);
-		return optimalBid((GOODS_COMFORT / TOWN_GOODS_NEED) * tax, m.goods[i], this.townGoodsTarget(i), cool, m.suppression, share);
+		return m.settlements.bidFactor(i) * optimalBid((GOODS_COMFORT / TOWN_GOODS_NEED) * tax, m.goods[i], this.townGoodsTarget(i), cool, m.suppression, share);
 	}
 
 	townCoalBid(i) {
@@ -159,18 +158,7 @@ class ActorOptimizer {
 		const tax = this.townTaxRate(i);
 		const share = this.townShare(i);
 		const cool = m.money.townCool(i, share * tax * m.pop[i] * PURSE_SECONDS);
-		return optimalBid((COAL_COMFORT / TOWN_COAL_NEED) * tax, m.coal[i], this.townCoalTarget(i), cool, m.suppression, share);
-	}
-
-	// Living appeal is shelter comfort per gold of living tax; wait-pool & housing crowding act through goldTax
-	// rather than zeroing full towns or giving shrinking towns fake popRoom attraction.
-	townHomeBid(i) {
-		const m = this.model;
-		if (m.pop[i] <= 0) return 0;
-		const comfort = COAL_COMFORT * m.satCoal[i] + GOODS_COMFORT * m.satGoods[i];
-		const shelter = BASE_SHELTER + (1 - BASE_SHELTER) * comfort;
-		const goldTax = this.townRestTax(i);
-		return START_PRICE * shelter * (START_TAX_PER_POP / Math.max(1e-6, goldTax));
+		return m.settlements.bidFactor(i) * optimalBid((COAL_COMFORT / TOWN_COAL_NEED) * tax, m.coal[i], this.townCoalTarget(i), cool, m.suppression, share);
 	}
 
 	// Universal firm bid optimizer: splits output value across inputs within a profitable budget
@@ -333,38 +321,19 @@ class ActorOptimizer {
 	}
 
 	// Returning depleted workers in the town wait pool pay the gold rest tax from their carried wallet
-	// to rest into fresh labor; high-tax or wait-crowded towns price out penniless workers.
+	// to rest into fresh labor. A town rests only workers for whom it is the local best home; penniless workers get no
+	// paid rest and only rest slowly while still (workforce.js).
 	restWorkers(i, comfort, workCap) {
 		const m = this.model;
 		const dep = m.depleted[i];
-		if (dep <= 1e-12) return 0;
+		if (dep <= 1e-12 || hasBetterNeighbor(m.depletedFlow, m.priceHome, i)) return 0;
 		const carried = m.depletedFlow.gold[i];
-		const mult = this.townEffectiveMult(i);
-		if (comfort <= 0.05) {
-			if (carried <= 1e-9 || hasHigherNeighbor(m.priceHome, i)) return 0;
-			const shelterRest = Math.min(dep, Math.max(0.12, m.pop[i] * LABOR_PER_POP * 0.4) * ECONOMY_DT);
-			const banked = carried * Math.min(1, shelterRest / dep);
-			m.depleted[i] = Math.max(0, dep - shelterRest);
-			m.depletedFlow.gold[i] = Math.max(0, carried - banked);
-			if (m.depleted[i] <= 1e-12 && m.depletedFlow.gold[i] > 0) {
-				m.money.workerPurse[i] += m.depletedFlow.gold[i];
-				m.depletedFlow.gold[i] = 0;
-			}
-			m.money.workerPurse[i] += banked;
-			m.restedDepleted += shelterRest;
-			const toLabor = Math.min(Math.max(0, workCap - m.labor[i]), shelterRest);
-			m.labor[i] += toLabor;
-			m.suppliedLabor += toLabor;
-			return shelterRest;
-		}
-
-		const restRate = m.pop[i] * LABOR_PER_POP * (0.25 + 0.95 * comfort) + 0.12 * comfort;
+		const restRate = (m.pop[i] * LABOR_PER_POP * (0.25 + 0.95 * comfort) + 0.12) * m.settlements.restFactor(i);
 		const wantRest = Math.min(dep, restRate * ECONOMY_DT);
 		const feePerUnit = (this.townRestTax(i) / LABOR_PER_POP) * REST_TAX_SHARE * comfort;
 		const fullFee = wantRest * feePerUnit;
 		const afford = fullFee > 1e-12 ? Math.min(1, carried / fullFee) : 1;
-		const grace = mult <= 1.15 ? 0.25 : 0;
-		const restedWork = wantRest * (grace + (1 - grace) * afford);
+		const restedWork = wantRest * afford;
 		if (restedWork <= 1e-12) return 0;
 
 		const share = Math.min(1, restedWork / dep);
@@ -418,11 +387,7 @@ class ActorOptimizer {
 		const taxIncome = (m.money.taxes - taxesBefore) / ECONOMY_DT;
 		m.earned[i] += taxIncome - (coalCost + goodsCost) / ECONOMY_DT;
 
-		const mult = m.derived ? (m.taxMult[i] || 1) : 1;
-		const workerGold = m.money.workerPurse[i] + m.workerGoldAt(i);
-		const afford = workerGold / (workerGold + pop * 0.25 * mult);
-		const taxDrag = mult > 1 ? 1 / (1 + 0.5 * (mult - 1)) : 1 + 0.18 * (1 - mult);
-		const goalPop = Math.min(POP_MAX, POP_BASE + (POP_MAX - POP_BASE) * comfort * afford * taxDrag);
+		const goalPop = this.townGoalPop(i, comfort);
 		const migrantBoost = restedWork > 0 && pop < goalPop ? Math.min(goalPop - pop, (restedWork / LABOR_PER_POP) * 0.2 * comfort) : 0;
 		const deltaPop = ECONOMY_DT * POP_RATE * (goalPop - pop) + migrantBoost;
 		m.pop[i] = Math.min(POP_MAX, Math.max(0, pop + deltaPop));
@@ -439,12 +404,23 @@ class ActorOptimizer {
 		}
 
 		const tax = this.townTaxRate(i);
-		const maxCoal = m.derived ? (COAL_COMFORT / TOWN_COAL_NEED) * tax * 0.96 : Infinity;
-		const maxGoods = m.derived ? (GOODS_COMFORT / TOWN_GOODS_NEED) * tax * 0.96 : Infinity;
+		const ceiling = m.settlements.bidFactor(i) * 0.96;
+		const maxCoal = m.derived ? (COAL_COMFORT / TOWN_COAL_NEED) * tax * ceiling : Infinity;
+		const maxGoods = m.derived ? (GOODS_COMFORT / TOWN_GOODS_NEED) * tax * ceiling : Infinity;
 		const waitPool = this.townWaitPool(i);
 		m.coalFlow.cap[i] = this.townCoalBid(i) > 0 && m.priceCoal[i] <= maxCoal ? Math.max(m.coal[i], this.townCoalTarget(i)) : m.coal[i];
 		m.goodsFlow.cap[i] = this.townGoodsBid(i) > 0 && m.priceGoods[i] <= maxGoods ? Math.max(m.goods[i], this.townGoodsTarget(i)) : m.goods[i];
-		m.depletedFlow.cap[i] = this.townHomeBid(i) > 0 ? Math.min(0.95, Math.max(m.depleted[i], waitPool * WAIT_POOL_OVERFLOW)) : 0;
+		m.depletedFlow.cap[i] = m.pop[i] > 0 ? Math.min(0.95, Math.max(m.depleted[i], waitPool * WAIT_POOL_OVERFLOW)) : 0;
+	}
+
+	townGoalPop(i, comfort) {
+		const m = this.model;
+		const mult = m.derived ? (m.taxMult[i] || 1) : 1;
+		const workerGold = m.money.workerPurse[i] + m.workerGoldAt(i);
+		const afford = workerGold / (workerGold + m.pop[i] * 0.25 * mult);
+		const taxDrag = mult > 1 ? 1 / (1 + 0.5 * (mult - 1)) : 1 + 0.18 * (1 - mult);
+		const popCap = m.settlements.popCap(i);
+		return Math.min(popCap, POP_BASE + (popCap - POP_BASE) * comfort * afford * taxDrag);
 	}
 
 	adaptTownTax(i) {
@@ -463,7 +439,7 @@ class ActorOptimizer {
 		const baseTax = (workerGold / WORKER_SECONDS) / pop;
 		const minProfitTax = baseTax > 1e-9 && comfort > 0.05 ? (rationCost * 1.12) / (baseTax * Math.max(0.25, comfort)) : TAX_MIN;
 		const waitExcess = Math.max(0, this.poolOccupancy(i) - WAIT_POOL_FREE);
-		const popFull = Math.max(0, m.pop[i] / POP_MAX - 0.8) / 0.2;
+		const popFull = Math.max(0, m.pop[i] / m.settlements.popCap(i) - 0.8) / 0.2;
 		const crowdPush = WAIT_TAX_ADAPT * waitExcess + POP_FULL_TAX * popFull * popFull;
 
 		let target = 1;

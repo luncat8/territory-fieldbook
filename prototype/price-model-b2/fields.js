@@ -1,5 +1,5 @@
 // Owns: cell-aligned heatmaps, price isolines, realized stock/gold flux arrows and cell inspection.
-// Edit for: palette scaling, worker-gold flow arrows and B2 wallet/tax tooltip readouts.
+// Edit for: palette scaling, worker-gold flow arrows and B2 wallet/tax/settlement tooltip readouts.
 'use strict';
 
 const STOCK_COLORS = [[0,'#19181b'],[0.12,'#35272a'],[0.26,'#6d3a26'],[0.41,'#a95627'],[0.55,'#e18a36'],[0.7,'#ffca70'],[1,'#fff1c6']];
@@ -304,19 +304,20 @@ class FieldPlot {
 		const tip = this.tooltip;
 		tip.hidden = i < 0;
 		if (i < 0) return;
-		const { money, actors } = model, actor = actors[i];
+		const { money, actors, settlements } = model, actor = actors[i];
 		const carried = model.workerGoldAt(i);
 		const occPct = actor ? Math.round(model.poolOccupancy(i) * 100) : 0;
 		const detail = actor === ECONOMY_TOWN
-			? ` · Pop ${model.pop[i].toFixed(1)} · Wait ${occPct}% · Tax ${model.townRestTax(i).toFixed(2)}g (${Math.round((model.taxMult[i] || 1) * 100)}%)`
+			? ` · Tier ${Math.round(settlements.tier[i] * 100)}% · Pop ${model.pop[i].toFixed(1)} · Wait ${occPct}% · Tax ${model.townRestTax(i).toFixed(2)}g (${Math.round((model.taxMult[i] || 1) * 100)}%)`
 			: actor ? ` · Scale ${(model.scale[i] || 1).toFixed(2)}× · Pool ${occPct}%${actor === ECONOMY_GOLD ? '' : ` · Ask ${model.sellPrice(i).toFixed(2)}`}` : '';
-		const head = `${pinned ? 'Pinned · ' : ''}${ACTOR_NAMES[actor]} ${cellName(i)}${detail}`;
+		const head = `${pinned ? 'Pinned · ' : ''}${settlements.isHamlet(i) ? 'Hamlet' : ACTOR_NAMES[actor]} ${cellName(i)}${detail}`;
 		const stocks = `Coal ${model.coal[i].toFixed(3)} · Goods ${model.goods[i].toFixed(3)} · Labor ${model.labor[i].toFixed(3)} · Depl ${model.depleted[i].toFixed(3)}`;
-		const prices = `Coal ${model.priceCoal[i].toFixed(2)} · Goods ${model.priceGoods[i].toFixed(2)} · Wage ${model.priceLabor[i].toFixed(2)} · Appeal ${model.priceHome[i].toFixed(2)}`;
+		const prices = `Coal ${model.priceCoal[i].toFixed(2)} · Goods ${model.priceGoods[i].toFixed(2)} · Wage ${model.priceLabor[i].toFixed(2)} · Home ${model.priceHome[i].toFixed(2)}/${model.priceRest[i].toFixed(2)}`;
 		const wallet = actor === ECONOMY_TOWN
 			? `Town ${money.purse[i].toFixed(2)}g · Residents ${money.workerPurse[i].toFixed(2)}g · Carried ${carried.toFixed(2)}g · Profit ${model.profit[i].toFixed(2)}/s`
 			: `Held ${money.held(i).toFixed(2)}g · WorkerPay ${carried.toFixed(2)}g · Owed ${money.owedAt(i).toFixed(2)}g${actor ? ` · Profit ${model.profit[i].toFixed(2)}/s` : ''}`;
-		tip.textContent = `${head}\n${stocks}\n${prices}\n${wallet}`;
+		const land = `Forest ${settlements.forest[i].toFixed(2)}/${settlements.forestCap[i].toFixed(2)} · Still ${model.depletedFlow.still[i].toFixed(2)} · Gathered ${settlements.still[i].toFixed(3)}`;
+		tip.textContent = `${head}\n${stocks}\n${prices}\n${wallet}\n${land}`;
 		const x = this.left+(i%ECONOMY_WIDTH+0.5)*this.cw, y = this.top+(Math.floor(i/ECONOMY_WIDTH)+0.5)*this.ch;
 		tip.style.left = `${Math.max(3,Math.min(this.w-tip.offsetWidth-3,x+10))}px`;
 		tip.style.top = `${y+tip.offsetHeight+12 < this.h ? y+10 : Math.max(2,y-tip.offsetHeight-8)}px`;

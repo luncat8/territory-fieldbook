@@ -1,5 +1,5 @@
 // Owns: conserved gold — municipal & resident purses, carried worker wallets, bills, taxes and firm payouts.
-// Edit for: starting gold calibration, worker wage handoff, living/rest tax collection and payment streams.
+// Edit for: starting gold calibration, wage-at-entry handoff, living/rest tax collection and payment streams.
 'use strict';
 
 const START_PRICE = 4;
@@ -121,7 +121,17 @@ class GoldMoney {
 		this.workerPurse[i] += netSavings;
 	}
 
-	// Firms split settled wages proportionally across on-site pool and shift-finished workers; orphan back-pay uses coin.
+	// The wage is fixed when a worker sits into the firm pool: paid at once into the arriving wallet so later
+	// overflow cannot cut its pay; an empty purse leaves the remainder owed as back-pay.
+	payOnEntry(i, amount) {
+		const pay = Math.min(amount, this.purse[i]);
+		this.purse[i] -= pay;
+		this.model.laborFlow.gold[i] += pay;
+		this.wages += pay;
+		this.streams[PAY_WAGE].owed[i] += amount - pay;
+	}
+
+	// Back-pay splits proportionally across on-site pool and shift-finished workers; orphan back-pay uses coin.
 	payWorkers(i, amount) {
 		if (amount <= 0) return;
 		const m = this.model;

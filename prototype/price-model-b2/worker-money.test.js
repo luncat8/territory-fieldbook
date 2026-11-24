@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-for (const file of ['simulation.js', 'actors.js', 'gold.js']) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
+for (const file of ['simulation.js', 'actors.js', 'gold.js', 'workforce.js', 'settlement.js']) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 
 const sum = (values) => values.reduce((total, value) => total + value, 0);
 const closeTo = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-8, `${actual} ≠ ${expected}`);
@@ -128,7 +128,7 @@ test('living appeal trades off gold tax against distance fade and does not favor
 	taxModel.money.seeded += taxModel.money.workerPurse[inflated] * 3;
 	taxModel.money.workerPurse[inflated] *= 4;
 	for (let n = 0; n < 180; n++) taxModel.updatePrices();
-	assert.ok(taxModel.townHomeBid(cheap) > taxModel.townHomeBid(inflated) * 3, 'inflated 4x gold tax lowers living appeal');
+	assert.ok(taxModel.workforce.homeValueBid(cheap) > taxModel.workforce.homeValueBid(inflated) * 3, 'inflated 4x gold tax lowers living appeal');
 	assert.ok(taxModel.priceHome[mid - 1] > taxModel.priceHome[mid + 1], 'equidistant cheaper gold-tax town wins');
 	checkLedger(distModel);
 	checkLedger(taxModel);
@@ -259,7 +259,7 @@ test('towns increase living taxes and cool home appeal when their wait pool to l
 	assert.ok(model.poolOccupancy(crowded) > model.poolOccupancy(calm) + 0.35);
 	assert.ok(model.taxMult[crowded] > model.taxMult[calm] + 0.25);
 	assert.ok(model.townRestTax(crowded) > model.townRestTax(calm) * 1.5);
-	assert.ok(model.townHomeBid(crowded) < model.townHomeBid(calm) * 0.7);
+	assert.ok(model.workforce.homeValueBid(crowded) < model.workforce.homeValueBid(calm) * 0.7);
 	checkLedger(model);
 });
 
@@ -311,10 +311,10 @@ test('full healthy towns keep positive home appeal via rent pressure while shrin
 	model.pop[dying] = 2.5;
 	model.taxMult[dying] = 1.6;
 
-	assert.ok(model.townHomeBid(fullHealthy) > 2, 'full town still welcomes its own commuters home');
+	assert.ok(model.workforce.homeValueBid(fullHealthy) > 2, 'full town still welcomes its own commuters home');
 	assert.ok(model.townRestTax(fullHealthy) > model.townRestTax(roomyHealthy), 'near-capacity town charges higher living tax');
-	assert.ok(model.townHomeBid(roomyHealthy) > model.townHomeBid(fullHealthy), 'newcomers prefer equally comfortable town with housing room');
-	assert.ok(model.townHomeBid(fullHealthy) > model.townHomeBid(dying) * 5, 'shrinking unsupplied town never outbids healthy full town');
+	assert.ok(model.workforce.homeValueBid(roomyHealthy) > model.workforce.homeValueBid(fullHealthy), 'newcomers prefer equally comfortable town with housing room');
+	assert.ok(model.workforce.homeValueBid(fullHealthy) > model.workforce.homeValueBid(dying) * 5, 'shrinking unsupplied town never outbids healthy full town');
 	checkLedger(model);
 });
 

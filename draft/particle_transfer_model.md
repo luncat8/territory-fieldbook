@@ -23,9 +23,8 @@ firms pay wages directly into carrier at work cell, workers pay living/rest tax 
 firms keep fresh-worker pool, towns keep wait pool; hire demand cools to zero on pool overflow.
 wages level on the moment of sit to pool, so overflow will not cause zero wage for existing workers in pool queue. to optimize we can just pay in advance in time of come to firm.
 
-------- this addition by agent is not clear to me and probably need to be corrected
-dominated towns release workers toward higher appeal; penniless workers get grace/shelter rest so they never strand.
--------
+a town rests (and taxes) only workers for whom it is the best home around: if a neighbor cell has higher home appeal, the worker keeps walking instead of being caught by the first town on its path.
+a worker that stands still (no town reaches it, or it cannot move) rests very slowly where it stands for free - shelter floor, so nobody strands forever. many such still workers in one area become a settlement (below).
 
 ### penniless workers and town construction
 

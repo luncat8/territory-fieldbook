@@ -458,3 +458,20 @@ Three traps surfaced when adding fresh-worker and living wait pools in `prototyp
   crowding and near-`POP_MAX` fullness into `townRestTax` (`goldTax`) instead so full towns stay
   reachable to commuters while pricing surplus migrants toward cheaper, uncrowded towns.
 
+## still workers, pareto home choice and hamlet founding in B2
+
+Traps from moving the particle draft's worker rules into `prototype/price-model-b2/` (`workforce.js`, `settlement.js`):
+
+- **Tiring still fresh labor drains towns.** Turning queued fresh labor into depleted makes it pay
+  rest tax again; resident purses empty, the town raises `taxMult`, the goods bid collapses and a
+  distant chain ate 1.75 instead of 9.3. Fresh labor waits for work; only depleted rests in place.
+- **One home field cannot serve rich and poor.** Score each cell with w = wallet/(wallet+2·refFee)
+  over a value field (rest per gold) and a quality field (rest only). Both stay linear, so one weight
+  per cell or particle ranks every town. Gate town rest to the local best home, and scale shelter by
+  housing (goal pop / pop), or shrinking towns keep catching migrants.
+- **Settlement units and pacing.** Labor stock is not pop: convert settlers with the migrant rate
+  (0.2/LABOR_PER_POP) capped at the tier pop cap, or founding pop reaches 34 and sheds workers into
+  a cascade. Scan every 5 s, not every 1 s, so a new hamlet's home field spreads first; 1 s scans
+  tiled the map with 8 hamlets. Count only depleted·still, and only where priceHome+priceRest is
+  below a reach threshold.
+

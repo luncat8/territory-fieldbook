@@ -1,5 +1,5 @@
-// Owns: spatial economy fields, price diffusion, cost-basis sell gate and proportional worker-gold advection.
-// Edit for: grid geometry, diffusion/decay rates and conserved stock/gold transfer kernel. Actors in actors.js, gold in gold.js.
+// Owns: the cell transport engine — spatial fields, price diffusion, cost-basis sell gate, worker-gold advection and stillness.
+// Edit for: grid geometry, diffusion/decay rates and the conserved transfer kernel. Engine-agnostic rules: actors, workforce, settlement, gold.
 'use strict';
 
 const ECONOMY_WIDTH = 48;
@@ -71,15 +71,17 @@ function buildEconomyNeighbors() {
 	return result;
 }
 
-function makeScratch(buyers, cell, rate = FLOW_RATE, payStream = -1, seller = 0, spread = 0, carriesGold = false) {
+function makeScratch(buyers, cell, rate = FLOW_RATE, payStream = -1, seller = 0, spread = 0, carriesGold = false, blend = false) {
 	return {
-		buyers, cell, rate, payStream, seller, spread, carriesGold,
+		buyers, cell, rate, payStream, seller, spread, carriesGold, alt: null,
 		hasCost: payStream >= 0 || seller > 0,
 		cap: new Float64Array(ECONOMY_SIZE).fill(cell),
 		sell: new Float64Array(ECONOMY_SIZE),
 		cost: new Float64Array(ECONOMY_SIZE),
 		gold: carriesGold ? new Float64Array(ECONOMY_SIZE) : null,
 		deltaGold: carriesGold ? new Float64Array(ECONOMY_SIZE) : null,
+		mix: blend ? new Float64Array(ECONOMY_SIZE) : null,
+		still: new Float64Array(ECONOMY_SIZE).fill(1),
 		requests: new Float64Array(NEIGHBORS.length),
 		room: new Float64Array(ECONOMY_SIZE),
 		receiving: new Float64Array(ECONOMY_SIZE),
@@ -100,6 +102,8 @@ function clearScratch(scratch) {
 		scratch.gold.fill(0);
 		scratch.deltaGold.fill(0);
 	}
+	if (scratch.mix) scratch.mix.fill(0);
+	scratch.still.fill(1);
 	scratch.headX.fill(0);
 	scratch.headY.fill(0);
 	scratch.flowX.fill(0);
@@ -107,12 +111,17 @@ function clearScratch(scratch) {
 	scratch.flowRate.fill(0);
 }
 
-function hasHigherNeighbor(price, i) {
-	const here = price[i];
+// A blended scratch scores cell `to` with the mover's own weight at `from`: price + w·(alt − price).
+function scoreAt(scratch, price, from, to) {
+	return scratch.alt ? price[to] + scratch.mix[from] * (scratch.alt[to] - price[to]) : price[to];
+}
+
+function hasBetterNeighbor(scratch, price, i) {
+	const here = scoreAt(scratch, price, i, i);
 	const base = i * DEGREE;
 	for (let k = 0; k < DEGREE; k++) {
 		const to = NEIGHBORS[base + k];
-		if (to >= 0 && price[to] > here + 1e-9) return true;
+		if (to >= 0 && scoreAt(scratch, price, i, to) > here + 1e-9) return true;
 	}
 	return false;
 }
@@ -128,10 +137,12 @@ class PriceEconomy {
 		this.priceGoods = new Float64Array(ECONOMY_SIZE);
 		this.priceLabor = new Float64Array(ECONOMY_SIZE);
 		this.priceHome = new Float64Array(ECONOMY_SIZE);
+		this.priceRest = new Float64Array(ECONOMY_SIZE);
 		this.nextPriceCoal = new Float64Array(ECONOMY_SIZE);
 		this.nextPriceGoods = new Float64Array(ECONOMY_SIZE);
 		this.nextPriceLabor = new Float64Array(ECONOMY_SIZE);
 		this.nextPriceHome = new Float64Array(ECONOMY_SIZE);
+		this.nextPriceRest = new Float64Array(ECONOMY_SIZE);
 		this.pop = new Float64Array(ECONOMY_SIZE);
 		this.scale = new Float64Array(ECONOMY_SIZE);
 		this.taxMult = new Float64Array(ECONOMY_SIZE);
@@ -143,11 +154,13 @@ class PriceEconomy {
 		this.coalFlow = makeScratch((1 << ECONOMY_FACTORY) | (1 << ECONOMY_TOWN), 1, FLOW_RATE, PAY_COAL, ECONOMY_MINE);
 		this.goodsFlow = makeScratch(1 << ECONOMY_TOWN, 1, FLOW_RATE, PAY_GOODS, ECONOMY_FACTORY);
 		this.laborFlow = makeScratch((1 << ECONOMY_MINE) | (1 << ECONOMY_FACTORY) | (1 << ECONOMY_GOLD), 1, LABOR_FLOW_RATE, PAY_WAGE, 0, 0, true);
-		this.depletedFlow = makeScratch(1 << ECONOMY_TOWN, 1, LABOR_FLOW_RATE, -1, 0, DEPLETED_SPREAD, true);
+		this.depletedFlow = makeScratch(1 << ECONOMY_TOWN, 1, LABOR_FLOW_RATE, -1, 0, DEPLETED_SPREAD, true, true);
 		this.stocks = [this.coal, this.goods, this.labor, this.depleted];
 		this.flows = [this.coalFlow, this.goodsFlow, this.laborFlow, this.depletedFlow];
 		this.optimizer = new ActorOptimizer(this);
 		this.money = new GoldMoney(this);
+		this.workforce = new WorkerPolicy(this);
+		this.settlements = new Settlements(this);
 		this.decay = true;
 		this.derived = true;
 		this.suppression = true;
@@ -173,7 +186,7 @@ class PriceEconomy {
 		for (const [x, y] of REFERENCE_FACTORIES) this.actors[economyIndex(x, y)] = ECONOMY_FACTORY;
 		for (const [x, y] of REFERENCE_TOWNS) this.actors[economyIndex(x, y)] = ECONOMY_TOWN;
 		for (const [x, y] of REFERENCE_GOLD) this.actors[economyIndex(x, y)] = ECONOMY_GOLD;
-		for (const field of [this.coal, this.goods, this.labor, this.depleted, this.priceCoal, this.priceGoods, this.priceLabor, this.priceHome, this.pop, this.scale, this.taxMult, this.satCoal, this.satGoods, this.workLoad, this.profit, this.earned]) field.fill(0);
+		for (const field of [this.coal, this.goods, this.labor, this.depleted, this.priceCoal, this.priceGoods, this.priceLabor, this.priceHome, this.priceRest, this.pop, this.scale, this.taxMult, this.satCoal, this.satGoods, this.workLoad, this.profit, this.earned]) field.fill(0);
 		for (const flow of this.flows) clearScratch(flow);
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			if (!this.actors[i]) continue;
@@ -184,6 +197,7 @@ class PriceEconomy {
 			}
 		}
 		this.money.reset();
+		this.settlements.reset();
 		this.ticks = this.producedCoal = this.burnedCoal = this.producedGoods = this.consumedGoods = 0;
 		this.suppliedLabor = this.workedLabor = this.emittedDepleted = this.restedDepleted = 0;
 		this.coalRate = this.goodsRate = this.uptakeRate = 0;
@@ -200,6 +214,7 @@ class PriceEconomy {
 			}
 		}
 		this.actors[i] = kind;
+		this.settlements.placed(i, kind);
 		if (kind) {
 			this.scale[i] = 1;
 			this.workLoad[i] = 0;
@@ -230,7 +245,6 @@ class PriceEconomy {
 	townGoodsBid(i) { return this.optimizer.townGoodsBid(i); }
 	townCoalBid(i) { return this.optimizer.townCoalBid(i); }
 	townBid(i) { return this.optimizer.townGoodsBid(i); }
-	townHomeBid(i) { return this.optimizer.townHomeBid(i); }
 	factoryCoalBid(i) { return this.optimizer.factoryCoalBid(i); }
 	factoryLaborBid(i) { return this.optimizer.factoryLaborBid(i); }
 	factoryBid(i) { return this.optimizer.factoryCoalBid(i); }
@@ -250,7 +264,10 @@ class PriceEconomy {
 		this.transport(this.coalFlow, this.coal, this.priceCoal);
 		this.transport(this.goodsFlow, this.goods, this.priceGoods);
 		this.transport(this.laborFlow, this.labor, this.priceLabor);
-		this.transport(this.depletedFlow, this.depleted, this.priceHome);
+		this.workforce.weighWallets();
+		this.transport(this.depletedFlow, this.depleted, this.priceHome, this.priceRest);
+		this.workforce.stepStill();
+		this.settlements.step();
 		this.optimizer.adaptActors();
 		this.coalRate = (this.producedCoal - coalBefore) / ECONOMY_DT;
 		this.goodsRate = (this.producedGoods - goodsBefore) / ECONOMY_DT;
@@ -259,15 +276,16 @@ class PriceEconomy {
 	}
 
 	updatePrices() {
-		const { actors, optimizer, priceCoal, priceGoods, priceLabor, priceHome, nextPriceCoal, nextPriceGoods, nextPriceLabor, nextPriceHome } = this;
+		const { actors, optimizer, workforce, priceCoal, priceGoods, priceLabor, priceHome, priceRest, nextPriceCoal, nextPriceGoods, nextPriceLabor, nextPriceHome, nextPriceRest } = this;
 		const decay = this.decay ? PRICE_DECAY : 0;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			const a = actors[i];
-			let bCoal = -1, bGoods = -1, bLabor = -1, bHome = -1;
+			let bCoal = -1, bGoods = -1, bLabor = -1, bHome = -1, bRest = -1;
 			if (a === ECONOMY_TOWN) {
 				bCoal = optimizer.townCoalBid(i);
 				bGoods = optimizer.townGoodsBid(i);
-				bHome = optimizer.townHomeBid(i);
+				bHome = workforce.homeValueBid(i);
+				bRest = workforce.homeRestBid(i);
 			} else if (a) {
 				const recipe = optimizer.recipes[a];
 				optimizer.firmBids(i, recipe);
@@ -281,6 +299,7 @@ class PriceEconomy {
 			nextPriceGoods[i] = stepBid(priceGoods, i, priceGoods[i], bGoods, decay);
 			nextPriceLabor[i] = stepBid(priceLabor, i, priceLabor[i], bLabor, decay);
 			nextPriceHome[i] = stepBid(priceHome, i, priceHome[i], bHome, decay);
+			nextPriceRest[i] = stepBid(priceRest, i, priceRest[i], bRest, decay);
 		}
 		this.priceCoal = nextPriceCoal;
 		this.nextPriceCoal = priceCoal;
@@ -290,16 +309,21 @@ class PriceEconomy {
 		this.nextPriceLabor = priceLabor;
 		this.priceHome = nextPriceHome;
 		this.nextPriceHome = priceHome;
+		this.priceRest = nextPriceRest;
+		this.nextPriceRest = priceRest;
+		this.depletedFlow.alt = this.priceRest;
 	}
 
 	holdsAt(scratch, price, i) {
 		if (!(scratch.buyers & (1 << this.actors[i]))) return false;
 		if (scratch.spread === 0) return true;
-		return scratch.cap[i] > 0 && !hasHigherNeighbor(price, i);
+		return scratch.cap[i] > 0 && !hasBetterNeighbor(scratch, price, i);
 	}
 
-	transport(scratch, stock, price) {
+	transport(scratch, stock, price, alt = null) {
 		const { requests, room, receiving, delta, buyers, cap, cell, carriesGold, gold, deltaGold } = scratch;
+		scratch.alt = alt;
+		scratch.still.fill(1);
 		requests.fill(0);
 		receiving.fill(0);
 		delta.fill(0);
@@ -329,35 +353,42 @@ class PriceEconomy {
 				}
 			}
 			const bought = after - before;
-			if (bought > 0 && scratch.payStream >= 0 && (buyers & (1 << this.actors[i]))) {
-				const bill = bought * price[i];
-				scratch.cost[i] += bill;
-				this.money.bill(i, scratch.payStream, bill);
-			}
+			if (bought > 0 && after > 1e-12 && scratch.payStream >= 0 && (buyers & (1 << this.actors[i]))) this.buyArrival(scratch, i, bought * price[i]);
 			if (after <= 1e-12 && scratch.hasCost) scratch.cost[i] = 0;
 		}
 	}
 
+	// Wage is fixed when a worker sits into a firm pool: paid at entry into the arriving wallet.
+	buyArrival(scratch, i, bill) {
+		scratch.cost[i] += bill;
+		if (scratch.payStream === PAY_WAGE) this.money.payOnEntry(i, bill);
+		else this.money.bill(i, scratch.payStream, bill);
+	}
+
 	// Stock leaves a seller only when neighbor price clears its cost-basis sell floor.
+	// Stillness is measured on price pull only, so dispersal drift never counts as purposeful movement.
 	planOutflow(scratch, stock, price, i) {
 		const { requests, room } = scratch;
 		const base = i * DEGREE;
-		const here = price[i];
+		const here = scoreAt(scratch, price, i, i);
 		const floor = Math.max(here, scratch.sell[i]);
-		let gx = 0, gy = 0, steepest = 0;
+		let gx = 0, gy = 0, steepest = 0, steepestPull = 0;
 		for (let k = 0; k < DEGREE; k++) {
 			const to = NEIGHBORS[base + k];
 			if (to < 0 || room[to] <= 0) continue;
 			const dir = DIRECTIONS[k];
-			const pull = price[to] > floor ? price[to] - here : 0;
+			const there = scoreAt(scratch, price, i, to);
+			const pull = there > floor ? there - here : 0;
 			const disperse = scratch.spread > 0 && stock[i] > stock[to] ? scratch.spread * (stock[i] - stock[to]) : 0;
 			const slope = (pull + disperse) * dir.inv;
 			if (slope <= 0) continue;
 			requests[base + k] = slope;
 			steepest = Math.max(steepest, slope);
+			steepestPull = Math.max(steepestPull, pull * dir.inv);
 			gx += dir.ux * slope;
 			gy += dir.uy * slope;
 		}
+		scratch.still[i] = GRADIENT_KNEE / (steepestPull + GRADIENT_KNEE);
 		scratch.headX[i] += STEERING_BLEND * (gx - scratch.headX[i]);
 		scratch.headY[i] += STEERING_BLEND * (gy - scratch.headY[i]);
 		if (steepest > 0) this.routeUphill(scratch, stock, i, steepest);
