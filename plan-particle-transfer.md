@@ -4,7 +4,7 @@ Standalone design for the particle-based money/economy engine described in
 `draft/particle_transfer_model.md` and `particle_transfer_model-LLM-thoughts.md`. It replaces the
 cell-field transport of `map-money-gold.js` with Lagrangian goods and worker particles over the same
 pricing, pool, rest, tax and settlement rules that `prototype/price-model-b2` already proves smooth
-(46/46 tests). All numbers live in the owning source file.
+(51/51 tests). All numbers live in the owning source file.
 
 ## Scope
 
@@ -16,7 +16,8 @@ and profit-identity tests.
 
 **Transport-substrate swap, not a rule rewrite.** `prototype/price-model-b2` runs the full rule set on a
 pure cell field. Its `workforce.js` (`WorkerPolicy`) and `settlement.js` (`Settlements`) are engine-neutral
-— they read only shared fields and act per cell. This plan applies the same classes **per particle** and
+— they read only shared fields and act per cell; `land.js` (`Land`) adds the terrain/wasteland rest factor and town
+site quality on the same terms. This plan applies the same classes **per particle** and
 changes only the transport substrate (Eulerian field advection → Lagrangian SoA particles). New code is the
 particle pool, spawn accumulators, per-particle cost/spoilage/transport accrual, arrival split and particle
 rendering.
@@ -48,7 +49,8 @@ buffers are full, profit smoothed through `tanh(profit / ref)` to drive scale an
 ## Particles (conserved mass & gold — preallocated TypedArray SoA pools)
 
 - **Goods particles:** `{ kind, x, y, vx, vy, amount, factoryCost, transportCost, owner }`
-- **Worker particles:** `{ state (FRESH | DEPLETED), x, y, vx, vy, amount, gold, homeTown }`
+- **Worker particles:** `{ state (FRESH | DEPLETED), x, y, vx, vy, amount, gold, homeTown, intent }` — `intent` is the
+  worker's settle decision in `[0, 1]` (see settlement founding); merged particles average it by `amount`.
 - **Settled town residents:** stay pooled in town cell `pop[i]` (household savings `workerPurse[i]`); they
   spawn `FRESH` particles to commute up `priceLabor` and `DEPLETED` migrant particles (carrying proportional
   `workerPurse`) when a town shrinks (`deltaPop < 0`). Resident savings never attach to idle commuting
@@ -125,20 +127,41 @@ If local price drops mid-flight (a nearer supplier filled the town first):
 - **Still-particle measure (picked from B2):** a worker's stillness derives from the local price slope (B2's
   `still` field). Still `DEPLETED` particles rest slowly for free (shelter floor) so nobody strands.
 
-## Settlement founding from still particles (picked from B2)
+## Land rest and town site quality (B2 `land.js`)
 
-Penniless still workers found a new low-tier settlement where no town home field reaches them. B2's tested
-mechanics, applied per particle:
+Land shapes where workers rest and where towns spawn, so spacing is emergent rather than a hard gap rule.
 
-- **Still tally:** sum `amount` of `DEPLETED` particles whose stillness is high, within radius 2 of a candidate
-  empty cell.
-- **Reach gate:** only found where local `priceHome + priceRest` is below 0.25, so founding happens beyond town
-  signal, not inside an existing town's halo.
-- **Threshold & cadence:** found when the gathered still sum clears 0.35; scan every ~5 s, not every tick, so a
-  new settlement's home field spreads before the next scan.
-- **Conversion:** gathered workers become residents via the migrant rate (`0.2 / LABOR_PER_POP`), capped at the
-  tier pop cap; they bring their carried savings — no vault gold is minted, so the young town starts broke and
-  lives on tax. Only `DEPLETED` counts (fresh labor queueing at a full firm is waiting for work, not homeless).
+- **Terrain rest pace:** a per-cell terrain table scales rest — meadow `1.1` (bonus), forest `1.0`, desert `0.45`.
+  Desert grows no wood. In the game port the table keys on `world.js` terrain kinds.
+- **Wasteland:** every facility (mine, factory, gold mine) spoils a cone around it: `waste = 0.7 · (1 − d / 4)`;
+  `rest = terrainRest · (1 − waste)`. In the game port wasteland is `land.js` disturbed fraction.
+- **Town claim:** every town claims a cone `claim = 1 − d / 7`; `site = rest · (1 − claim)`, `0` on any actor cell.
+- **Where rest applies:** town rest speed and home appeal (`Settlements.restFactor = tierLerp · land.rest`) and the
+  free shelter rest of still workers (`WorkerPolicy.restStill`). A town on wasteland or desert rests slower and
+  draws fewer workers; a still worker in the desert stays tired longer.
+- **Event-stamped, never per tick:** waste and claim are recomputed only when an actor is placed, removed or
+  founded (`Land.refresh`), so the per-tick cost is zero.
+
+## Settlement founding from settle intent
+
+Penniless still workers found a new low-tier settlement where no town home field reaches them. The founding count
+is written by the workers themselves into a gather grid, so founding never rescans the map or a radius per cell.
+
+- **Settle intent (per worker):** `DEPLETED` workers raise `intent` at `(2 · goal − 1) / 3 s` with
+  `goal = still · max(0, 1 − (priceHome + priceRest) / 0.25)` and `0` on actor cells — about 3 s standing still
+  beyond every town's reach decides a worker; moving or catching a home signal forgets at the same pace. Particles
+  carry it as a float; the cell engine carries it as a mass-mixed companion of the depleted stock
+  (`depletedFlow.intent`, moved as `intent · amount` and re-averaged on arrival), so removals need no hooks.
+- **Pledge write:** a worker at `intent = 1` adds its `amount` to `gather` over radius 2 around its position. Each
+  written cell's count only grows within a tick, so the best site (`gather · land.site`, empty cells only) is
+  tracked at write time. The grid is cleared only after a tick that had pledges.
+- **Threshold & cooldown:** found at the best site when `gather · site > 0.35`, at most once per 5 s so a new
+  settlement's home field spreads and its claim lands before the next one. Desert, wasteland and other towns' land
+  lower `site`, so the same settlers found on meadow away from facilities, and need far more people elsewhere.
+- **Conversion:** gathered workers within radius 2 become residents via the migrant rate (`0.2 / LABOR_PER_POP`),
+  capped at the tier pop cap; they bring their carried savings — no vault gold is minted, so the young town starts
+  broke and lives on tax. Only `DEPLETED` counts (fresh labor queueing at a full firm is waiting for work, not
+  homeless). Founding stamps the new town's claim immediately.
 - **Young-town build:** a settlement under the wood tier cap builds from its own forest (idle residents fell
   nearby wood) before bought comfort lifts the tier; tier floors scale rest, tax, bids and housing. Founding
   assigns the deterministic wealth class of its cell.
@@ -171,6 +194,7 @@ mechanics, applied per particle:
 - In item map views, render live particles in continuous canvas coordinates above dimmed terrain + site storage:
   - `item.price` (`totalCost / amount`) → color ramp (cheap to dear).
   - `amount` → light/brightness and dot radius.
+- `Land` view: land rest (terrain less wasteland) beside town site quality, with settler flow arrows.
 - Paired demand/price map renders the diffused price/appeal field and equal-price contours. Stock intensity uses
   a log scale; price uses a linear scale with 1-2-5 nice-ceil steps so legends stay stable while uncapped prices
   drift.
@@ -180,7 +204,8 @@ mechanics, applied per particle:
 - **Lab:** `prototype/particle-transfer/` — standalone lab mirroring the `price-model-b2` structure so the engine
   is verified before porting: `simulation.js` (fields, diffusion, particle pool, transport), `particles.js`
   (SoA pools, spawn accumulators, steering), `actors.js` (bids, pools, tax — lifted from B2), `workforce.js`
-  (`WorkerPolicy`, reused from B2), `settlement.js` (`Settlements`, reused from B2), `gold.js` (conserved gold,
+  (`WorkerPolicy`, reused from B2), `land.js` (`Land`, reused from B2), `settlement.js` (`Settlements`, reused
+  from B2), `gold.js` (conserved gold,
   Transport Company vault), `fields.js`/`telemetry.js`/`app.js`/`index.html`/`styles.css` (render + UI), and
   `*.test.js`.
 - **Port target:** `map-money-gold.js` (default money economy), dispatched by `mapeStepMoney` when
@@ -189,12 +214,16 @@ mechanics, applied per particle:
 
 ## Phased implementation (minimal first)
 
+0. **Land and town spawning (in B2, before any particle work):** terrain rest table, wasteland and town-claim
+   cones, carried settle intent, pledge-written gather grid and site-weighted founding. Lives in the
+   engine-neutral `land.js`/`settlement.js`, so every later phase inherits clean town spawning unchanged.
 1. **Goods particles only:** coal → goods chain (one mine, one factory, one town). Price diffusion, spawn
    accumulators, cost-basis sell gate, buyer room admission, arrival split with Transport Company vault. Verify
    mass and gold conservation to machine precision.
 2. **Worker particles:** `FRESH`/`DEPLETED` cycle with carried gold, proportional wage settlement, rest tax,
    occupancy-balanced pools, gold-tax appeal, dominated-town release, grace/shelter rest — reusing B2's
-   `WorkerPolicy`/`Settlements` per particle — plus wealth-class tax and settlement founding from still particles.
+   `WorkerPolicy`/`Settlements`/`Land` per particle — plus wealth-class tax and founding from per-particle intent
+   (each particle with `intent = 1` pledges its `amount` into the same gather grid).
 3. **Full engine:** multiple kinds, spoilage rates per kind, Transport Company dividend drip, particle rendering,
    64×64 sizing pass, then flip `mape.moneyEngine` default to `'particle'`.
 
@@ -205,7 +234,8 @@ mechanics, applied per particle:
   `money.total() == seeded + mined` to `< 1e-7`), profit identity (`profit == amount · (buyerUnitPrice −
   item.price)`), pool-occupancy wage cooling to zero on overflow, gold-tax appeal ordering (cheaper + nearer
   wins, inflated towns lose), dominated-town release, grace rest for penniless workers, settlement founding from
-  still particles.
+  pledged intent: same settlers found on meadow but not in desert, settlers beside a mine found on the far side,
+  town claim stamped and released with the actor, intent conserved as `intent · amount` through transport.
 - **L2:** full suite + manual pass list on port to the game. Run `smoke` + `dom_smoke` after touching
   `main.js`, `index.html` or load order.
 
@@ -218,5 +248,6 @@ mechanics, applied per particle:
   cheaper supplied town while all ledgers balance.
 - Flood a firm with fresh workers and verify `Pool %` rises and `Wage` drops to `0` on overflow; crowd a town and
   verify `Wait %` and `Tax` rise together.
-- Clear towns and verify a hamlet founds from gathered still depleted particles, builds its first tier from forest,
-  and restarts production.
+- Clear towns and verify a young town founds from gathered settlers on meadow away from mines, factories and the
+  desert, builds its first tier from forest, and restarts production.
+- On **Land**, hover a still crowd beyond town reach and watch `Settle intent` climb to 1 and `Gathered` appear.

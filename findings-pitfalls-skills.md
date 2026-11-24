@@ -475,3 +475,20 @@ Traps from moving the particle draft's worker rules into `prototype/price-model-
   tiled the map with 8 hamlets. Count only depleted·still, and only where priceHome+priceRest is
   below a reach threshold.
 
+## per-worker state on a cell field, write-time founding and land factors in B2
+
+From adding land rest and settle intent to `prototype/price-model-b2/` (`land.js`, `settlement.js`):
+
+- **Carry per-worker state as a mass-weighted mean, not as mass.** Store `intent[i]` in `[0,1]`, move
+  `intent·amount` on each edge and re-average by stock on arrival. Rest, founding and town intake then remove
+  workers without touching intent; carrying `intent·amount` as mass would need a hook at every removal.
+- **Let writers find the best site.** Ready workers splat their amount into a gather grid; a cell's count only
+  grows within a tick, so the max of `count · site` seen at write time equals the max over final values. No
+  per-candidate radius sum, no periodic scan; clear the grid only after a tick that had writes.
+- **Stamp actor cones on placement, never per tick.** Wasteland and town claim change only when an actor is
+  placed, removed or founded; a full refresh then costs O(actors · reach²) once.
+- **Adding a land factor breaks rule tests silently.** Fixtures placed towns at (24,14), now desert, and three
+  tax/appeal tests failed. Rule checks run on flattened land (`neutralLand`); land behaviour gets its own tests.
+- **A still crowd thins fast.** Depleted dispersal spreads a 3×3 stranding to ~30% at its centre within the 3 s
+  intent build-up, so the founding threshold reads against the settled-down count, not the stranded amount.
+
