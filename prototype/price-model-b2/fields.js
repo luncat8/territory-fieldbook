@@ -1,5 +1,5 @@
 // Owns: cell-aligned heatmaps, price isolines, realized stock/gold flux arrows and cell inspection.
-// Edit for: palette scaling, worker-gold flow arrows and B2 wallet/tax/settlement tooltip readouts.
+// Edit for: palette scaling, worker-gold flow arrows and B2 wallet/tax/land/settlement tooltip readouts.
 'use strict';
 
 const STOCK_COLORS = [[0,'#19181b'],[0.12,'#35272a'],[0.26,'#6d3a26'],[0.41,'#a95627'],[0.55,'#e18a36'],[0.7,'#ffca70'],[1,'#fff1c6']];
@@ -116,6 +116,7 @@ class FieldPlot {
 
 	fieldFor(model) {
 		if (this.resource === 'gold') return this.goldView(model);
+		if (this.resource === 'land') return this.isStock ? model.land.rest : model.land.site;
 		if (this.resource === 'depleted') return this.isStock ? model.depleted : model.priceHome;
 		if (this.resource === 'labor') return this.isStock ? model.labor : model.priceLabor;
 		if (this.isStock) return this.resource === 'coal' ? model.coal : model.goods;
@@ -129,7 +130,7 @@ class FieldPlot {
 	}
 
 	intensity(value) {
-		if (!this.isStock) return Math.min(1, value / this.scale);
+		if (!this.isStock || this.resource === 'land') return Math.min(1, value / this.scale);
 		if (this.resource === 'gold') return Math.log1p(value) / Math.log1p(this.scale);
 		return Math.log1p(STOCK_EXPOSURE * value) / STOCK_LOG;
 	}
@@ -138,15 +139,15 @@ class FieldPlot {
 		let peak = this.isStock ? SCALE_FLOOR.gold : SCALE_FLOOR.price;
 		for (let i = 0; i < ECONOMY_SIZE; i++) peak = Math.max(peak, data[i]);
 		this.scale = niceCeil(peak);
-		const key = this.isStock && this.resource !== 'gold' ? 'stock' : `${this.resource} ${this.scale}`;
+		const key = this.isStock && this.resource !== 'gold' && this.resource !== 'land' ? 'stock' : `${this.resource} ${this.scale}`;
 		if (key !== this.legendKey) this.showScale(key);
 	}
 
 	showScale(key) {
 		this.legendKey = key;
-		const unit = this.resource === 'gold' ? (this.isStock ? ' g' : '') : this.resource === 'depleted' ? '' : ' g/u';
+		const unit = this.resource === 'gold' ? (this.isStock ? ' g' : '') : this.resource === 'depleted' || this.resource === 'land' ? '' : ' g/u';
 		if (key === 'stock') this.scaleLabel.innerHTML = 'Log scale <b>0 – 1</b>';
-		else this.scaleLabel.innerHTML = `${this.isStock ? 'Log' : 'Linear'} scale <b>0 – ${this.scale}${unit}</b>`;
+		else this.scaleLabel.innerHTML = `${this.isStock && this.resource !== 'land' ? 'Log' : 'Linear'} scale <b>0 – ${this.scale}${unit}</b>`;
 	}
 
 	draw(model, selection, vectors) {
@@ -235,7 +236,7 @@ class FieldPlot {
 		if (this.resource === 'coal') this.drawVectors(model, model.coalFlow);
 		else if (this.resource === 'goods') this.drawVectors(model, model.goodsFlow);
 		else if (this.resource === 'labor') this.drawVectors(model, model.laborFlow);
-		else if (this.resource === 'depleted') this.drawVectors(model, model.depletedFlow);
+		else if (this.resource === 'depleted' || this.resource === 'land') this.drawVectors(model, model.depletedFlow);
 		else this.drawVectors(model, this.buildGoldFlows(model));
 	}
 
@@ -304,7 +305,7 @@ class FieldPlot {
 		const tip = this.tooltip;
 		tip.hidden = i < 0;
 		if (i < 0) return;
-		const { money, actors, settlements } = model, actor = actors[i];
+		const { money, actors, settlements, land } = model, actor = actors[i];
 		const carried = model.workerGoldAt(i);
 		const occPct = actor ? Math.round(model.poolOccupancy(i) * 100) : 0;
 		const detail = actor === ECONOMY_TOWN
@@ -316,8 +317,9 @@ class FieldPlot {
 		const wallet = actor === ECONOMY_TOWN
 			? `Town ${money.purse[i].toFixed(2)}g · Residents ${money.workerPurse[i].toFixed(2)}g · Carried ${carried.toFixed(2)}g · Profit ${model.profit[i].toFixed(2)}/s`
 			: `Held ${money.held(i).toFixed(2)}g · WorkerPay ${carried.toFixed(2)}g · Owed ${money.owedAt(i).toFixed(2)}g${actor ? ` · Profit ${model.profit[i].toFixed(2)}/s` : ''}`;
-		const land = `Forest ${settlements.forest[i].toFixed(2)}/${settlements.forestCap[i].toFixed(2)} · Still ${model.depletedFlow.still[i].toFixed(2)} · Gathered ${settlements.still[i].toFixed(3)}`;
-		tip.textContent = `${head}\n${stocks}\n${prices}\n${wallet}\n${land}`;
+		const ground = `${TERRAIN_NAMES[land.terrain[i]]} · Rest ${land.rest[i].toFixed(2)} · Site ${land.site[i].toFixed(2)} · Forest ${settlements.forest[i].toFixed(2)}/${settlements.forestCap[i].toFixed(2)}`;
+		const settle = `Still ${model.depletedFlow.still[i].toFixed(2)} · Settle intent ${model.depletedFlow.intent[i].toFixed(2)} · Gathered ${settlements.gather[i].toFixed(3)}`;
+		tip.textContent = `${head}\n${stocks}\n${prices}\n${wallet}\n${ground}\n${settle}`;
 		const x = this.left+(i%ECONOMY_WIDTH+0.5)*this.cw, y = this.top+(Math.floor(i/ECONOMY_WIDTH)+0.5)*this.ch;
 		tip.style.left = `${Math.max(3,Math.min(this.w-tip.offsetWidth-3,x+10))}px`;
 		tip.style.top = `${y+tip.offsetHeight+12 < this.h ? y+10 : Math.max(2,y-tip.offsetHeight-8)}px`;

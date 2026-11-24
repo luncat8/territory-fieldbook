@@ -1,13 +1,12 @@
-// Owns: settlement tiers, forest stock, still-worker tally, young-town founding and tier growth.
-// Edit for: founding threshold and spacing, forest-felling build, tier effects on rest, tax, bids and housing.
+// Owns: settlement tiers, forest stock, worker settle intent, the settler gather grid, young-town founding and tier growth.
+// Edit for: intent pace, founding threshold, forest-felling build, tier effects on rest, tax, bids and housing. Spacing: land.js.
 'use strict';
 
 const FOUND_RADIUS = 2;
-const FOUND_TOWN_GAP = 5;
 const FOUND_REACH = 0.25;
-const FOUND_STILL = 0.35;
-const STILL_SECONDS = 2;
-const SETTLE_SCAN_TICKS = 300;
+const FOUND_SETTLERS = 0.35;
+const INTENT_SECONDS = 3;
+const FOUND_COOLDOWN_TICKS = 300;
 const SETTLER_POP = 0.2 / LABOR_PER_POP;
 const WOOD_TIER_CAP = 0.5;
 const WOOD_PER_TIER = 6;
@@ -26,32 +25,33 @@ class Settlements {
 		this.tier = new Float64Array(ECONOMY_SIZE);
 		this.forest = new Float64Array(ECONOMY_SIZE);
 		this.forestCap = new Float64Array(ECONOMY_SIZE);
-		this.still = new Float64Array(ECONOMY_SIZE);
-		this.stillBlend = 1 - Math.exp(-ECONOMY_DT / STILL_SECONDS);
+		this.gather = new Float64Array(ECONOMY_SIZE);
+		this.intentStep = ECONOMY_DT / INTENT_SECONDS;
 		this.regrowShare = 1 - Math.exp(-ECONOMY_DT * FOREST_REGROW);
 		this.buildShare = 1 - Math.exp(-ECONOMY_DT * BUILD_RATE);
 		this.seedForest();
 	}
 
-	// Fixed smooth woodland pattern, so every reset and test sees the same forest.
 	seedForest() {
-		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			const x = i % ECONOMY_WIDTH, y = Math.floor(i / ECONOMY_WIDTH);
-			const wave = 0.5 + 0.4 * Math.sin(x * 0.42 + 1.3) * Math.cos(y * 0.57 - 0.4) + 0.2 * Math.sin((x + y) * 0.21);
-			this.forestCap[i] = Math.min(1, Math.max(0, wave));
-		}
+		this.forestCap.set(this.model.land.woodland);
 	}
 
 	reset() {
 		const { actors } = this.model;
 		for (let i = 0; i < ECONOMY_SIZE; i++) this.tier[i] = actors[i] === ECONOMY_TOWN ? 1 : 0;
 		this.forest.set(this.forestCap);
-		this.still.fill(0);
+		this.gather.fill(0);
+		this.model.land.refresh();
 		this.ticks = this.founded = this.felled = 0;
+		this.lastFound = -FOUND_COOLDOWN_TICKS;
+		this.bestSite = -1;
+		this.bestScore = FOUND_SETTLERS;
+		this.pledged = false;
 	}
 
 	placed(i, kind) {
 		this.tier[i] = kind === ECONOMY_TOWN ? 1 : 0;
+		this.model.land.refresh();
 	}
 
 	// A "young town" is a settlement still in construction (tier below WOOD_TIER_CAP). It can gather resources
@@ -61,21 +61,53 @@ class Settlements {
 	}
 
 	tierLerp(i, floor) { return floor + (1 - floor) * this.tier[i]; }
-	restFactor(i) { return this.tierLerp(i, TIER_REST_FLOOR); }
+	restFactor(i) { return this.tierLerp(i, TIER_REST_FLOOR) * this.model.land.rest[i]; }
 	taxFactor(i) { return this.tierLerp(i, TIER_TAX_FLOOR); }
 	bidFactor(i) { return this.tierLerp(i, TIER_BID_FLOOR); }
 	popCap(i) { return POP_MAX * this.tierLerp(i, TIER_POP_FLOOR); }
 
+	// Ready settlers write their count into the gather grid as they decide, so founding never rescans the map.
 	step() {
 		const m = this.model;
+		const open = ++this.ticks - this.lastFound >= FOUND_COOLDOWN_TICKS;
+		if (this.pledged) this.gather.fill(0);
+		this.bestSite = -1;
+		this.bestScore = FOUND_SETTLERS;
+		this.pledged = false;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			const a = m.actors[i];
-			const goal = a ? 0 : m.depleted[i] * m.depletedFlow.still[i];
-			this.still[i] += this.stillBlend * (goal - this.still[i]);
 			this.forest[i] += this.regrowShare * (this.forestCap[i] - this.forest[i]);
-			if (a === ECONOMY_TOWN && this.tier[i] < 1) this.growTier(i);
+			if (m.actors[i] === ECONOMY_TOWN && this.tier[i] < 1) this.growTier(i);
+			if (m.depleted[i] > 1e-12 && this.decide(i) && open) this.pledge(i);
 		}
-		if (++this.ticks % SETTLE_SCAN_TICKS === 0) this.scanFounding();
+		if (this.bestSite >= 0) this.foundTown(this.bestSite);
+	}
+
+	// A tired worker makes up its mind to settle over INTENT_SECONDS of standing still beyond every town's reach,
+	// and forgets at the same pace once it moves or a home signal reaches it. Intent is carried with the worker.
+	decide(i) {
+		const m = this.model, intent = m.depletedFlow.intent;
+		const reach = m.priceHome[i] + m.priceRest[i];
+		const goal = m.actors[i] ? 0 : m.depletedFlow.still[i] * Math.max(0, 1 - reach / FOUND_REACH);
+		intent[i] = Math.min(1, Math.max(0, intent[i] + this.intentStep * (2 * goal - 1)));
+		return intent[i] >= 1;
+	}
+
+	// Each written cell's count only grows within a tick, so the best site is tracked at write time.
+	// Score is settlers times site quality: wasteland, desert and other towns' land need more settlers.
+	pledge(i) {
+		const { actors, depleted, land } = this.model;
+		const cx = i % ECONOMY_WIDTH, cy = Math.floor(i / ECONOMY_WIDTH);
+		this.pledged = true;
+		for (let y = Math.max(0, cy - FOUND_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, cy + FOUND_RADIUS); y++) {
+			for (let x = Math.max(0, cx - FOUND_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, cx + FOUND_RADIUS); x++) {
+				const n = economyIndex(x, y);
+				this.gather[n] += depleted[i];
+				const score = this.gather[n] * land.site[n];
+				if (actors[n] || score <= this.bestScore) continue;
+				this.bestScore = score;
+				this.bestSite = n;
+			}
+		}
 	}
 
 	// Wood raises a young town to the cap; beyond it only bought comfort (goods, coal) lifts the tier. Tiers never decay.
@@ -129,34 +161,6 @@ class Settlements {
 		}
 	}
 
-	townNear(i) {
-		const { actors } = this.model;
-		const cx = i % ECONOMY_WIDTH, cy = Math.floor(i / ECONOMY_WIDTH);
-		for (let y = Math.max(0, cy - FOUND_TOWN_GAP); y <= Math.min(ECONOMY_HEIGHT - 1, cy + FOUND_TOWN_GAP); y++) {
-			for (let x = Math.max(0, cx - FOUND_TOWN_GAP); x <= Math.min(ECONOMY_WIDTH - 1, cx + FOUND_TOWN_GAP); x++) {
-				if (actors[economyIndex(x, y)] === ECONOMY_TOWN) return true;
-			}
-		}
-		return false;
-	}
-
-	// Enough tired workers standing still in one area found a settlement (town) once no town signal reaches them;
-	// the home fields measure reach, so the rule is the same for cells and particles. Fresh labor queueing at a full
-	// firm is waiting for work, not homeless, so only depleted counts.
-	scanFounding() {
-		const { actors, priceHome, priceRest } = this.model;
-		let best = -1, bestSum = FOUND_STILL;
-		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			if (actors[i] || this.still[i] <= 1e-4 || priceHome[i] + priceRest[i] > FOUND_REACH) continue;
-			const sum = this.sumAround(this.still, i);
-			if (sum > bestSum && !this.townNear(i)) {
-				best = i;
-				bestSum = sum;
-			}
-		}
-		if (best >= 0) this.foundTown(best);
-	}
-
 	// The gathered workers become residents and bring their savings; no vault gold is minted, so the young
 	// town starts broke and lives on tax from the wages its residents earn. It carries on with the wealth class
 	// of its founding cell.
@@ -185,7 +189,8 @@ class Settlements {
 		m.pop[c] = Math.min(this.popCap(c), Math.max(POP_BASE, (settled + workers) * SETTLER_POP));
 		m.satCoal[c] = m.satGoods[c] = m.workLoad[c] = m.profit[c] = 0;
 		m.money.workerPurse[c] += savings;
-		this.still[c] = 0;
+		this.lastFound = this.ticks;
+		m.land.refresh();
 		this.founded++;
 	}
 

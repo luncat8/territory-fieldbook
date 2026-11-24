@@ -1,5 +1,5 @@
 // Owns: engine-agnostic worker rules — wallet-weighted home score over rest quality and value fields, still-worker shelter rest.
-// Edit for: pareto home weighting and idle rest speed. Cells apply them per cell; a particle engine applies them per carrier.
+// Edit for: pareto home weighting and idle rest speed (scaled by land.js rest). Cells apply them per cell; a particle engine applies them per carrier.
 'use strict';
 
 const BASE_SHELTER = 0.15;
@@ -73,7 +73,7 @@ class WorkerPolicy {
 	}
 
 	// Still workers rest slowly wherever they stand — the shelter floor, far slower than paid town rest — so a
-	// worker no town reaches never strands.
+	// worker no town reaches never strands. The land sets the pace: meadow rests best, desert and wasteland worst.
 	stepStill() {
 		for (let i = 0; i < ECONOMY_SIZE; i++) this.restStill(i);
 	}
@@ -84,7 +84,7 @@ class WorkerPolicy {
 		const { depleted, labor, depletedFlow, laborFlow, actors } = m;
 		const dep = depleted[i];
 		if (dep <= 1e-12) return;
-		const rested = Math.min(dep * this.restShare * depletedFlow.still[i], 1 - labor[i]);
+		const rested = Math.min(dep * this.restShare * depletedFlow.still[i] * m.land.rest[i], 1 - labor[i]);
 		if (rested <= 1e-12) return;
 		const all = rested >= dep - 1e-12;
 		const gold = all ? depletedFlow.gold[i] : depletedFlow.gold[i] * (rested / dep);

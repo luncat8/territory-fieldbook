@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-for (const file of ['simulation.js', 'actors.js', 'gold.js', 'workforce.js', 'settlement.js']) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
+for (const file of ['simulation.js', 'actors.js', 'gold.js', 'workforce.js', 'land.js', 'settlement.js']) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 
 const sum = (values) => values.reduce((total, value) => total + value, 0);
 const closeTo = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-8, `${actual} ≠ ${expected}`);
@@ -29,6 +29,14 @@ function checkLedger(model) {
 	assert.ok(Math.abs(model.money.total() - model.money.seeded - model.money.mined) < 1e-7);
 }
 
+// Rule checks run on an even woodland so town placement never picks up a terrain bonus, desert or bare ground.
+function neutralLand(model) {
+	model.land.terrain.fill(TERRAIN_FOREST);
+	model.land.refresh();
+	model.settlements.forestCap.fill(FOREST_TERRAIN);
+	model.settlements.forest.fill(FOREST_TERRAIN);
+}
+
 function clearedMap() {
 	const model = new PriceEconomy();
 	model.actors.fill(0);
@@ -39,6 +47,7 @@ function clearedMap() {
 	model.laborFlow.gold.fill(0);
 	model.depletedFlow.gold.fill(0);
 	model.money.reset();
+	neutralLand(model);
 	return model;
 }
 

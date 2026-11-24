@@ -25,7 +25,8 @@ const RESOURCE_TITLES = {
 	goods:['Goods stock','Available stock per cell','Goods price','Diffused buyer bid per cell'],
 	labor:['Labor force','Fresh workers commuting to firms','Wage','Diffused firm wage bid per cell'],
 	depleted:['Depleted workforce','Tired or migrating workers carrying earned gold','Living value','Diffused comfort per gold tax (fades with distance)'],
-	gold:['Gold held','Vaults, resident purses, worker wallets and coin','Payment & home pull','Where owed bills and returning worker pay head']
+	gold:['Gold held','Vaults, resident purses, worker wallets and coin','Payment & home pull','Where owed bills and returning worker pay head'],
+	land:['Land rest','Terrain rest pace less wasteland around facilities','Town site','Where settlers prefer to found: land rest less other towns\' claim']
 };
 const TOOL_HINTS = { inspect:'Select a cell on either map to inspect its values and carried worker gold.', mine:'Select an empty cell on either map to place a mine.', factory:'Select an empty cell on either map to place a factory.', town:'Select an empty cell on either map to place a town. Workers pay gold tax to live and rest here.', gold:'Select an empty cell on either map to place a gold mine. Workers carry dug wages home in their wallets.', erase:'Select an actor to remove it. Stored stock and worker wallets stay in their cells.' };
 
