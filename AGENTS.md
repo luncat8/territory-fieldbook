@@ -103,7 +103,7 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 
 - plan*.md is NOT the implementation log. final plan = standalone design artifact, written as if implemented today: no references to chat, to what was tried, or to what was done. usable for a fork or reimplementation.
 - plan numbers (0.1, gui.1) identify subjects, not version or execution order. ok to continue old numbers by subject and implement in any useful order.
-- drafts (0.1.x-draft.md) — human thoughts about goals and design. user prompts may be stored as drafts to keep a reference of the global task.
+- drafts (0.1.x-draft.md) — concise human's ideas about goals and design. user prompts and anvers may be stored as drafts to keep a reference of the approved global task. keep with minimal changes unless strong reason.
 
 ## worklogs
 
@@ -165,7 +165,7 @@ Before all topics has minimal implementation Do not try to implement 100% of som
   with the owning file in the same edit.
 - experiment files cover the loop: smoke (sim), dom_smoke (boot + UI), survey_spread. run
   smoke + dom_smoke after touching main.js, index.html or load order.
-- keep every file under ~500 lines; a new feature gets a new file, header and map entry.
+- keep files under ~500 lines where practical; go beyond that only with a clear reason; a new feature gets a new file, header and map entry.
 - economy playtest: Diffusion owns demographic growth; A/B hold growth and
   satisfaction-led migration while shared job staffing remains active. Two
   selectable workforce models: Residents (default) and Fluid field (map-fluid.js

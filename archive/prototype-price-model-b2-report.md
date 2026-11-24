@@ -29,9 +29,9 @@
 
 ---
 
-### 3. Refined `draft-price_model_p-population-items-particles.md`
+### 3. Refined `particle_transfer_model.md`
 
-Updated `draft-price_model_p-population-items-particles.md` (opened in the viewer) with the agreed particle-engine rules:
+Updated `particle_transfer_model.md` (opened in the viewer) with the agreed particle-engine rules:
 - **Diffused fields strictly for prices & appeal**; preallocated TypedArray SoA pools for **goods particles** `(kind, x, y, vx, vy, amount, factoryCost, transportCost, owner)` and **worker particles** `(state, x, y, vx, vy, amount, gold, homeTown)`, keeping settled residents pooled in town `pop[i]` (`workerPurse[i]`).
 - **Derived unit price with transport & spoilage:** `transportCost` accrues with distance/effort while perishable `amount` decays (`spoiled` tracked in ledger), giving `item.price = (factoryCost + transportCost) / amount`.
 - **Closed gold split via a single map-wide Transport Company:** on arrival, buyer pays `buyerPay = amount * buyerUnitPrice`; the **Transport Company** receives `min(buyerPay, transportCost)` and `particle.owner` receives the remainder, yielding exact factory profit `buyerPay - (factoryCost + transportCost) = amount * (buyerUnitPrice - item.price)` with zero gold leak.
