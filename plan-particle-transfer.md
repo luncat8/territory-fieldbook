@@ -2,9 +2,9 @@
 
 Standalone design for the particle-based money/economy engine described in
 `draft/particle_transfer_model.md` and `particle_transfer_model-LLM-thoughts.md`. It replaces the
-cell-field transport of `map-money-gold.js` with Lagrangian goods and worker particles over the same
-pricing, pool, rest, tax and settlement rules that `prototype/price-model-b2` already proves smooth
-(51/51 tests). All numbers live in the owning source file.
+cell-field transport of `map-money-gold.js` with Lagrangian goods and worker particles over the shared
+pricing, pool, rest, tax and settlement rules of `prototype/price-model-b2`. All numbers live in the
+owning source file.
 
 ## Scope
 
@@ -64,7 +64,8 @@ typed-array SoA with a free-list; no per-tick allocation, closure or object lite
 - **At producer spawn (`owner`):** `factoryCost` carries the exact input book cost + labor wages spent to make
   `amount` (per-particle, not a cell average). A producer launches a particle only when the local uphill price
   gradient clears `selfPrice = (factoryCost / amount) · (1 + margin)` — the cost-basis sell floor.
-- **In transit:** `transportCost += haulCostRate · amount · dt` (haul effort per unit scales as `1 / conductance`).
+- **In transit:** `transportCost` accrues with distance hauled (`(haulCostRate / speed) · (ds / conductance) · amount`,
+  equivalent to `haulCostRate · amount · dt` at full pace and `0` while held stationary in consignment).
   Perishable kinds deplete: `amount *= exp(−spoilRate · dt)` (food fast; logs/goods slowly or zero;
   coal/iron/ore do not deplete). Spoiled mass is booked in the conservation ledger:
   `produced − consumed − spoiled = stored + spawnBuffers + inParticles`.
@@ -77,7 +78,9 @@ A buyer cell accepts incoming particles only up to `cap − stock`, normalized a
 (mirrors B2's `receiving`/`room` admission, so a full town never over-accepts).
 
 On arrival at a buyer with room:
-1. Buyer pays `buyerPay = amount · buyerUnitPrice` from its gold purse.
+1. Buyer owes `buyerPay = amount · buyerUnitPrice`, paying immediate cash `min(purse[buyer], buyerPay)` from its
+   gold purse and booking any cold-start firm shortfall into trade-credit `owed` (cooled by `creditCool`,
+   settled automatically when sales revenue arrives, so no firm seed gold is minted and `purse ≥ 0` holds).
 2. `transportPaid = min(buyerPay, transportCost)` goes to a single map-wide **Transport Company** vault
    (carriers based across towns and facilities; a gentle dividend/wage drip back to active towns prevents
    vault hoarding until the Transport Company economy is modelled).
@@ -118,14 +121,14 @@ If local price drops mid-flight (a nearer supplier filled the town first):
   towns with near-zero comfort still accept funded workers via shelter rest (banking savings, no tax). Settled
   residents pay ongoing living tax in proportion to supplied comfort and wait-pool crowding; surplus above the
   municipal reserve circulates back to residents only in healthy, uncrowded towns.
-- **Town wealth class (picked from B2):** every town gets a deterministic strategy — **cheap** drops living tax
+- **Town wealth class:** every town gets a deterministic strategy — **cheap** drops living tax
   to fill vacant slots and keeps its built size; **med** buys needs then grows; **rich** holds a cozy occupancy
   (queue ≈ 0) and cuts size first when it cannot meet resident needs.
-- **Resident target shrink guards (picked from B2):** cheap/med never shed residents just for being poor (tax is
+- **Resident target shrink guards:** cheap/med never shed residents just for being poor (tax is
   the lever that keeps them full); they shrink slowly only when long-vacant or broke. Full housing still offers
   a rest floor; an uncrowded town rests workers better (free-space comfort lift).
-- **Still-particle measure (picked from B2):** a worker's stillness derives from the local price slope (B2's
-  `still` field). Still `DEPLETED` particles rest slowly for free (shelter floor) so nobody strands.
+- **Still-particle measure:** a worker's stillness derives from the local price slope (`still`
+  field). Still `DEPLETED` particles rest slowly for free (shelter floor) so nobody strands.
 
 ## Land rest and town site quality (B2 `land.js`)
 
@@ -214,9 +217,9 @@ is written by the workers themselves into a gather grid, so founding never resca
 
 ## Phased implementation (minimal first)
 
-0. **Land and town spawning (in B2, before any particle work):** terrain rest table, wasteland and town-claim
+0. **Land and town spawning (`land.js`, `settlement.js`):** terrain rest table, wasteland and town-claim
    cones, carried settle intent, pledge-written gather grid and site-weighted founding. Lives in the
-   engine-neutral `land.js`/`settlement.js`, so every later phase inherits clean town spawning unchanged.
+   engine-neutral `land.js`/`settlement.js`, so every phase shares the same town spawning rules.
 1. **Goods particles only:** coal → goods chain (one mine, one factory, one town). Price diffusion, spawn
    accumulators, cost-basis sell gate, buyer room admission, arrival split with Transport Company vault. Verify
    mass and gold conservation to machine precision.

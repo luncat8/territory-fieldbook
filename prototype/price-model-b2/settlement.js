@@ -124,10 +124,10 @@ class Settlements {
 	// still labor at home fells the surrounding wood and returns tired.
 	buildFromForest(i) {
 		const m = this.model;
-		const idle = m.labor[i] * m.laborFlow.still[i];
-		const wood = Math.min(idle * this.buildShare * WOOD_PER_WORK, this.sumAround(this.forest, i));
+		const idle = Math.min(m.labor[i] * m.laborFlow.still[i] * this.buildShare, 1 - m.depleted[i]);
+		const wood = Math.min(idle * WOOD_PER_WORK, this.sumAround(this.forest, i));
 		if (wood <= 1e-12) return;
-		const used = Math.min(wood / WOOD_PER_WORK, 1 - m.depleted[i]);
+		const used = wood / WOOD_PER_WORK;
 		const gold = m.laborFlow.gold[i] * (used / m.labor[i]);
 		this.fellAround(i, wood);
 		m.labor[i] -= used;
@@ -176,6 +176,7 @@ class Settlements {
 				savings += m.depletedFlow.gold[n];
 				m.depleted[n] = 0;
 				m.depletedFlow.gold[n] = 0;
+				m.depletedFlow.intent[n] = 0;
 				workers += m.labor[n];
 				if (n !== c) this.gatherLabor(n, c);
 			}
