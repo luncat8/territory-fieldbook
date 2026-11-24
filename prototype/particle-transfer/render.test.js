@@ -1,4 +1,4 @@
-// Owns: render verification — heading-triangle default, points and large-8th particle shapes on both item and worker views.
+// Owns: render verification — points default, heading-triangle and large-8th particle shapes on both item and worker views.
 'use strict';
 
 const test = require('node:test');
@@ -72,7 +72,7 @@ function largeCount(model) {
 	return n;
 }
 
-test('particle views draw heading triangles by default and honour the points and large-8th settings', () => {
+test('particle views draw points by default and honour the triangles and large-8th settings', () => {
 	const model = freshModel();
 	const plot = new FieldPlot(makeCanvas(), true);
 	plot.resource = 'coal';
@@ -84,7 +84,13 @@ test('particle views draw heading triangles by default and honour the points and
 	const total = coalCount(model);
 
 	plot.drawParticles(model, false);
-	assert.equal(count('arc'), 0, 'default mode draws no round dots');
+	assert.equal(count('arc'), total, 'default mode draws one dot per particle');
+	assert.equal(count('moveTo'), 0, 'default mode draws no triangles');
+	reset();
+
+	plot.shape = 'triangles';
+	plot.drawParticles(model, false);
+	assert.equal(count('arc'), 0, 'triangles mode draws no round dots');
 	assert.equal(count('moveTo'), total, 'one heading triangle per particle');
 	assert.equal(count('fill'), total);
 	assert.equal(count('lineTo'), total * 2);
