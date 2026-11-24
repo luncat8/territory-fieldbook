@@ -251,7 +251,7 @@ class FieldPlot {
 
 	walletPeak(workers) {
 		let peak = SCALE_FLOOR.price;
-		for (let p = 0; p < workers.count; p++) peak = Math.max(peak, workers.gold[p] / workers.amount[p]);
+		for (let p = 0; p < workers.count; p++) if (workers.dockCell[p] < 0) peak = Math.max(peak, workers.gold[p] / workers.amount[p]);
 		return peak;
 	}
 
@@ -271,7 +271,7 @@ class FieldPlot {
 		const { workers } = model;
 		const wantState = this.resource === 'labor' ? STATE_FRESH : STATE_DEPLETED;
 		for (let p = 0; p < workers.count; p++) {
-			if (workers.state[p] === wantState) this.drawDot(workers, p, workers.gold[p] / workers.amount[p], workers.amount[p] / WORKER_UNIT, vectors);
+			if (workers.dockCell[p] < 0 && workers.state[p] === wantState) this.drawDot(workers, p, workers.gold[p] / workers.amount[p], workers.amount[p] / WORKER_UNIT, vectors);
 		}
 	}
 
@@ -342,6 +342,7 @@ class FieldPlot {
 		}
 		const { workers } = model;
 		for (let p = 0; p < workers.count; p++) {
+			if (workers.dockCell[p] >= 0) continue;
 			const i = workers.cellOf(p);
 			flowX[i] += workers.vx[p] * workers.gold[p];
 			flowY[i] += workers.vy[p] * workers.gold[p];

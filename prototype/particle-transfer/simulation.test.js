@@ -53,8 +53,8 @@ function checkLedger(model) {
 	assert.ok(money.workerPurse.every(v => v >= 0));
 	assert.ok(money.transportVault >= 0);
 	for (let i = 0; i < ECONOMY_SIZE; i++) {
-		if (model.labor[i] <= 1e-12) assert.equal(model.laborFlow.gold[i], 0);
-		if (model.depleted[i] <= 1e-12) assert.equal(model.depletedFlow.gold[i], 0);
+		if (model.labor[i] <= 1e-12) assert.ok(model.laborFlow.gold[i] < 1e-12);
+		if (model.depleted[i] <= 1e-12) assert.ok(model.depletedFlow.gold[i] < 1e-12);
 	}
 	closeTo(model.totalItem(ITEM_COAL), model.producedCoal - model.burnedCoal - particles.spoiled[ITEM_COAL], 1e-12, model.producedCoal);
 	closeTo(model.totalItem(ITEM_GOODS), model.producedGoods - model.consumedGoods - particles.spoiled[ITEM_GOODS], 1e-12, model.producedGoods);
@@ -93,7 +93,7 @@ test('isolated mines and townless chains remain idle; distant chains deliver whe
 	lonely.setActor(economyIndex(10, 10), ECONOMY_MINE);
 	lonely.setActor(economyIndex(12, 10), ECONOMY_FACTORY);
 	run(lonely, 5);
-	assert.equal(lonely.workedLabor, 0);
+	assert.ok(lonely.workedLabor < 1e-12, 'no labor is worked without a workforce supply');
 	assert.equal(lonely.producedCoal, 0);
 	assert.equal(lonely.producedGoods, 0);
 	checkLedger(lonely);

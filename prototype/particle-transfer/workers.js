@@ -1,19 +1,22 @@
-// Owns: preallocated SoA worker particles — FRESH commuters and DEPLETED walkers with carried wallets and settle intent,
-// release from docked pools, wallet-weighted home steering, room admission and entry wages.
-// Edit for: worker batch size (WORKER_UNIT), walk pace and dock release. Pool targets and rest: actors.js, workforce.js.
+// Owns: preallocated SoA worker particles — FRESH commuters and DEPLETED walkers with carried wallets and settle intent.
+// Workers are persistent objects: a docked worker is parked at its cell (not drawn) and keeps its wallet until it
+// rests, then leaves by gradient. A town never holds or releases; it only rests and taxes. No gradient means the
+// worker counts as unemployed — the signal to spawn a facility. Edit for: worker batch size, walk pace, dock slope.
 'use strict';
 
 const WORKER_CAP = 2048;
 const WORKER_UNIT = LABOR_PER_POP;
 const WORKER_SPEED = 12;
-const WORKER_FLUSH_SECONDS = 1;
 const WORKER_DUST = 1e-12;
 const WORKER_DOCK_SLOPE = 0.1 * GRADIENT_KNEE;
+const FACILITY_UNEMPLOY_WORKERS = 4;
 const STATE_FRESH = 0;
 const STATE_DEPLETED = 1;
 
-// Docked stocks (labor[i], depleted[i] with their flow gold and intent) are the worker pools and spawn accumulators:
-// a firm's fresh pool, a town's wait pool, and still workers resting where they stand. Particles exist only while moving.
+// Worker objects are the persistent reality. A worker is either walking (dockCell < 0, drawn) or docked (dockCell =
+// cell, parked, not drawn). Docked stocks (labor[i], depleted[i] + flow gold and intent) are the cell aggregate the
+// B2 rules read and write; syncFromCells re-applies their state and wallets to the parked objects each tick, so a
+// worker keeps its money and identity across rest, work and the walk between them.
 class WorkerParticles {
 	constructor(model) {
 		this.model = model;
@@ -26,22 +29,24 @@ class WorkerParticles {
 		this.amount = new Float64Array(WORKER_CAP);
 		this.gold = new Float64Array(WORKER_CAP);
 		this.intent = new Float64Array(WORKER_CAP);
+		this.dockCell = new Int32Array(WORKER_CAP);
 		this.arriveCell = new Int32Array(WORKER_CAP);
-		this.dockIdle = new Float64Array(2 * ECONOMY_SIZE);
-		this.dockSeen = new Float64Array(2 * ECONOMY_SIZE);
-		this.wantBuy = new Float64Array(ECONOMY_SIZE);
-		this.room = new Float64Array(ECONOMY_SIZE);
+		this.dockHead = new Int32Array(ECONOMY_SIZE);
+		this.dockPrev = new Int32Array(WORKER_CAP);
+		this.dockNext = new Int32Array(WORKER_CAP);
 		this.queue = new Float64Array(ECONOMY_SIZE);
+		this.unemployed = new Float64Array(ECONOMY_SIZE);
 		this.reset();
 	}
 
 	reset() {
 		this.count = 0;
-		this.dockIdle.fill(0);
-		this.dockSeen.fill(0);
+		this.dockHead.fill(-1);
 		this.queue.fill(0);
+		this.unemployed.fill(0);
 		this.emitted = this.arrivals = this.docked = 0;
 		this.absorbedGold = 0;
+		this.unemploymentTotal = 0;
 	}
 
 	flowOf(s) { return s === STATE_FRESH ? this.model.laborFlow : this.model.depletedFlow; }
@@ -57,39 +62,68 @@ class WorkerParticles {
 		return economyIndex(Math.round(this.x[p]), Math.round(this.y[p]));
 	}
 
+	isFirm(i) {
+		const a = this.model.actors[i];
+		return a === ECONOMY_MINE || a === ECONOMY_FACTORY || a === ECONOMY_GOLD;
+	}
+
 	inFlightTotal(s) {
 		let sum = 0;
-		for (let p = 0; p < this.count; p++) if (this.state[p] === s) sum += this.amount[p];
+		for (let p = 0; p < this.count; p++) if (this.dockCell[p] < 0 && this.state[p] === s) sum += this.amount[p];
 		return sum;
 	}
 
 	inFlightAt(s, i) {
 		let sum = 0;
-		for (let p = 0; p < this.count; p++) if (this.state[p] === s && this.cellOf(p) === i) sum += this.amount[p];
+		for (let p = 0; p < this.count; p++) if (this.dockCell[p] < 0 && this.state[p] === s && this.cellOf(p) === i) sum += this.amount[p];
 		return sum;
 	}
 
-	// Workers waiting at a full buyer (fresh at a firm, depleted at a town) count toward its pool occupancy,
+	// Walkers waiting at a full buyer (fresh at a firm, depleted at a town) count toward its pool occupancy,
 	// so hire bids and town crowd tax react to the queue instead of drawing more walkers.
 	queuedAt(i) {
 		return this.queue[i];
 	}
 
+	// Only walking workers carry money outside the docked aggregates; docked wallets live in the cell flow gold.
 	goldTotal() {
 		let sum = 0;
-		for (let p = 0; p < this.count; p++) sum += this.gold[p];
+		for (let p = 0; p < this.count; p++) if (this.dockCell[p] < 0) sum += this.gold[p];
 		return sum;
+	}
+
+	unemployment() { return this.unemploymentTotal; }
+	unemployedAt(i) { return this.unemployed[i]; }
+	facilityDemand() { return this.unemploymentTotal >= FACILITY_UNEMPLOY_WORKERS * WORKER_UNIT; }
+
+	link(p, i) {
+		this.dockPrev[p] = -1;
+		this.dockNext[p] = this.dockHead[i];
+		if (this.dockHead[i] >= 0) this.dockPrev[this.dockHead[i]] = p;
+		this.dockHead[i] = p;
+	}
+
+	unlink(p) {
+		const i = this.dockCell[p];
+		if (i < 0) return;
+		const pr = this.dockPrev[p], nx = this.dockNext[p];
+		if (pr >= 0) this.dockNext[pr] = nx;
+		else this.dockHead[i] = nx;
+		if (nx >= 0) this.dockPrev[nx] = pr;
+		this.dockCell[p] = -1;
 	}
 
 	step() {
 		this.clearFlows(this.model.laborFlow);
 		this.clearFlows(this.model.depletedFlow);
-		this.releaseDocks(STATE_FRESH);
-		this.releaseDocks(STATE_DEPLETED);
+		this.syncFromCells();
+		this.releaseState(STATE_FRESH);
+		this.releaseState(STATE_DEPLETED);
 		this.advanceAll();
 		this.admit(STATE_FRESH);
 		this.admit(STATE_DEPLETED);
 		this.compact();
+		this.updateUnemployment();
 	}
 
 	clearFlows(flow) {
@@ -98,60 +132,98 @@ class WorkerParticles {
 		flow.flowRate.fill(0);
 	}
 
-	// Firms keep their fresh pool; a town keeps its wait pool unless a neighbor offers higher home appeal
-	// (dominated-town release), so workers are never trapped in a worse town.
-	holdsDock(s, i) {
-		const m = this.model, a = m.actors[i];
-		if (s === STATE_FRESH) return (m.laborFlow.buyers & (1 << a)) !== 0;
-		return a === ECONOMY_TOWN && m.depletedFlow.cap[i] > 0 && !hasBetterNeighbor(m.depletedFlow, m.priceHome, i);
-	}
-
-	// Workers leave a dock once the slope clears WORKER_DOCK_SLOPE (still > 0.9 below it): one batch per tick,
-	// or a smaller remainder after WORKER_FLUSH_SECONDS without new arrivals. A full GRADIENT_KNEE gate stranded
-	// commuters in a town whose wage field reaches it with a slope under the knee.
-	releaseDocks(s) {
-		const m = this.model, flow = this.flowOf(s), stock = this.stockOf(s), steer = this.steer;
-		const price = this.priceOf(s), alt = this.altOf(s), off = s * ECONOMY_SIZE;
+	// Re-apply the B2 cell-stock state and wallets to the parked objects: B2 flips state (rest, work) and moves
+	// gold (wages, rest tax, shelter) on the docked aggregates, and creates stock with no backing object (town
+	// population supply, resident shed). Mirrored objects follow that net change; stock below one worker unit stays
+	// in the cell as pending supply and is mirrored once a full worker accumulates, so supply releases in batches.
+	syncFromCells() {
+		const m = this.model;
+		const labor = m.labor, depleted = m.depleted;
+		const lfGold = m.laborFlow.gold, dfGold = m.depletedFlow.gold, dfIntent = m.depletedFlow.intent;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			const idx = off + i, amt = stock[i];
-			flow.still[i] = 1;
-			if (amt <= 1e-12) {
-				this.dockIdle[idx] = this.dockSeen[idx] = 0;
-				continue;
+			let p = this.dockHead[i];
+			if (p < 0 && labor[i] <= WORKER_DUST && depleted[i] <= WORKER_DUST) continue;
+			let freshTarget = labor[i], depTarget = depleted[i];
+			let freshTotal = 0, depTotal = 0;
+			while (p >= 0) {
+				const nx = this.dockNext[p];
+				if (freshTarget > WORKER_DUST) {
+					this.state[p] = STATE_FRESH;
+					const take = Math.min(this.amount[p], freshTarget);
+					this.amount[p] = take;
+					freshTarget -= take;
+					freshTotal += take;
+				} else {
+					this.state[p] = STATE_DEPLETED;
+					const take = Math.min(this.amount[p], depTarget);
+					this.amount[p] = take;
+					depTarget -= take;
+					depTotal += take;
+				}
+				p = nx;
 			}
-			this.dockIdle[idx] = amt > this.dockSeen[idx] + 1e-15 ? 0 : this.dockIdle[idx] + ECONOMY_DT;
-			this.dockSeen[idx] = amt;
-			if (this.holdsDock(s, i)) continue;
-			const moving = steer.sampleGradient(price, alt, alt ? flow.mix[i] : 0, i, -Infinity);
-			flow.still[i] = GRADIENT_KNEE / (steer.grad[2] + GRADIENT_KNEE);
-			if (!moving || steer.grad[2] < WORKER_DOCK_SLOPE) continue;
-			if (amt < WORKER_UNIT && this.dockIdle[idx] < WORKER_FLUSH_SECONDS) continue;
-			if (this.count >= WORKER_CAP) return;
-			this.emitFrom(s, i, amt);
-			this.dockSeen[idx] = stock[i];
+			while (freshTarget >= WORKER_UNIT) {
+				if (this.count >= WORKER_CAP) break;
+				this.spawnDocked(STATE_FRESH, i, WORKER_UNIT, 0, 0);
+				freshTarget -= WORKER_UNIT;
+				freshTotal += WORKER_UNIT;
+			}
+			while (depTarget >= WORKER_UNIT) {
+				if (this.count >= WORKER_CAP) break;
+				this.spawnDocked(STATE_DEPLETED, i, WORKER_UNIT, 0, dfIntent[i]);
+				depTarget -= WORKER_UNIT;
+				depTotal += WORKER_UNIT;
+			}
+			p = this.dockHead[i];
+			while (p >= 0) {
+				const nx = this.dockNext[p];
+				if (this.state[p] === STATE_FRESH) this.gold[p] = labor[i] > WORKER_DUST ? lfGold[i] * (this.amount[p] / labor[i]) : 0;
+				else {
+					this.gold[p] = depleted[i] > WORKER_DUST ? dfGold[i] * (this.amount[p] / depleted[i]) : 0;
+					this.intent[p] = dfIntent[i];
+				}
+				p = nx;
+			}
 		}
 	}
 
-	emitFrom(s, i, amt) {
-		const flow = this.flowOf(s), stock = this.stockOf(s);
-		const all = amt - WORKER_UNIT <= 1e-12;
-		const take = all ? amt : WORKER_UNIT;
-		const share = take / amt;
-		const gold = all ? flow.gold[i] : flow.gold[i] * share;
+	spawnDocked(s, i, amount, gold, intent) {
 		const p = this.count++;
 		this.state[p] = s;
 		this.x[p] = i % ECONOMY_WIDTH;
 		this.y[p] = Math.floor(i / ECONOMY_WIDTH);
+		this.vx[p] = this.vy[p] = 0;
+		this.amount[p] = amount;
+		this.gold[p] = gold;
+		this.intent[p] = intent;
+		this.arriveCell[p] = -1;
+		this.dockCell[p] = i;
+		this.link(p, i);
+	}
+
+	// A docked worker leaves purely by gradient. Fresh workers employed at a firm stay (the firm consumes them);
+	// every other docked worker walks once its uphill slope clears the dock slope. No town holds or releases.
+	releaseState(s) {
+		const price = this.priceOf(s), alt = this.altOf(s);
+		for (let p = 0; p < this.count; p++) {
+			if (this.dockCell[p] < 0 || this.state[p] !== s) continue;
+			const i = this.dockCell[p];
+			if (s === STATE_FRESH && this.isFirm(i)) continue;
+			const mix = s === STATE_FRESH ? 0 : this.mixOf(p);
+			if (!this.steer.sampleGradient(price, alt, mix, i, -Infinity)) continue;
+			if (this.steer.grad[2] < WORKER_DOCK_SLOPE) continue;
+			this.launch(p, i);
+		}
+	}
+
+	launch(p, i) {
+		const flow = this.flowOf(this.state[p]), stock = this.stockOf(this.state[p]);
+		this.unlink(p);
+		stock[i] = Math.max(0, stock[i] - this.amount[p]);
+		flow.gold[i] = Math.max(0, flow.gold[i] - this.gold[p]);
+		this.dockCell[p] = -1;
 		this.vx[p] = WORKER_SPEED * this.steer.grad[3];
 		this.vy[p] = WORKER_SPEED * this.steer.grad[4];
-		this.amount[p] = take;
-		this.gold[p] = gold;
-		this.intent[p] = flow.intent ? flow.intent[i] : 0;
-		this.arriveCell[p] = -1;
-		stock[i] = all ? 0 : amt - take;
-		flow.gold[i] = all ? 0 : flow.gold[i] - gold;
-		flow.cost[i] = all ? 0 : flow.cost[i] * (1 - share);
-		if (all && flow.intent) flow.intent[i] = 0;
 		this.emitted++;
 	}
 
@@ -159,13 +231,14 @@ class WorkerParticles {
 		const m = this.model, steer = this.steer;
 		this.queue.fill(0);
 		for (let p = 0; p < this.count; p++) {
+			if (this.dockCell[p] >= 0) continue;
 			this.arriveCell[p] = -1;
 			const s = this.state[p], flow = this.flowOf(s), stock = this.stockOf(s);
 			const price = this.priceOf(s), alt = this.altOf(s), mix = this.mixOf(p);
 			const ci = this.cellOf(p);
 			const buyer = (flow.buyers & (1 << m.actors[ci])) !== 0;
 			const moving = steer.sampleGradient(price, alt, mix, ci, -Infinity) && steer.grad[2] >= WORKER_DOCK_SLOPE;
-			if (buyer && flow.cap[ci] - stock[ci] > 1e-12 && (s === STATE_FRESH || !moving)) {
+			if (buyer && flow.cap[ci] - stock[ci] > WORKER_DUST && (s === STATE_FRESH || !moving)) {
 				this.arriveCell[p] = ci;
 				this.vx[p] = this.vy[p] = 0;
 				continue;
@@ -175,7 +248,7 @@ class WorkerParticles {
 			if (!moving || this.amount[p] <= WORKER_DUST) {
 				this.vx[p] = this.vy[p] = 0;
 				if (buyer) this.queue[ci] += this.amount[p];
-				else this.dock(p, ci);
+				else this.parkHere(p, ci);
 				continue;
 			}
 			steer.advance(this, p, WORKER_SPEED);
@@ -185,82 +258,101 @@ class WorkerParticles {
 		}
 	}
 
-	// A still worker joins the docked stock where it stands, so shelter rest, intent pledges and founding see it.
-	// A cell already holding a full worker cell keeps the particle hovering instead of overfilling it.
-	dock(p, i) {
+	// Park a walking worker at a cell as a persistent object: its amount and wallet join the docked aggregate and
+	// the object stays alive (dockCell = cell), keeping its money and intent until the gradient sends it on its way.
+	parkHere(p, i) {
+		const flow = this.flowOf(this.state[p]), stock = this.stockOf(this.state[p]);
+		if (stock[i] + this.amount[p] > flow.cap[i] + WORKER_DUST) return false;
+		this.park(p, i);
+		return true;
+	}
+
+	park(p, i) {
 		const s = this.state[p], flow = this.flowOf(s), stock = this.stockOf(s);
-		const amt = this.amount[p], before = stock[i];
-		if (before + amt > 1) return;
-		stock[i] = before + amt;
+		const before = stock[i];
+		stock[i] += this.amount[p];
 		flow.gold[i] += this.gold[p];
-		if (flow.intent) flow.intent[i] = (flow.intent[i] * before + this.intent[p] * amt) / stock[i];
-		this.amount[p] = this.gold[p] = 0;
+		if (flow.intent) flow.intent[i] = (flow.intent[i] * before + this.intent[p] * this.amount[p]) / stock[i];
+		this.dockCell[p] = i;
+		this.x[p] = i % ECONOMY_WIDTH;
+		this.y[p] = Math.floor(i / ECONOMY_WIDTH);
+		this.vx[p] = this.vy[p] = 0;
+		this.link(p, i);
 		this.docked++;
 	}
 
-	// Normalized room admission keeps pools under their cap; fresh arrivals at a firm are paid the entry wage.
+	// Room admission fills each pool in arrival order: a worker docks whole when the pool has room for it, else
+	// waits in the queue. Sequential (not normalized) so a burst of arrivals still fills the pool instead of every
+	// worker seeing room < 1 and queuing. Fresh arrivals at a firm are paid the entry wage.
 	admit(s) {
 		const m = this.model, flow = this.flowOf(s), stock = this.stockOf(s);
-		this.wantBuy.fill(0);
-		let any = false;
 		for (let p = 0; p < this.count; p++) {
 			const b = this.arriveCell[p];
-			if (b < 0 || this.state[p] !== s) continue;
-			this.wantBuy[b] += this.amount[p];
-			any = true;
-		}
-		if (!any) return;
-		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			if (this.wantBuy[i] > 0) this.room[i] = Math.min(1, Math.max(0, flow.cap[i] - stock[i]) / this.wantBuy[i]);
-		}
-		for (let p = 0; p < this.count; p++) {
-			const b = this.arriveCell[p];
-			if (b < 0 || this.state[p] !== s) continue;
-			if (this.room[b] <= 0) {
+			if (b < 0 || this.dockCell[p] >= 0 || this.state[p] !== s) continue;
+			const avail = flow.cap[b] - stock[b];
+			if (this.amount[p] <= avail) {
+				this.park(p, b);
+				if (s === STATE_FRESH) m.buyArrival(flow, b, this.amount[p] * m.priceLabor[b]);
+				this.arrivals++;
+			} else {
 				this.queue[b] += this.amount[p];
-				continue;
 			}
-			const amt = this.amount[p], all = this.room[b] >= 1 - 1e-12;
-			const accepted = all ? amt : amt * this.room[b];
-			const gold = all ? this.gold[p] : this.gold[p] * this.room[b];
-			const before = stock[b];
-			stock[b] = before + accepted;
-			flow.gold[b] += gold;
-			if (flow.intent) flow.intent[b] = (flow.intent[b] * before + this.intent[p] * accepted) / stock[b];
-			this.amount[p] = all ? 0 : amt - accepted;
-			this.gold[p] = all ? 0 : this.gold[p] - gold;
-			this.queue[b] += this.amount[p];
-			if (s === STATE_FRESH) m.buyArrival(flow, b, accepted * m.priceLabor[b]);
-			this.arrivals++;
+			this.arriveCell[p] = -1;
 		}
 	}
 
-	// Founding converts depleted walkers within the radius too; their wallets become the young town's savings.
+	// Founding converts depleted workers within the radius into residents; walking workers bring their wallets,
+	// docked workers' wallets already sit in the cell stock that foundTown banks. Both cease to be workers.
 	absorbNear(cx, cy, radius) {
 		let settled = 0;
 		this.absorbedGold = 0;
 		for (let p = 0; p < this.count; p++) {
-			if (this.state[p] !== STATE_DEPLETED || Math.abs(this.x[p] - cx) > radius || Math.abs(this.y[p] - cy) > radius) continue;
-			settled += this.amount[p];
-			this.absorbedGold += this.gold[p];
-			this.amount[p] = this.gold[p] = 0;
+			if (this.state[p] !== STATE_DEPLETED) continue;
+			if (Math.abs(this.x[p] - cx) > radius || Math.abs(this.y[p] - cy) > radius) continue;
+			if (this.dockCell[p] < 0) {
+				settled += this.amount[p];
+				this.absorbedGold += this.gold[p];
+			}
+			this.amount[p] = this.gold[p] = this.intent[p] = 0;
 		}
 		this.compact();
 		return settled;
 	}
 
+	// A docked fresh worker with no firm to climb to is unemployed: no workforce gradient, so it stays parked.
+	updateUnemployment() {
+		let total = 0;
+		this.unemployed.fill(0);
+		for (let p = 0; p < this.count; p++) {
+			if (this.dockCell[p] < 0 || this.state[p] !== STATE_FRESH) continue;
+			const i = this.dockCell[p];
+			if (this.isFirm(i)) continue;
+			this.unemployed[i] += this.amount[p];
+			total += this.amount[p];
+		}
+		this.unemploymentTotal = total;
+	}
+
 	compact() {
 		let p = 0;
 		while (p < this.count) {
-			if (this.amount[p] > 0) p++;
-			else this.removeAt(p);
+			if (this.amount[p] > WORKER_DUST) {
+				p++;
+				continue;
+			}
+			if (this.gold[p] > 0) this.model.money.orphan(this.cellOf(p), this.gold[p]);
+			if (this.dockCell[p] >= 0) this.unlink(p);
+			this.removeAt(p);
 		}
 	}
 
 	removeAt(p) {
 		const last = --this.count;
-		if (this.gold[p] > 0) this.model.money.orphan(this.cellOf(p), this.gold[p]);
 		if (p === last) return;
+		// Capture the dock cell first: unlink clears dockCell[last], so the move would otherwise drop the
+		// relocated worker's dock and strand it as an uncounted walker.
+		const lastDock = this.dockCell[last];
+		if (lastDock >= 0) this.unlink(last);
 		this.state[p] = this.state[last];
 		this.x[p] = this.x[last];
 		this.y[p] = this.y[last];
@@ -270,6 +362,32 @@ class WorkerParticles {
 		this.gold[p] = this.gold[last];
 		this.intent[p] = this.intent[last];
 		this.arriveCell[p] = this.arriveCell[last];
+		this.dockCell[p] = lastDock;
+		if (lastDock >= 0) this.link(p, lastDock);
+	}
+
+	// Emit a walking worker from a docked stock (tests and external spawning); takes the full requested amount.
+	emitFrom(s, i, amt) {
+		if (amt <= WORKER_DUST || this.count >= WORKER_CAP) return -1;
+		const flow = this.flowOf(s), stock = this.stockOf(s);
+		const take = Math.min(amt, stock[i]);
+		if (take <= WORKER_DUST) return -1;
+		const gold = stock[i] > WORKER_DUST ? flow.gold[i] * (take / stock[i]) : 0;
+		stock[i] -= take;
+		flow.gold[i] = Math.max(0, flow.gold[i] - gold);
+		if (stock[i] <= WORKER_DUST) flow.gold[i] = 0;
+		const p = this.count++;
+		this.state[p] = s;
+		this.x[p] = i % ECONOMY_WIDTH;
+		this.y[p] = Math.floor(i / ECONOMY_WIDTH);
+		this.vx[p] = this.vy[p] = 0;
+		this.amount[p] = take;
+		this.gold[p] = gold;
+		this.intent[p] = flow.intent ? flow.intent[i] : 0;
+		this.dockCell[p] = -1;
+		this.arriveCell[p] = -1;
+		this.emitted++;
+		return p;
 	}
 }
 

@@ -52,8 +52,9 @@ buffers are full, profit smoothed through `tanh(profit / ref)` to drive scale an
 - **Worker particles:** `{ state (FRESH | DEPLETED), x, y, vx, vy, amount, gold, intent }` — `intent` is the
   worker's settle decision in `[0, 1]` (see settlement founding); docking and arrival average it by `amount`.
 - **Docked worker stocks:** `labor[i]` / `depleted[i]` with their cell gold and intent are the worker pools and
-  the worker spawn accumulators: a firm's fresh pool, a town's wait pool, a town's commuters ready to leave, and
-  still workers resting where they stand. Worker particles exist only while walking.
+  the worker spawn accumulators: a firm's fresh pool, a town's rest pool, and still workers resting where they
+  stand. Worker particles are **persistent objects**: a docked worker is parked at its cell (not drawn) and keeps its
+  `gold` and `intent` until it has rested, then leaves by gradient. A worker never vanishes when docked.
 - **Settled town residents:** stay pooled in town cell `pop[i]` (household savings `workerPurse[i]`); they
   spawn `FRESH` particles to commute up `priceLabor` and `DEPLETED` migrant particles (carrying proportional
   `workerPurse`) when a town shrinks (`deltaPop < 0`). Resident savings never attach to idle commuting
@@ -110,24 +111,27 @@ If local price drops mid-flight (a nearer supplier filled the town first):
   (`priceLabor` bid) scales as `1 − occupancy` all the way to `0` on overflow. Towns size their incoming
   `DEPLETED` wait pool from resident base plus realized returning-worker rest throughput; wait-pool crowding
   above normal turnaround (`WAIT_POOL_FREE`) and near-capacity fullness raise `townRestTax(i)` and `taxMult[i]`.
-- **Cycle:** a dock releases one `WORKER_UNIT` walker per tick (one worker, `LABOR_PER_POP`) once its uphill
-  slope clears `WORKER_DOCK_SLOPE = 0.1 · GRADIENT_KNEE`, or a smaller remainder after 1 s without new arrivals.
-  Firms keep their fresh pool; towns keep their wait pool unless dominated (below). `FRESH` walkers climb
-  `priceLabor` and join a firm pool on entering its cell while it has room; the entry wage
+- **Cycle:** a docked worker leaves purely by gradient — once its uphill slope clears
+  `WORKER_DOCK_SLOPE = 0.1 · GRADIENT_KNEE` it launches as a walker. A town never holds or releases a worker
+  stock and is not a worker router or workforce manager; it only provides rest and collects tax. `FRESH` workers
+  climb `priceLabor` and join a firm pool on entering its cell while it has room; the entry wage
   (`amount · priceLabor[firm]`) is paid from the firm `purse` into the pool's gold (shortfall booked as owed
   wages). Settled wages and surplus payouts split proportionally across the docked on-site workers so every shift
   departs at full wage; used labor turns `DEPLETED` at the firm and leaves as walkers carrying that gold.
   `DEPLETED` walkers climb the wallet-weighted home score `priceHome + w · (priceRest − priceHome)` (`w` =
-  `walletWeight(gold, amount)`: broke walkers chase rest per gold, funded walkers chase rest quality) and join a
-  town's wait pool where no neighbor scores higher.
+  `walletWeight(gold, amount)`: broke walkers chase rest per gold, funded walkers chase rest quality) toward the
+  best rest the gradient reaches. Where no workforce gradient is significant a worker stays docked and counts as
+  unemployed — the signal to spawn a facility (settlement founding).
 - **Queues:** walkers waiting at a full pool (fresh at a firm, depleted at a town) count toward its occupancy,
   so the posted wage cools to zero and the town crowd tax rises while they wait. The queue cools only the posted
   bid, never the pool's admission cap — otherwise the queue would lock itself out of an emptied pool.
 - **Still walkers dock:** a walker whose slope falls below `WORKER_DOCK_SLOPE` joins the docked stock of its cell
   (mass, gold and `intent · amount`), so shelter rest, settle pledges and founding act on docked still workers; a
   cell already holding a full worker cell keeps the walker hovering instead.
-- **Dominated-town release:** a town rests a worker only if no neighbor has higher home appeal
-  (`!hasHigherNeighbor(priceHome)`); otherwise the worker keeps climbing instead of being trapped.
+- **No town release:** a town is not a worker router and does not hold, flush or rate-limit a worker stock.
+  Workers move only by the `priceLabor` / home-rest gradient; a town's role is rest and tax. A docked worker with
+  no significant gradient ahead is unemployed — it stays parked, keeps counting, and accumulates the still-worker
+  signal that triggers settlement founding.
 - **Paid rest & tax:** on arrival the worker pays the town's gold living/rest tax out of `particle.gold` into
   municipal `purse[town]`, banks leftover wages into `workerPurse[town]`, and rests back into town workforce.
   High-tax towns price out broke workers, pushing them toward cheaper towns.

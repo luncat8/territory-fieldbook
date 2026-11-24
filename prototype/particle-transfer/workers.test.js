@@ -94,8 +94,11 @@ test('a fresh walker leaves a town dock, climbs the wage bid and is paid the ent
 	assert.equal(model.workers.count, 1);
 	assert.equal(model.labor[town], 0);
 	let ticks = 0;
-	while (model.workers.count > 0 && ticks++ < 300) stepWorkers(model, 1);
-	assert.equal(model.workers.count, 0);
+	// The worker persists as an object: it walks to the firm and docks there (parked, not drawn). It does not
+	// vanish on docking — the object keeps its wallet until the firm consumes it.
+	while (model.workers.dockCell[0] !== firm && ticks++ < 300) stepWorkers(model, 1);
+	assert.equal(model.workers.count, 1);
+	assert.equal(model.workers.dockCell[0], firm);
 	closeTo(model.labor[firm], WORKER_UNIT, 1e-14);
 	const wage = WORKER_UNIT * model.priceLabor[firm];
 	closeTo(model.laborFlow.gold[firm], wage, 1e-14);
@@ -157,10 +160,9 @@ test('walkers queued at a full firm cool its wage to zero and still enter once t
 	model.labor[firm] = pool;
 	for (let k = 0; k < 10; k++) {
 		model.labor[firm] += WORKER_UNIT;
-		model.workers.emitFrom(STATE_FRESH, firm, model.labor[firm]);
+		model.workers.emitFrom(STATE_FRESH, firm, WORKER_UNIT);
 	}
 	model.suppliedLabor += 10 * WORKER_UNIT;
-	model.workers.dockSeen.fill(0);
 	model.workforce.weighWallets();
 	model.workers.advanceAll();
 	model.workers.admit(STATE_FRESH);
@@ -189,11 +191,13 @@ test('still walkers dock where they stand with intent·amount conserved, and fou
 	model.workers.gold[p] = 0.4;
 	model.money.seeded = 0.4;
 	model.emittedDepleted = 0.5;
-	model.workers.dock(p, spot);
-	model.workers.compact();
-	assert.equal(model.workers.count, 0);
+	// A still walker docks where it stands: the object persists (parked, not drawn) and its intent·amount joins
+	// the docked stock. The object does not vanish on docking.
+	model.workers.park(p, spot);
+	assert.equal(model.workers.count, 1);
+	assert.equal(model.workers.dockCell[p], spot);
 	closeTo(model.depleted[spot], 0.5, 1e-14);
-	closeTo(model.depletedFlow.intent[spot] * model.depleted[spot], 0.2 * (0.5 - WORKER_UNIT) + 0.8 * WORKER_UNIT, 1e-14);
+	closeTo(model.depletedFlow.intent[spot] * model.depleted[spot], 0.8 * 0.5, 1e-14);
 	checkWorkerLedger(model);
 
 	const founding = clearedMap();

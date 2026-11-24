@@ -271,6 +271,9 @@ class PriceEconomy {
 	factoryLaborBid(i) { return this.optimizer.factoryLaborBid(i); }
 	mineLaborBid(i) { return this.optimizer.mineLaborBid(i); }
 	goldLaborBid(i) { return this.optimizer.goldLaborBid(i); }
+	unemployment() { return this.workers.unemployment(); }
+	unemployedAt(i) { return this.workers.unemployedAt(i); }
+	facilityDemand() { return this.workers.facilityDemand(); }
 
 	step() {
 		this.earned.fill(0);
@@ -283,8 +286,8 @@ class PriceEconomy {
 		this.money.step();
 		this.particles.step();
 		this.workforce.weighWallets();
-		this.workers.step();
 		this.workforce.stepStill();
+		this.workers.step();
 		this.settlements.step();
 		this.optimizer.adaptActors();
 		this.coalRate = (this.producedCoal - coalBefore) / ECONOMY_DT;
