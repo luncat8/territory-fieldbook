@@ -32,6 +32,8 @@ class EconomyTelemetry {
 		this.goldHeld = $('gold-held');
 		this.transportVault = $('transport-vault');
 		this.workerCarried = $('worker-carried');
+		this.laborWalking = $('labor-walking');
+		this.depletedWalking = $('depleted-walking');
 	}
 
 	reset(model) {
@@ -41,10 +43,8 @@ class EconomyTelemetry {
 	}
 
 	measure(model) {
-		let labor = 0, depleted = 0, coalPrice = 0, goodsPrice = 0, carried = 0;
+		let coalPrice = 0, goodsPrice = 0, carried = model.workers.goldTotal();
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			labor += model.labor[i];
-			depleted += model.depleted[i];
 			coalPrice += model.priceCoal[i];
 			goodsPrice += model.priceGoods[i];
 			carried += model.workerGoldAt(i);
@@ -54,8 +54,8 @@ class EconomyTelemetry {
 		this.values[2] = coalPrice / ECONOMY_SIZE;
 		this.values[3] = goodsPrice / ECONOMY_SIZE;
 		this.values[4] = model.money.total();
-		this.laborTotal = labor;
-		this.depletedTotal = depleted;
+		this.laborTotal = model.totalItem(ITEM_LABOR);
+		this.depletedTotal = model.totalItem(ITEM_DEPLETED);
 		this.carriedTotal = carried;
 	}
 
@@ -110,6 +110,8 @@ class EconomyTelemetry {
 		this.depletedMade.textContent = model.emittedDepleted.toFixed(3);
 		this.depletedRested.textContent = model.restedDepleted.toFixed(3);
 		this.depletedHeld.textContent = this.depletedTotal.toFixed(3);
+		this.laborWalking.textContent = model.workers.inFlightTotal(STATE_FRESH).toFixed(3);
+		this.depletedWalking.textContent = model.workers.inFlightTotal(STATE_DEPLETED).toFixed(3);
 		this.goldSeeded.textContent = money.seeded.toFixed(2);
 		this.goldMined.textContent = money.mined.toFixed(2);
 		this.goldHeld.textContent = this.values[4].toFixed(2);

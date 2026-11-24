@@ -1,9 +1,12 @@
-# Worklog: Particle Transfer Phase 1 (Goods Particles)
+# Worklog: particle transfer — phase 1 (goods particles)
 
-- Reviewed previous task (`prototype/price-model-b2/settlement.js`): clamped `buildFromForest` `idle` by `1 - depleted[i]` to prevent transient cell overflow and zeroed `depletedFlow.intent[n]` in `foundTown`.
-- Cleaned standalone `plan-particle-transfer.md` phrasing and documented stationary consignment holds and cold-start arrival trade credit.
-- Built `prototype/particle-transfer/` reusing B2 `workforce.js`, `land.js`, `settlement.js` and `styles.css`, replacing cell-field Coal and Goods transport with SoA `GoodsParticles` (`particles.js`) over diffused buyer bids (`simulation.js`, `actors.js`).
-- Added cell spawn accumulators (`SPAWN_UNIT = 0.08`, idle flush) gated on cost-basis `selfPrice`, harmonic-mean terrain conductance steering (`TERRAIN_SPEED = [1, 0.85, 0.55]`), `1 / conductance` haulage accrual, and symmetric buyer room admission.
-- Implemented conserved `GoldMoney` (`gold.js`) with `transportVault` + household carrier drip and fixed-capacity SoA trade payables so arrivals split `buyerPay` between carrier fees and producing `owner`, realizing exact `amount * (buyerPrice - item.price)` profit.
-- Added underwater re-steering, dock-center stationary consignment holds for non-perishables, and perishable spoilage + spot-sale accounting, plus zero-allocation dual-canvas particle rendering (`fields.js`), particle-aware ledgers (`telemetry.js`), `app.js`, `index.html` and `README.md`.
-- Verified: `node --check` passes on all `.js` files; `node --test` passes `15/15` in `prototype/particle-transfer` (mass and gold conserved to `< 1e-12`, reference chain Mine/Factory/Town profitable) and `51/51` in `prototype/price-model-b2`.
+plan: plan-particle-transfer.md — phase 1, coal → goods chain on goods particles
+changed: prototype/price-model-b2/settlement.js — buildFromForest idle clamped by 1 − depleted, foundTown zeroes intent (fix)
+changed: plan-particle-transfer.md — stationary consignment holds, cold-start arrival trade credit (feature)
+changed: prototype/particle-transfer/ — lab lifted from B2 (workforce, land, settlement, styles); particles.js goods SoA pool, simulation.js, actors.js, gold.js, fields.js, telemetry.js, app.js, index.html (feature)
+validation: node --check all; node --test 15/15 lab (mass and gold < 1e-12, reference chain mine/factory/town profitable); B2 51/51
+decisions: SPAWN_UNIT 0.08 with 2.5 s idle flush; TERRAIN_SPEED [1, 0.85, 0.55] harmonic-mean conductance, haul cost ∝ 1 / conductance
+decisions: arrival pays Transport Company vault first, owner second; cold-start shortfall becomes SoA trade payables, so no firm seed gold
+decisions: workers still moved as B2 cell fields (laborFlow/depletedFlow) — phase 2 swaps them
+pitfalls: none recorded
+next: phase 2 worker particles

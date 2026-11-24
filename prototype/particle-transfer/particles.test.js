@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const ENGINE_FILES = ['simulation.js', 'steering.js', 'particles.js', 'actors.js', 'gold.js', 'workforce.js', 'land.js', 'settlement.js'];
+const ENGINE_FILES = ['simulation.js', 'steering.js', 'particles.js', 'workers.js', 'actors.js', 'gold.js', 'workforce.js', 'land.js', 'settlement.js'];
 for (const file of ENGINE_FILES) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 
 const sum = values => values.reduce((total, value) => total + value, 0);
@@ -57,8 +57,8 @@ function checkMachineConservation(model) {
 	}
 	closeMachine(model.totalItem(ITEM_COAL), model.producedCoal - model.burnedCoal - particles.spoiled[ITEM_COAL], 1e-12, model.producedCoal);
 	closeMachine(model.totalItem(ITEM_GOODS), model.producedGoods - model.consumedGoods - particles.spoiled[ITEM_GOODS], 1e-12, model.producedGoods);
-	closeMachine(sum(model.labor), model.suppliedLabor - model.workedLabor, 1e-11, model.suppliedLabor);
-	closeMachine(sum(model.depleted), model.emittedDepleted - model.restedDepleted, 1e-11, model.emittedDepleted);
+	closeMachine(model.totalItem(ITEM_LABOR), model.suppliedLabor - model.workedLabor, 1e-11, model.suppliedLabor);
+	closeMachine(model.totalItem(ITEM_DEPLETED), model.emittedDepleted - model.restedDepleted, 1e-11, model.emittedDepleted);
 	closeMachine(money.total(), money.seeded + money.mined, 1e-12, money.seeded + money.mined);
 }
 

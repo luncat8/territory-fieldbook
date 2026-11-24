@@ -23,8 +23,8 @@ const TOOL_KINDS = { inspect:0, erase:0, mine:ECONOMY_MINE, factory:ECONOMY_FACT
 const RESOURCE_TITLES = {
 	coal:['Coal particles & storage','Site buffers plus live shipments colored by delivered price','Coal price','Diffused buyer bid per cell'],
 	goods:['Goods particles & storage','Site buffers plus live shipments colored by delivered price','Goods price','Diffused buyer bid per cell'],
-	labor:['Labor force','Fresh workers commuting to firms','Wage','Diffused firm wage bid per cell'],
-	depleted:['Depleted workforce','Tired or migrating workers carrying earned gold','Living value','Diffused comfort per gold tax (fades with distance)'],
+	labor:['Labor pools & commuters','Docked fresh pools plus walkers climbing the wage bid, colored by carried wallet','Wage','Diffused firm wage bid per cell'],
+	depleted:['Depleted pools & walkers','Town wait pools and still workers plus tired walkers carrying earned gold home','Living value','Diffused comfort per gold tax (fades with distance)'],
 	gold:['Gold held','Municipal vaults, resident purses and worker wallets','Payment & home pull','Where bids and home appeal draw value'],
 	land:['Land rest','Terrain rest pace less wasteland around facilities','Town site','Where settlers prefer to found: land rest less other towns\' claim']
 };
@@ -61,7 +61,7 @@ function bootEconomy() {
 	$('gold-rate-note').textContent = GOLD_RATE.toFixed(2);
 
 	function updateCountLabel() {
-		actorCount.textContent = `${actorSummary} · ${model.particles.count} pts`;
+		actorCount.textContent = `${actorSummary} · ${model.particles.count} goods · ${model.workers.count} workers`;
 	}
 
 	function syncActors() {

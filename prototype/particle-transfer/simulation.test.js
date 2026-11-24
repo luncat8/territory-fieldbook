@@ -1,4 +1,4 @@
-// Owns: economic, worker-pool, wealth-class tax and land/settlement regression checks over the particle-goods engine.
+// Owns: economic, worker-pool, wealth-class tax and land/settlement regression checks over the particle engine.
 'use strict';
 
 const test = require('node:test');
@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-for (const file of ['simulation.js', 'steering.js', 'particles.js', 'actors.js', 'gold.js', 'workforce.js', 'land.js', 'settlement.js']) {
+for (const file of ['simulation.js', 'steering.js', 'particles.js', 'workers.js', 'actors.js', 'gold.js', 'workforce.js', 'land.js', 'settlement.js']) {
 	vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 }
 
@@ -58,8 +58,8 @@ function checkLedger(model) {
 	}
 	closeTo(model.totalItem(ITEM_COAL), model.producedCoal - model.burnedCoal - particles.spoiled[ITEM_COAL], 1e-12, model.producedCoal);
 	closeTo(model.totalItem(ITEM_GOODS), model.producedGoods - model.consumedGoods - particles.spoiled[ITEM_GOODS], 1e-12, model.producedGoods);
-	closeTo(sum(model.labor), model.suppliedLabor - model.workedLabor, 1e-11, model.suppliedLabor);
-	closeTo(sum(model.depleted), model.emittedDepleted - model.restedDepleted, 1e-11, model.emittedDepleted);
+	closeTo(model.totalItem(ITEM_LABOR), model.suppliedLabor - model.workedLabor, 1e-11, model.suppliedLabor);
+	closeTo(model.totalItem(ITEM_DEPLETED), model.emittedDepleted - model.restedDepleted, 1e-11, model.emittedDepleted);
 	closeTo(money.total(), money.seeded + money.mined, 1e-12, money.seeded + money.mined);
 }
 

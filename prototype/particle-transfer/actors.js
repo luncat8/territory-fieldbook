@@ -100,7 +100,7 @@ class ActorOptimizer {
 		const actor = m.actors[i];
 		const pool = this.poolTarget(i);
 		if (pool <= 0) return 0;
-		return (actor === ECONOMY_TOWN ? m.depleted[i] : m.labor[i]) / pool;
+		return ((actor === ECONOMY_TOWN ? m.depleted[i] : m.labor[i]) + m.workers.queuedAt(i)) / pool;
 	}
 
 	townDrive(i) {
@@ -169,7 +169,8 @@ class ActorOptimizer {
 	}
 
 	// Outbound spawn buffer counts toward sellRoom so unsold warehouses cool input bids cleanly.
-	firmBids(i, recipe) {
+	// Queued walkers cool the posted wage but not the pool cap, or a queue would lock itself out of an empty pool.
+	firmBids(i, recipe, countQueue = true) {
 		const m = this.model;
 		const { inputs, rate, outItem, outYield, gate } = recipe;
 		const scale = m.scale[i] || 1;
@@ -199,7 +200,8 @@ class ActorOptimizer {
 			const isLabor = inputs[k].item === ITEM_LABOR;
 			const share = Math.min(0.82, Math.max(0.32, INPUT_SHARE * (1 + (isLabor ? 0.28 : 0.12) * drive)));
 			const target = isLabor ? this.firmLaborPool(i, recipe) : Math.min(0.92, rate * scale * inputs[k].need * BUFFER_SECONDS);
-			const need = m.suppression ? Math.max(0, 1 - m.stocks[inputs[k].item][i] / Math.max(1e-9, target)) : 1;
+			const held = m.stocks[inputs[k].item][i] + (isLabor && countQueue ? m.workers.queuedAt(i) : 0);
+			const need = m.suppression ? Math.max(0, 1 - held / Math.max(1e-9, target)) : 1;
 			this.rawOut[k] = share * remain * sellRoom * need;
 			this.maxOut[k] = m.derived ? (remain * 0.96) / inputs[k].need : Infinity;
 			rawSum += this.rawOut[k];
@@ -294,7 +296,7 @@ class ActorOptimizer {
 		}
 		m.workLoad[i] += this.occBlend * (usedLabor / ECONOMY_DT - m.workLoad[i]);
 
-		this.firmBids(i, recipe);
+		this.firmBids(i, recipe, false);
 		for (let k = 0; k < inputs.length; k++) {
 			const { item, need } = inputs[k];
 			const stock = m.stocks[item][i];

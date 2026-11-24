@@ -492,3 +492,20 @@ From adding land rest and settle intent to `prototype/price-model-b2/` (`land.js
 - **A still crowd thins fast.** Depleted dispersal spreads a 3×3 stranding to ~30% at its centre within the 3 s
   intent build-up, so the founding threshold reads against the settled-down count, not the stranded amount.
 
+
+## worker particles over docked pools (particle-transfer lab)
+
+- **Particles only while walking.** Keep `labor[i]`/`depleted[i]` (+ cell gold, intent) as docked stocks: pools,
+  spawn accumulators and still workers. All B2 cell rules (rest, tax, shelter rest, pledges, founding) keep
+  working unchanged; the particle pool only adds release, walking and admission.
+- **A hard `GRADIENT_KNEE` gate strands commuters.** A wage field decays to a slope under the knee a few cells
+  from the firm; with "move only above the knee" the town dock never released and the mine starved. The cell
+  engine moved at `s / (s + knee)` instead. Gate docks at `0.1 · knee` (still > 0.9) and let speed scale.
+- **The blended gradient cancels between two equal buyers.** A town midway between a mine and a factory launched
+  walkers with heading ≈ 0 and they never left. Launch along the steepest edge; the smoothed heading then carries
+  the walker off the saddle.
+- **A queue must cool the bid, not the admission cap.** Counting queued walkers in `need` zeroed the bid, the
+  zero bid set `cap = stock`, and an emptied pool admitted nobody: 65 walkers parked forever at a cell boundary.
+  Call `firmBids(i, recipe, false)` for the cap decision.
+- **Partial admission hides a queue.** Walkers admitted at a tiny normalized share each tick never "hover", so a
+  queue counted only from hovering walkers stayed zero. Count the post-admission remainder too.

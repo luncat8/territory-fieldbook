@@ -12,7 +12,7 @@ function blendedScore(price, alt, mix, to) {
 class ParticleSteering {
 	constructor(model) {
 		this.model = model;
-		this.grad = new Float64Array(3);
+		this.grad = new Float64Array(5);
 		this.toCell = -1;
 	}
 
@@ -43,11 +43,12 @@ class ParticleSteering {
 	}
 
 	// Direction shares use unweighted gradient sum g*c / (gSum + knee) so uniformly slow ground moves slower.
-	// grad[2] holds the steepest slope, so callers gate stillness on it against GRADIENT_KNEE.
+	// grad[2] holds the steepest slope; grad[3..4] the steepest edge at the same pace, a launch heading that
+	// cannot cancel out between two equal buyers the way the blended grad[0..1] does.
 	sampleGradient(price, alt, mix, i, minThere) {
 		const here = blendedScore(price, alt, mix, i);
 		const base = i * DEGREE;
-		let gSum = 0, steepest = 0;
+		let gSum = 0, steepest = 0, best = -1;
 		for (let k = 0; k < DEGREE; k++) {
 			const to = NEIGHBORS[base + k];
 			if (to < 0) continue;
@@ -55,9 +56,12 @@ class ParticleSteering {
 			if (there < minThere || there <= here + 1e-9) continue;
 			const g = (there - here) * DIRECTIONS[k].inv;
 			gSum += g;
-			if (g > steepest) steepest = g;
+			if (g > steepest) {
+				steepest = g;
+				best = k;
+			}
 		}
-		this.grad[0] = this.grad[1] = this.grad[2] = 0;
+		this.grad.fill(0);
 		if (steepest <= 1e-9) return false;
 		const denom = gSum + GRADIENT_KNEE;
 		let gx = 0, gy = 0;
@@ -71,9 +75,13 @@ class ParticleSteering {
 			gx += dir.ux * share;
 			gy += dir.uy * share;
 		}
+		const dir = DIRECTIONS[best];
+		const pace = Math.hypot(gx, gy) || steepest * this.edgeConductance(i, NEIGHBORS[base + best]) / denom;
 		this.grad[0] = gx;
 		this.grad[1] = gy;
 		this.grad[2] = steepest;
+		this.grad[3] = dir.ux * pace;
+		this.grad[4] = dir.uy * pace;
 		return true;
 	}
 

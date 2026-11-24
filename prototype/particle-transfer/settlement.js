@@ -85,11 +85,16 @@ class Settlements {
 	// A tired worker makes up its mind to settle over INTENT_SECONDS of standing still beyond every town's reach,
 	// and forgets at the same pace once it moves or a home signal reaches it. Intent is carried with the worker.
 	decide(i) {
-		const m = this.model, intent = m.depletedFlow.intent;
+		const flow = this.model.depletedFlow;
+		flow.intent[i] = this.nextIntent(flow.intent[i], flow.still[i], i);
+		return flow.intent[i] >= 1;
+	}
+
+	nextIntent(intent, still, i) {
+		const m = this.model;
 		const reach = m.priceHome[i] + m.priceRest[i];
-		const goal = m.actors[i] ? 0 : m.depletedFlow.still[i] * Math.max(0, 1 - reach / FOUND_REACH);
-		intent[i] = Math.min(1, Math.max(0, intent[i] + this.intentStep * (2 * goal - 1)));
-		return intent[i] >= 1;
+		const goal = m.actors[i] ? 0 : still * Math.max(0, 1 - reach / FOUND_REACH);
+		return Math.min(1, Math.max(0, intent + this.intentStep * (2 * goal - 1)));
 	}
 
 	// Each written cell's count only grows within a tick, so the best site is tracked at write time.
@@ -181,6 +186,8 @@ class Settlements {
 				if (n !== c) this.gatherLabor(n, c);
 			}
 		}
+		settled += m.workers.absorbNear(cx, cy, FOUND_RADIUS);
+		savings += m.workers.absorbedGold;
 		m.restedDepleted += settled;
 		m.actors[c] = ECONOMY_TOWN;
 		m.scale[c] = m.taxMult[c] = 1;

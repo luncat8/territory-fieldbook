@@ -1,5 +1,5 @@
-// Owns: dual-canvas rendering — dimmed terrain + site stock, continuous live goods particles, price contours and cell inspection.
-// Edit for: particle price->color / amount->light ramp, flow vectors and wallet/particle/land tooltip readouts.
+// Owns: dual-canvas rendering — dimmed terrain + docked stock, continuous goods and worker particles, price contours and cell inspection.
+// Edit for: particle price/wallet->color and amount->light ramp, flow vectors and wallet/particle/land tooltip readouts.
 'use strict';
 
 const STOCK_COLORS = [[0,'#19181b'],[0.12,'#35272a'],[0.26,'#6d3a26'],[0.41,'#a95627'],[0.55,'#e18a36'],[0.7,'#ffca70'],[1,'#fff1c6']];
@@ -142,7 +142,11 @@ class FieldPlot {
 	}
 
 	isParticleView() {
-		return this.isStock && (this.resource === 'coal' || this.resource === 'goods');
+		return this.isStock && (this.resource === 'coal' || this.resource === 'goods' || this.isWorkerView());
+	}
+
+	isWorkerView() {
+		return this.resource === 'labor' || this.resource === 'depleted';
 	}
 
 	fieldFor(model) {
@@ -176,13 +180,14 @@ class FieldPlot {
 		let peak = this.isStock ? SCALE_FLOOR.gold : SCALE_FLOOR.price;
 		for (let i = 0; i < ECONOMY_SIZE; i++) peak = Math.max(peak, data[i]);
 		this.scale = niceCeil(peak);
-		if (this.isParticleView()) {
+		if (this.isWorkerView() && this.isStock) this.priceRef = niceCeil(this.walletPeak(model.workers));
+		else if (this.isParticleView()) {
 			const priceField = this.resource === 'coal' ? model.priceCoal : model.priceGoods;
 			let pMax = SCALE_FLOOR.price;
 			for (let i = 0; i < ECONOMY_SIZE; i++) pMax = Math.max(pMax, priceField[i]);
 			this.priceRef = niceCeil(pMax);
 		}
-		const key = this.isStock && this.resource !== 'gold' && this.resource !== 'land' ? 'stock' : `${this.resource} ${this.scale}`;
+		const key = this.isWorkerView() && this.isStock ? 'workers' : this.isStock && this.resource !== 'gold' && this.resource !== 'land' ? 'stock' : `${this.resource} ${this.scale}`;
 		if (key !== this.legendKey) this.showScale(key);
 	}
 
@@ -190,6 +195,7 @@ class FieldPlot {
 		this.legendKey = key;
 		const unit = this.resource === 'gold' ? (this.isStock ? ' g' : '') : this.resource === 'depleted' || this.resource === 'land' ? '' : ' g/u';
 		if (key === 'stock') this.scaleLabel.innerHTML = 'Site log <b>0 – 1</b> · dots <b>price / amt</b>';
+		else if (key === 'workers') this.scaleLabel.innerHTML = 'Pool log <b>0 – 1</b> · dots <b>wallet / amt</b>';
 		else this.scaleLabel.innerHTML = `${this.isStock && this.resource !== 'land' ? 'Log' : 'Linear'} scale <b>0 – ${this.scale}${unit}</b>`;
 	}
 
@@ -243,43 +249,56 @@ class FieldPlot {
 		g.restore();
 	}
 
-	// Renders live goods particles in continuous coordinates: unit price -> color ramp, amount -> brightness & radius.
+	walletPeak(workers) {
+		let peak = SCALE_FLOOR.price;
+		for (let p = 0; p < workers.count; p++) peak = Math.max(peak, workers.gold[p] / workers.amount[p]);
+		return peak;
+	}
+
+	// Goods dots: delivered unit price -> color; worker dots: carried wallet per worker -> color. Amount -> light & radius.
 	drawParticles(model, vectors) {
-		const { ctx:g, cw, ch, priceRef } = this;
-		const { particles } = model;
-		const wantKind = this.resource === 'coal' ? ITEM_COAL : ITEM_GOODS;
-		const baseR = Math.max(1.0, Math.min(2.0, Math.min(cw, ch) * 0.1));
+		const { ctx:g } = this;
 		g.lineWidth = 1.1;
 		g.lineCap = 'round';
-		for (let p = 0; p < particles.count; p++) {
-			if (particles.kind[p] !== wantKind) continue;
-			const amt = particles.amount[p];
-			if (amt <= 0) continue;
-			const px = (particles.x[p] + 0.5) * cw;
-			const py = (particles.y[p] + 0.5) * ch;
-			const unitPrice = particles.priceOf(p);
-			const pBin = Math.min(PRICE_BINS - 1, Math.max(0, Math.round(Math.min(1, unitPrice / priceRef) * (PRICE_BINS - 1))));
-			const amtNorm = Math.min(1, Math.sqrt(amt / SPAWN_UNIT));
-			const lBin = Math.min(LIGHT_BINS - 1, Math.max(0, Math.round(amtNorm * (LIGHT_BINS - 1))));
-			const ink = PARTICLE_INK[(pBin << 3) | lBin];
-			const r = baseR * (0.48 + 0.62 * amtNorm);
-			if (vectors) {
-				const vx = particles.vx[p], vy = particles.vy[p];
-				if (vx * vx + vy * vy > 0.04) {
-					g.strokeStyle = ink;
-					g.globalAlpha = 0.55;
-					g.beginPath();
-					g.moveTo(px, py);
-					g.lineTo(px - vx * cw * 0.09, py - vy * ch * 0.09);
-					g.stroke();
-					g.globalAlpha = 1;
-				}
+		if (!this.isWorkerView()) {
+			const { particles } = model;
+			const wantKind = this.resource === 'coal' ? ITEM_COAL : ITEM_GOODS;
+			for (let p = 0; p < particles.count; p++) {
+				if (particles.kind[p] === wantKind) this.drawDot(particles, p, particles.priceOf(p), particles.amount[p] / SPAWN_UNIT, vectors);
 			}
-			g.fillStyle = ink;
-			g.beginPath();
-			g.arc(px, py, r, 0, Math.PI * 2);
-			g.fill();
+			return;
 		}
+		const { workers } = model;
+		const wantState = this.resource === 'labor' ? STATE_FRESH : STATE_DEPLETED;
+		for (let p = 0; p < workers.count; p++) {
+			if (workers.state[p] === wantState) this.drawDot(workers, p, workers.gold[p] / workers.amount[p], workers.amount[p] / WORKER_UNIT, vectors);
+		}
+	}
+
+	drawDot(pool, p, value, size, vectors) {
+		const { ctx:g, cw, ch, priceRef } = this;
+		if (size <= 0) return;
+		const baseR = Math.max(1.0, Math.min(2.0, Math.min(cw, ch) * 0.1));
+		const px = (pool.x[p] + 0.5) * cw;
+		const py = (pool.y[p] + 0.5) * ch;
+		const pBin = Math.min(PRICE_BINS - 1, Math.max(0, Math.round(Math.min(1, value / priceRef) * (PRICE_BINS - 1))));
+		const amtNorm = Math.min(1, Math.sqrt(size));
+		const lBin = Math.min(LIGHT_BINS - 1, Math.max(0, Math.round(amtNorm * (LIGHT_BINS - 1))));
+		const ink = PARTICLE_INK[(pBin << 3) | lBin];
+		const vx = pool.vx[p], vy = pool.vy[p];
+		if (vectors && vx * vx + vy * vy > 0.04) {
+			g.strokeStyle = ink;
+			g.globalAlpha = 0.55;
+			g.beginPath();
+			g.moveTo(px, py);
+			g.lineTo(px - vx * cw * 0.09, py - vy * ch * 0.09);
+			g.stroke();
+			g.globalAlpha = 1;
+		}
+		g.fillStyle = ink;
+		g.beginPath();
+		g.arc(px, py, baseR * (0.48 + 0.62 * amtNorm), 0, Math.PI * 2);
+		g.fill();
 	}
 
 	contours(field) {
@@ -311,31 +330,27 @@ class FieldPlot {
 	}
 
 	// Gold arrows show worker-carried wages heading home plus goods-particle value flux heading to buyers.
+	// Worker flux is gold-weighted at the walker's cell, so the wage share follows the wallets in flight.
 	buildGoldFlows(model) {
 		const { flowX, flowY } = this.goldFlow;
-		const { depleted, depletedFlow, labor, laborFlow, particles, priceCoal, priceGoods } = model;
+		const { particles, priceCoal, priceGoods } = model;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			let vx = -(particles.flowX[i] * priceCoal[i] + particles.flowX[ECONOMY_SIZE + i] * priceGoods[i]) * 0.25;
 			let vy = -(particles.flowY[i] * priceCoal[i] + particles.flowY[ECONOMY_SIZE + i] * priceGoods[i]) * 0.25;
-			if (depleted[i] > 1e-9 && depletedFlow.gold[i] > 0) {
-				const w = depletedFlow.gold[i] / depleted[i];
-				vx += depletedFlow.flowX[i] * w;
-				vy += depletedFlow.flowY[i] * w;
-			}
-			if (labor[i] > 1e-9 && laborFlow.gold[i] > 0) {
-				const w = laborFlow.gold[i] / labor[i];
-				vx += laborFlow.flowX[i] * w;
-				vy += laborFlow.flowY[i] * w;
-			}
 			flowX[i] = vx;
 			flowY[i] = vy;
+		}
+		const { workers } = model;
+		for (let p = 0; p < workers.count; p++) {
+			const i = workers.cellOf(p);
+			flowX[i] += workers.vx[p] * workers.gold[p];
+			flowY[i] += workers.vy[p] * workers.gold[p];
 		}
 		return this.goldFlow;
 	}
 
 	drawFlows(model) {
-		if (this.resource === 'labor') this.drawVectors(model, model.laborFlow);
-		else if (this.resource === 'depleted' || this.resource === 'land') this.drawVectors(model, model.depletedFlow);
+		if (this.resource === 'land') this.drawVectors(model, model.depletedFlow);
 		else if (this.resource === 'gold') this.drawVectors(model, this.buildGoldFlows(model));
 	}
 
@@ -404,7 +419,7 @@ class FieldPlot {
 		const tip = this.tooltip;
 		tip.hidden = i < 0;
 		if (i < 0) return;
-		const { money, actors, settlements, land, particles } = model, actor = actors[i];
+		const { money, actors, settlements, land, particles, workers } = model, actor = actors[i];
 		const carried = model.workerGoldAt(i);
 		const occPct = actor ? Math.round(model.poolOccupancy(i) * 100) : 0;
 		const detail = actor === ECONOMY_TOWN
@@ -412,7 +427,7 @@ class FieldPlot {
 			: actor ? ` · Scale ${(model.scale[i] || 1).toFixed(2)}× · Pool ${occPct}%${actor === ECONOMY_GOLD ? '' : ` · Ask ${model.sellPrice(i).toFixed(2)}`}` : '';
 		const head = `${pinned ? 'Pinned · ' : ''}${settlements.isYoungTown(i) ? 'Young town' : ACTOR_NAMES[actor]} ${cellName(i)}${detail}`;
 		const flightCoal = particles.inFlightAt(ITEM_COAL, i), flightGoods = particles.inFlightAt(ITEM_GOODS, i);
-		const stocks = `Coal ${model.siteStockAt(ITEM_COAL, i).toFixed(3)} (+${flightCoal.toFixed(3)} fly) · Goods ${model.siteStockAt(ITEM_GOODS, i).toFixed(3)} (+${flightGoods.toFixed(3)} fly) · Labor ${model.labor[i].toFixed(3)} · Depl ${model.depleted[i].toFixed(3)}`;
+		const stocks = `Coal ${model.siteStockAt(ITEM_COAL, i).toFixed(3)} (+${flightCoal.toFixed(3)} fly) · Goods ${model.siteStockAt(ITEM_GOODS, i).toFixed(3)} (+${flightGoods.toFixed(3)} fly) · Labor ${model.labor[i].toFixed(3)} (+${workers.inFlightAt(STATE_FRESH, i).toFixed(3)} walk) · Depl ${model.depleted[i].toFixed(3)} (+${workers.inFlightAt(STATE_DEPLETED, i).toFixed(3)} walk)`;
 		const prices = `Coal ${model.priceCoal[i].toFixed(2)} · Goods ${model.priceGoods[i].toFixed(2)} · Wage ${model.priceLabor[i].toFixed(2)} · Home ${model.priceHome[i].toFixed(2)}/${model.priceRest[i].toFixed(2)}`;
 		const wallet = actor === ECONOMY_TOWN
 			? `Town ${money.purse[i].toFixed(2)}g · Residents ${money.workerPurse[i].toFixed(2)}g · Carried ${carried.toFixed(2)}g · Profit ${model.profit[i].toFixed(2)}/s`

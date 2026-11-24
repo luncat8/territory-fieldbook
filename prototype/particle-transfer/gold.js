@@ -215,7 +215,7 @@ class GoldMoney {
 	}
 
 	total() {
-		let sum = this.transportVault;
+		let sum = this.transportVault + this.model.workers.goldTotal();
 		for (let i = 0; i < ECONOMY_SIZE; i++) sum += this.held(i);
 		return sum;
 	}

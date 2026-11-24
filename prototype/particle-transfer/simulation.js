@@ -1,5 +1,5 @@
-// Owns: the hybrid Phase-1 economy — diffused price/appeal fields, Lagrangian goods particles and B2 cell workforce.
-// Edit for: grid geometry, price diffusion, tick order and conservation accessors. Particle pool: particles.js.
+// Owns: the particle economy core — grid geometry, diffused price/appeal fields, docked stocks, tick order and conservation accessors.
+// Edit for: grid, price diffusion and tick order. Goods particles: particles.js; worker particles: workers.js.
 'use strict';
 
 const ECONOMY_WIDTH = 48;
@@ -32,7 +32,6 @@ const TOWN_COAL_NEED = 0.01;
 const TOWN_GOODS_NEED = 0.034;
 const NEED_RATE = START_POP * TOWN_GOODS_NEED;
 const LABOR_PER_POP = 0.06;
-const DEPLETED_SPREAD = 0.03;
 const COAL_COMFORT = 0.2;
 const GOODS_COMFORT = 0.8;
 const SAT_RATE = 1.8;
@@ -41,7 +40,6 @@ const PRICE_DIFFUSE = 15;
 const PRICE_DECAY = 0.08;
 const PRICE_GATE = 0.01;
 const NEED_RESPONSE = 2;
-const LABOR_FLOW_RATE = 12;
 const GRADIENT_KNEE = 0.006;
 const STEERING_BLEND = ECONOMY_DT / (0.18 + ECONOMY_DT);
 const economyIndex = (x, y) => y * ECONOMY_WIDTH + x;
@@ -78,21 +76,14 @@ function buildEconomyNeighbors() {
 	return result;
 }
 
-function makeScratch(buyers, cell, rate = LABOR_FLOW_RATE, payWage = false, spread = 0, blend = false) {
+function makeScratch(buyers, blend = false) {
 	return {
-		buyers, cell, rate, payWage, spread, alt: null, intent: null, deltaIntent: null,
-		cap: new Float64Array(ECONOMY_SIZE).fill(cell),
+		buyers, alt: null, intent: null,
+		cap: new Float64Array(ECONOMY_SIZE).fill(1),
 		cost: new Float64Array(ECONOMY_SIZE),
 		gold: new Float64Array(ECONOMY_SIZE),
-		deltaGold: new Float64Array(ECONOMY_SIZE),
 		mix: blend ? new Float64Array(ECONOMY_SIZE) : null,
 		still: new Float64Array(ECONOMY_SIZE).fill(1),
-		requests: new Float64Array(NEIGHBORS.length),
-		room: new Float64Array(ECONOMY_SIZE),
-		receiving: new Float64Array(ECONOMY_SIZE),
-		delta: new Float64Array(ECONOMY_SIZE),
-		headX: new Float64Array(ECONOMY_SIZE),
-		headY: new Float64Array(ECONOMY_SIZE),
 		flowX: new Float64Array(ECONOMY_SIZE),
 		flowY: new Float64Array(ECONOMY_SIZE),
 		flowRate: new Float64Array(ECONOMY_SIZE)
@@ -100,30 +91,24 @@ function makeScratch(buyers, cell, rate = LABOR_FLOW_RATE, payWage = false, spre
 }
 
 function clearScratch(scratch) {
-	scratch.cap.fill(scratch.cell);
+	scratch.cap.fill(1);
 	scratch.cost.fill(0);
 	scratch.gold.fill(0);
-	scratch.deltaGold.fill(0);
 	if (scratch.mix) scratch.mix.fill(0);
 	if (scratch.intent) scratch.intent.fill(0);
 	scratch.still.fill(1);
-	scratch.headX.fill(0);
-	scratch.headY.fill(0);
 	scratch.flowX.fill(0);
 	scratch.flowY.fill(0);
 	scratch.flowRate.fill(0);
 }
 
-function scoreAt(scratch, price, from, to) {
-	return scratch.alt ? price[to] + scratch.mix[from] * (scratch.alt[to] - price[to]) : price[to];
-}
-
 function hasBetterNeighbor(scratch, price, i) {
-	const here = scoreAt(scratch, price, i, i);
+	const mix = scratch.mix ? scratch.mix[i] : 0;
+	const here = blendedScore(price, scratch.alt, mix, i);
 	const base = i * DEGREE;
 	for (let k = 0; k < DEGREE; k++) {
 		const to = NEIGHBORS[base + k];
-		if (to >= 0 && scoreAt(scratch, price, i, to) > here + 1e-9) return true;
+		if (to >= 0 && blendedScore(price, scratch.alt, mix, to) > here + 1e-9) return true;
 	}
 	return false;
 }
@@ -157,13 +142,13 @@ class PriceEconomy {
 		this.workLoad = new Float64Array(ECONOMY_SIZE);
 		this.profit = new Float64Array(ECONOMY_SIZE);
 		this.earned = new Float64Array(ECONOMY_SIZE);
-		this.laborFlow = makeScratch((1 << ECONOMY_MINE) | (1 << ECONOMY_FACTORY) | (1 << ECONOMY_GOLD), 1, LABOR_FLOW_RATE, true);
-		this.depletedFlow = makeScratch(1 << ECONOMY_TOWN, 1, LABOR_FLOW_RATE, false, DEPLETED_SPREAD, true);
+		this.laborFlow = makeScratch((1 << ECONOMY_MINE) | (1 << ECONOMY_FACTORY) | (1 << ECONOMY_GOLD));
+		this.depletedFlow = makeScratch(1 << ECONOMY_TOWN, true);
 		this.depletedFlow.intent = new Float64Array(ECONOMY_SIZE);
-		this.depletedFlow.deltaIntent = new Float64Array(ECONOMY_SIZE);
 		this.stocks = [this.coal, this.goods, this.labor, this.depleted];
 		this.itemCosts = [this.coalCost, this.goodsCost, this.laborFlow.cost, null];
 		this.particles = new GoodsParticles(this);
+		this.workers = new WorkerParticles(this);
 		this.optimizer = new ActorOptimizer(this);
 		this.money = new GoldMoney(this);
 		this.workforce = new WorkerPolicy(this);
@@ -204,6 +189,7 @@ class PriceEconomy {
 		const stock = this.stocks[item];
 		for (let i = 0; i < ECONOMY_SIZE; i++) sum += stock[i];
 		if (item === ITEM_COAL || item === ITEM_GOODS) sum += this.particles.spawnTotal(item) + this.particles.inFlightTotal(item);
+		else sum += this.workers.inFlightTotal(item - ITEM_LABOR);
 		return sum;
 	}
 
@@ -223,6 +209,7 @@ class PriceEconomy {
 		clearScratch(this.laborFlow);
 		clearScratch(this.depletedFlow);
 		this.particles.reset();
+		this.workers.reset();
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			if (!this.actors[i]) continue;
 			this.scale[i] = 1;
@@ -295,9 +282,8 @@ class PriceEconomy {
 		this.optimizer.stepActors();
 		this.money.step();
 		this.particles.step();
-		this.transport(this.laborFlow, this.labor, this.priceLabor);
 		this.workforce.weighWallets();
-		this.transport(this.depletedFlow, this.depleted, this.priceHome, this.priceRest);
+		this.workers.step();
 		this.workforce.stepStill();
 		this.settlements.step();
 		this.optimizer.adaptActors();
@@ -346,135 +332,9 @@ class PriceEconomy {
 		this.depletedFlow.alt = this.priceRest;
 	}
 
-	holdsAt(scratch, price, i) {
-		if (!(scratch.buyers & (1 << this.actors[i]))) return false;
-		if (scratch.spread === 0) return true;
-		return scratch.cap[i] > 0 && !hasBetterNeighbor(scratch, price, i);
-	}
-
-	transport(scratch, stock, price, alt = null) {
-		const { requests, room, receiving, delta, buyers, cap, cell, gold, deltaGold, intent, deltaIntent } = scratch;
-		scratch.alt = alt;
-		scratch.still.fill(1);
-		requests.fill(0);
-		receiving.fill(0);
-		delta.fill(0);
-		deltaGold.fill(0);
-		if (intent) deltaIntent.fill(0);
-		scratch.flowX.fill(0);
-		scratch.flowY.fill(0);
-		scratch.flowRate.fill(0);
-		for (let i = 0; i < ECONOMY_SIZE; i++) room[i] = Math.max(0, cap[i] - stock[i]);
-		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			if (stock[i] > 1e-12 && !this.holdsAt(scratch, price, i)) this.planOutflow(scratch, stock, price, i);
-		}
-		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			if (receiving[i] > 0) receiving[i] = Math.min(1, room[i] / receiving[i]);
-		}
-		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			if (stock[i] > 1e-12 && !this.holdsAt(scratch, price, i)) this.acceptTransfers(scratch, stock, price, i);
-		}
-		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			const before = stock[i];
-			const after = Math.min(cell, Math.max(0, before + delta[i]));
-			stock[i] = after;
-			if (intent) intent[i] = after > 1e-12 ? Math.min(1, Math.max(0, (intent[i] * before + deltaIntent[i]) / after)) : 0;
-			gold[i] = Math.max(0, gold[i] + deltaGold[i]);
-			if (after <= 1e-12 && gold[i] > 0) {
-				this.money.orphan(i, gold[i]);
-				gold[i] = 0;
-			}
-			const bought = after - before;
-			if (bought > 0 && after > 1e-12 && scratch.payWage && (buyers & (1 << this.actors[i]))) this.buyArrival(scratch, i, bought * price[i]);
-			if (after <= 1e-12) scratch.cost[i] = 0;
-		}
-	}
-
 	buyArrival(scratch, i, bill) {
 		scratch.cost[i] += bill;
 		this.money.payOnEntry(i, bill);
-	}
-
-	planOutflow(scratch, stock, price, i) {
-		const { requests, room } = scratch;
-		const base = i * DEGREE;
-		const here = scoreAt(scratch, price, i, i);
-		let gx = 0, gy = 0, steepest = 0, steepestPull = 0;
-		for (let k = 0; k < DEGREE; k++) {
-			const to = NEIGHBORS[base + k];
-			if (to < 0 || room[to] <= 0) continue;
-			const dir = DIRECTIONS[k];
-			const there = scoreAt(scratch, price, i, to);
-			const pull = there > here ? there - here : 0;
-			const disperse = scratch.spread > 0 && stock[i] > stock[to] ? scratch.spread * (stock[i] - stock[to]) : 0;
-			const slope = (pull + disperse) * dir.inv;
-			if (slope <= 0) continue;
-			requests[base + k] = slope;
-			steepest = Math.max(steepest, slope);
-			steepestPull = Math.max(steepestPull, pull * dir.inv);
-			gx += dir.ux * slope;
-			gy += dir.uy * slope;
-		}
-		scratch.still[i] = GRADIENT_KNEE / (steepestPull + GRADIENT_KNEE);
-		scratch.headX[i] += STEERING_BLEND * (gx - scratch.headX[i]);
-		scratch.headY[i] += STEERING_BLEND * (gy - scratch.headY[i]);
-		if (steepest > 0) this.routeUphill(scratch, stock, i, steepest);
-	}
-
-	routeUphill(scratch, stock, i, steepest) {
-		const { requests, receiving, rate } = scratch;
-		const base = i * DEGREE;
-		const length = Math.hypot(scratch.headX[i], scratch.headY[i]) || 1;
-		const gx = scratch.headX[i] / length, gy = scratch.headY[i] / length;
-		let sum = 0;
-		for (let k = 0; k < DEGREE; k++) {
-			const edge = base + k;
-			if (!requests[edge]) continue;
-			const dir = DIRECTIONS[k];
-			requests[edge] *= 0.25 + 0.75 * Math.max(0, gx * dir.ux + gy * dir.uy);
-			sum += requests[edge];
-		}
-		const outflow = stock[i] * rate * ECONOMY_DT * steepest / (steepest + GRADIENT_KNEE);
-		for (let k = 0; k < DEGREE; k++) {
-			const edge = base + k;
-			if (!requests[edge]) continue;
-			requests[edge] *= outflow / sum;
-			receiving[NEIGHBORS[edge]] += requests[edge];
-		}
-	}
-
-	acceptTransfers(scratch, stock, price, i) {
-		const { requests, receiving, delta, gold, deltaGold, intent, deltaIntent } = scratch;
-		const base = i * DEGREE;
-		const avail = stock[i];
-		const goldHere = gold[i];
-		let amountOut = 0, goldOut = 0, vx = 0, vy = 0;
-		for (let k = 0; k < DEGREE; k++) {
-			const edge = base + k;
-			if (!requests[edge]) continue;
-			const to = NEIGHBORS[edge];
-			const amount = requests[edge] * receiving[to];
-			delta[to] += amount;
-			amountOut += amount;
-			if (intent) deltaIntent[to] += intent[i] * amount;
-			if (goldHere > 0 && amount > 0) {
-				const movedGold = goldHere * Math.min(1, amount / avail);
-				deltaGold[to] += movedGold;
-				goldOut += movedGold;
-			}
-			vx += DIRECTIONS[k].ux * amount;
-			vy += DIRECTIONS[k].uy * amount;
-		}
-		delta[i] -= amountOut;
-		if (intent) deltaIntent[i] -= intent[i] * amountOut;
-		if (goldOut > 0) deltaGold[i] -= Math.min(goldHere, goldOut);
-		if (amountOut > 0) {
-			const cogs = scratch.cost[i] * Math.min(1, amountOut / avail);
-			scratch.cost[i] = Math.max(0, scratch.cost[i] - cogs);
-		}
-		scratch.flowRate[i] = amountOut / ECONOMY_DT;
-		scratch.flowX[i] = vx / ECONOMY_DT;
-		scratch.flowY[i] = vy / ECONOMY_DT;
 	}
 }
 
