@@ -66,7 +66,7 @@ class FieldPlot {
 		this.ctx = canvas.getContext('2d', { alpha:false });
 		this.isStock = isStock;
 		this.resource = 'coal';
-		this.shape = 'points';
+		this.shape = 'triangles';
 		this.tooltip = canvas.nextElementSibling;
 		this.view = new Float64Array(ECONOMY_SIZE);
 		this.goldFlow = { flowX: new Float64Array(ECONOMY_SIZE), flowY: new Float64Array(ECONOMY_SIZE) };
@@ -257,7 +257,7 @@ class FieldPlot {
 	}
 
 	// Goods: delivered unit price -> color; workers: carried wallet per worker -> color; amount -> light and size.
-	// Shape follows this.shape: points (default), heading triangles, or a large triangle on every 8th particle.
+	// Shape follows this.shape: heading triangles (default), single-pixel points, or a large triangle on every 8th particle.
 	drawParticles(model, vectors) {
 		const { ctx:g } = this;
 		g.lineWidth = 1.1;
@@ -298,13 +298,12 @@ class FieldPlot {
 		}
 		g.fillStyle = ink;
 		if (shape === 'points') {
-			const baseR = Math.max(1.0, Math.min(2.0, Math.min(cw, ch) * 0.1));
-			g.beginPath();
-			g.arc(px, py, baseR * (0.48 + 0.62 * amtNorm), 0, Math.PI * 2);
-			g.fill();
+			const s = 1 / this.dpr;
+			g.fillRect(px, py, s, s);
 			return;
 		}
-		const len = (shape === 'large' ? 1.9 : 1) * Math.max(3, Math.min(cw, ch) * 0.5) * (0.72 + 0.4 * amtNorm);
+		const unit = Math.max(3, Math.min(cw, ch) * 0.5);
+		const len = (shape === 'large' ? 1.9 : 1) * unit * (0.72 + 0.4 * amtNorm);
 		this.drawTriangle(px, py, vx, vy, len);
 	}
 

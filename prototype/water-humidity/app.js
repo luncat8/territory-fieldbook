@@ -7,7 +7,7 @@ const $ = id => document.getElementById(id);
 const LAB_WARM_SECONDS = 90;
 const LAB_FRAME_MAX = 0.15;
 const LAB_ACC_MAX = 0.4;
-const LAB_SPEEDS = [0.5, 1, 2, 4];
+const LAB_SPEEDS = [0.5, 1, 2, 4, 16];
 const LAB_DEFAULT_SPEED = 4;
 
 const LAB_SLIDERS = [
