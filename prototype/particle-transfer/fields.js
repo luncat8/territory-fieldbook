@@ -1,5 +1,5 @@
 // Owns: dual-canvas rendering — dimmed terrain + docked stock, continuous goods and worker particles, price contours and cell inspection.
-// Edit for: particle price/wallet->color and amount->light ramp, flow vectors and wallet/particle/land tooltip readouts.
+// Edit for: particle shape mode, price/wallet->color and amount->light ramp, flow vectors and wallet/particle/land tooltip readouts.
 'use strict';
 
 const STOCK_COLORS = [[0,'#19181b'],[0.12,'#35272a'],[0.26,'#6d3a26'],[0.41,'#a95627'],[0.55,'#e18a36'],[0.7,'#ffca70'],[1,'#fff1c6']];
@@ -66,6 +66,7 @@ class FieldPlot {
 		this.ctx = canvas.getContext('2d', { alpha:false });
 		this.isStock = isStock;
 		this.resource = 'coal';
+		this.shape = 'triangles';
 		this.tooltip = canvas.nextElementSibling;
 		this.view = new Float64Array(ECONOMY_SIZE);
 		this.goldFlow = { flowX: new Float64Array(ECONOMY_SIZE), flowY: new Float64Array(ECONOMY_SIZE) };
@@ -194,8 +195,8 @@ class FieldPlot {
 	showScale(key) {
 		this.legendKey = key;
 		const unit = this.resource === 'gold' ? (this.isStock ? ' g' : '') : this.resource === 'depleted' || this.resource === 'land' ? '' : ' g/u';
-		if (key === 'stock') this.scaleLabel.innerHTML = 'Site log <b>0 – 1</b> · dots <b>price / amt</b>';
-		else if (key === 'workers') this.scaleLabel.innerHTML = 'Pool log <b>0 – 1</b> · dots <b>wallet / amt</b>';
+		if (key === 'stock') this.scaleLabel.innerHTML = 'Site log <b>0 – 1</b> · marks <b>price / amt</b>';
+		else if (key === 'workers') this.scaleLabel.innerHTML = 'Pool log <b>0 – 1</b> · marks <b>wallet / amt</b>';
 		else this.scaleLabel.innerHTML = `${this.isStock && this.resource !== 'land' ? 'Log' : 'Linear'} scale <b>0 – ${this.scale}${unit}</b>`;
 	}
 
@@ -255,7 +256,8 @@ class FieldPlot {
 		return peak;
 	}
 
-	// Goods dots: delivered unit price -> color; worker dots: carried wallet per worker -> color. Amount -> light & radius.
+	// Goods: delivered unit price -> color; workers: carried wallet per worker -> color; amount -> light and size.
+	// Shape follows this.shape: heading triangles (default), points, or a large triangle on every 8th particle.
 	drawParticles(model, vectors) {
 		const { ctx:g } = this;
 		g.lineWidth = 1.1;
@@ -264,21 +266,20 @@ class FieldPlot {
 			const { particles } = model;
 			const wantKind = this.resource === 'coal' ? ITEM_COAL : ITEM_GOODS;
 			for (let p = 0; p < particles.count; p++) {
-				if (particles.kind[p] === wantKind) this.drawDot(particles, p, particles.priceOf(p), particles.amount[p] / SPAWN_UNIT, vectors);
+				if (particles.kind[p] === wantKind) this.drawParticle(particles, p, particles.priceOf(p), particles.amount[p] / SPAWN_UNIT, vectors);
 			}
 			return;
 		}
 		const { workers } = model;
 		const wantState = this.resource === 'labor' ? STATE_FRESH : STATE_DEPLETED;
 		for (let p = 0; p < workers.count; p++) {
-			if (workers.dockCell[p] < 0 && workers.state[p] === wantState) this.drawDot(workers, p, workers.gold[p] / workers.amount[p], workers.amount[p] / WORKER_UNIT, vectors);
+			if (workers.dockCell[p] < 0 && workers.state[p] === wantState) this.drawParticle(workers, p, workers.gold[p] / workers.amount[p], workers.amount[p] / WORKER_UNIT, vectors);
 		}
 	}
 
-	drawDot(pool, p, value, size, vectors) {
-		const { ctx:g, cw, ch, priceRef } = this;
-		if (size <= 0) return;
-		const baseR = Math.max(1.0, Math.min(2.0, Math.min(cw, ch) * 0.1));
+	drawParticle(pool, p, value, size, vectors) {
+		const { ctx:g, cw, ch, priceRef, shape } = this;
+		if (size <= 0 || (shape === 'large' && (p & 7))) return;
 		const px = (pool.x[p] + 0.5) * cw;
 		const py = (pool.y[p] + 0.5) * ch;
 		const pBin = Math.min(PRICE_BINS - 1, Math.max(0, Math.round(Math.min(1, value / priceRef) * (PRICE_BINS - 1))));
@@ -296,8 +297,33 @@ class FieldPlot {
 			g.globalAlpha = 1;
 		}
 		g.fillStyle = ink;
+		if (shape === 'points') {
+			const baseR = Math.max(1.0, Math.min(2.0, Math.min(cw, ch) * 0.1));
+			g.beginPath();
+			g.arc(px, py, baseR * (0.48 + 0.62 * amtNorm), 0, Math.PI * 2);
+			g.fill();
+			return;
+		}
+		const len = (shape === 'large' ? 1.9 : 1) * Math.max(3, Math.min(cw, ch) * 0.5) * (0.72 + 0.4 * amtNorm);
+		this.drawTriangle(px, py, vx, vy, len);
+	}
+
+	// One flock-style triangle: tip along the smoothed heading, base across it; a parked particle points up.
+	drawTriangle(px, py, vx, vy, len) {
+		const g = this.ctx;
+		const speed2 = vx * vx + vy * vy;
+		let hx = 0, hy = -1;
+		if (speed2 > 1e-6) {
+			const inv = 1 / Math.sqrt(speed2);
+			hx = vx * inv;
+			hy = vy * inv;
+		}
+		const tip = len * 0.5, wing = len * 0.3;
 		g.beginPath();
-		g.arc(px, py, baseR * (0.48 + 0.62 * amtNorm), 0, Math.PI * 2);
+		g.moveTo(px + hx * tip, py + hy * tip);
+		g.lineTo(px - hx * tip - hy * wing, py - hy * tip + hx * wing);
+		g.lineTo(px - hx * tip + hy * wing, py - hy * tip - hx * wing);
+		g.closePath();
 		g.fill();
 	}
 

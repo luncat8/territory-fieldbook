@@ -43,7 +43,7 @@ function bootEconomy() {
 	const plots = [new FieldPlot($('resource-map'),true),new FieldPlot($('price-map'),false)];
 	const stats = new EconomyTelemetry();
 	const guide = $('field-guide'), runButton = $('run-button'), runState = $('run-state'), actorCount = $('actor-count');
-	const speedSelect = $('speed'), decay = $('price-decay'), derived = $('derived-bid'), suppression = $('stock-suppression'), flow = $('show-flow');
+	const speedSelect = $('speed'), decay = $('price-decay'), derived = $('derived-bid'), suppression = $('stock-suppression'), flow = $('show-flow'), shape = $('particle-shape');
 	const toolButtons = document.querySelectorAll('[data-tool]'), clearButton = $('clear-towns');
 	const resourceButtons = document.querySelectorAll('[data-resource]');
 	const message = $('edit-message'), stepButton = $('step-button');
@@ -191,6 +191,7 @@ function bootEconomy() {
 	derived.addEventListener('change',() => { model.derived = derived.checked; message.textContent = `Derived bid ${model.derived ? 'enabled' : 'disabled'}.`; });
 	suppression.addEventListener('change',() => { model.suppression = suppression.checked; message.textContent = `Stock suppression ${model.suppression ? 'enabled' : 'disabled'}.`; });
 	flow.addEventListener('change',() => { dirty = true; });
+	shape.addEventListener('change',() => { for (const plot of plots) plot.shape = shape.value; dirty = true; });
 	$('new-map').addEventListener('click',reset);
 	clearButton.addEventListener('click',() => { model.clearTowns(); syncActors(); readings(); message.textContent = 'Towns removed. Bids fade and the chain halts.'; });
 	$('guide-button').addEventListener('click',() => guide.showModal());

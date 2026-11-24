@@ -50,6 +50,10 @@ h1{font-size:clamp(35px,3.7vw,51px);font-weight:650;letter-spacing:-.055em;line-
 .speed-box select{color:#e7e5ef;background:transparent;border:0;border-radius:6px;appearance:none;padding:6px 26px 6px 11px;height:33px;font:12px var(--mono)}
 .speed-box option{background:var(--panel)}
 .speed-box .icon{width:12px;height:12px;position:absolute;right:8px;top:10px;pointer-events:none;color:var(--muted)}
+.shape-box{position:relative;display:inline-flex;align-items:center;gap:7px}
+.shape-box select{color:#e7e5ef;background:#202127;border:1px solid #383842;border-radius:5px;appearance:none;padding:4px 22px 4px 9px;height:26px;font:11px var(--mono)}
+.shape-box option{background:var(--panel)}
+.shape-box .icon{width:11px;height:11px;position:absolute;right:7px;top:7px;pointer-events:none;color:var(--muted)}
 .metrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
 .metric,.field-card,.panel{background:var(--panel);border:1px solid var(--line);border-radius:9px}
 .metric{position:relative;padding:15px 17px 13px;overflow:hidden}
