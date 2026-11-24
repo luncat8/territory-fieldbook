@@ -1,5 +1,5 @@
-// Owns: universal actor recipes, buy/sell pricing, cost-basis conversion, gold-tax living market and paid rest.
-// Edit for: firm recipes, profit-driven workforce demand, gold-tax appeal gradient and worker wallet cycle.
+// Owns: universal actor recipes, buy/sell pricing, worker/living wait pools, gold-tax appeal and paid rest.
+// Edit for: firm recipes, pool-occupancy hire demand, wait-pool living taxes and worker wallet cycle.
 'use strict';
 
 const JOINT_BUDGET_SHARE = 0.78;
@@ -8,11 +8,20 @@ const SCALE_MIN = 0.35;
 const SCALE_MAX = 1.55;
 const SCALE_UP = 0.24;
 const SCALE_DOWN = 0.36;
-const REST_RATE = 0.55;
+const OCCUPANCY_RATE = 0.35;
+const WORK_POOL_BASE = 1.8;
+const WORK_POOL_TRANSIT = 2.2;
+const TOWN_POOL_BASE = 0.35;
+const TOWN_POOL_TRANSIT = 0.55;
+const WAIT_POOL_FREE = 0.25;
+const WAIT_POOL_OVERFLOW = 1.6;
+const WAIT_SPOT_TAX = 0.55;
+const WAIT_TAX_ADAPT = 0.95;
+const POP_FULL_TAX = 0.65;
 const REST_TAX_SHARE = 0.35;
 const BASE_SHELTER = 0.15;
 const TAX_MIN = 0.55;
-const TAX_MAX = 2.2;
+const TAX_MAX = 2.4;
 const TAX_ADAPT = 0.6;
 
 function optimalBid(value, stock, target, cool, suppress, share = INPUT_SHARE) {
@@ -26,6 +35,7 @@ class ActorOptimizer {
 		this.model = model;
 		this.satBlend = 1 - Math.exp(-ECONOMY_DT * SAT_RATE);
 		this.profitBlend = 1 - Math.exp(-ECONOMY_DT * PROFIT_RATE);
+		this.occBlend = 1 - Math.exp(-ECONOMY_DT * OCCUPANCY_RATE);
 		this.bidOut = new Float64Array(2);
 		this.maxOut = new Float64Array(2);
 		this.rawOut = new Float64Array(2);
@@ -43,6 +53,47 @@ class ActorOptimizer {
 		if (actor === ECONOMY_FACTORY) return goodsFlow.sell[i];
 		if (actor === ECONOMY_TOWN) return this.townRestTax(i);
 		return 0;
+	}
+
+	// Fresh-worker pool above shift capacity scales with real shift occupancy to smooth commute round-trips.
+	firmLaborPool(i, recipe) {
+		if (!recipe) return 0;
+		const m = this.model;
+		const scale = m.scale[i] || 1;
+		let laborNeed = 0;
+		for (let k = 0; k < recipe.inputs.length; k++) {
+			if (recipe.inputs[k].item === ITEM_LABOR) laborNeed = recipe.inputs[k].need;
+		}
+		if (laborNeed <= 0) return 0;
+		const nominal = recipe.rate * scale * laborNeed;
+		const occRatio = Math.min(1, m.workLoad[i] / Math.max(1e-9, nominal));
+		const outPrice = recipe.outItem < 0 ? 1 : (m.derived ? m.pricesAt(recipe.outItem)[i] : START_PRICE);
+		const ref = Math.max(0.02, outPrice * recipe.outYield * recipe.rate * 0.12);
+		const drive = m.derived ? Math.tanh(m.profit[i] / ref) : 0;
+		const poolSeconds = WORK_POOL_BASE * (1 + 0.35 * drive) + WORK_POOL_TRANSIT * occRatio;
+		return Math.min(0.9, Math.max(nominal * 0.8, nominal * poolSeconds));
+	}
+
+	// Town wait-pool size tracks resident base plus realized returning-worker flow to smooth homebound waves.
+	townWaitPool(i) {
+		const m = this.model;
+		const pop = m.pop[i];
+		if (pop <= 0) return 0;
+		return Math.min(0.85, Math.max(0.08, pop * LABOR_PER_POP * TOWN_POOL_BASE + m.workLoad[i] * TOWN_POOL_TRANSIT));
+	}
+
+	poolTarget(i) {
+		const actor = this.model.actors[i];
+		if (actor === ECONOMY_TOWN) return this.townWaitPool(i);
+		return actor ? this.firmLaborPool(i, this.recipes[actor]) : 0;
+	}
+
+	poolOccupancy(i) {
+		const m = this.model;
+		const actor = m.actors[i];
+		const pool = this.poolTarget(i);
+		if (pool <= 0) return 0;
+		return (actor === ECONOMY_TOWN ? m.depleted[i] : m.labor[i]) / pool;
 	}
 
 	townDrive(i) {
@@ -69,12 +120,26 @@ class ActorOptimizer {
 		return this.model.derived ? this.model.money.taxPerPop(i) : START_TAX_PER_POP;
 	}
 
-	// Posted living tax in gold per resident-second: never drops to zero just because local purses are empty.
+	townCrowdMult(i) {
+		const m = this.model;
+		if (!m.derived || m.pop[i] <= 0) return 1;
+		const waitExcess = Math.max(0, this.poolOccupancy(i) - WAIT_POOL_FREE);
+		const popFull = Math.max(0, m.pop[i] / POP_MAX - 0.8) / 0.2;
+		return 1 + WAIT_SPOT_TAX * waitExcess + 0.35 * popFull * popFull;
+	}
+
+	townEffectiveMult(i) {
+		const m = this.model;
+		return m.derived ? (m.taxMult[i] || 1) * this.townCrowdMult(i) : 1;
+	}
+
+	// Posted living tax in gold rises with wait-pool crowding and never drops to zero on empty purses.
 	townRestTax(i) {
 		const m = this.model;
 		if (!m.derived) return START_TAX_PER_POP;
-		const mult = m.taxMult[i] || 1;
-		return Math.max(START_TAX_PER_POP * mult, this.townTaxRate(i));
+		const crowd = this.townCrowdMult(i);
+		const mult = (m.taxMult[i] || 1) * crowd;
+		return Math.max(START_TAX_PER_POP * mult, this.townTaxRate(i) * crowd);
 	}
 
 	townShare(i) {
@@ -97,21 +162,19 @@ class ActorOptimizer {
 		return optimalBid((COAL_COMFORT / TOWN_COAL_NEED) * tax, m.coal[i], this.townCoalTarget(i), cool, m.suppression, share);
 	}
 
-	// Living appeal is comfort per actual gold of living tax; diffusion + decay steer workers to the
-	// cheapest and nearest town without creating false peaks in empty wilderness or inflated towns.
+	// Living appeal is shelter comfort per gold of living tax; wait-pool & housing crowding act through goldTax
+	// rather than zeroing full towns or giving shrinking towns fake popRoom attraction.
 	townHomeBid(i) {
 		const m = this.model;
-		const pop = m.pop[i];
-		if (pop <= 0) return 0;
-		const popRoom = Math.max(0, 1 - pop / POP_MAX);
+		if (m.pop[i] <= 0) return 0;
 		const comfort = COAL_COMFORT * m.satCoal[i] + GOODS_COMFORT * m.satGoods[i];
 		const shelter = BASE_SHELTER + (1 - BASE_SHELTER) * comfort;
 		const goldTax = this.townRestTax(i);
-		return START_PRICE * shelter * popRoom * (START_TAX_PER_POP / Math.max(1e-6, goldTax));
+		return START_PRICE * shelter * (START_TAX_PER_POP / Math.max(1e-6, goldTax));
 	}
 
-	// Universal firm bid optimizer: splits output value across inputs within a profitable budget,
-	// raising workforce demand when profitable and cutting worker pay when losing money.
+	// Universal firm bid optimizer: splits output value across inputs within a profitable budget
+	// and emits workforce hire demand inversely with fresh-worker pool occupancy down to zero on overflow.
 	firmBids(i, recipe) {
 		const m = this.model;
 		const { inputs, rate, outItem, outYield, gate } = recipe;
@@ -141,9 +204,8 @@ class ActorOptimizer {
 			const remain = Math.max(0, outValue - otherCost);
 			const isLabor = inputs[k].item === ITEM_LABOR;
 			const share = Math.min(0.82, Math.max(0.32, INPUT_SHARE * (1 + (isLabor ? 0.28 : 0.12) * drive)));
-			const target = Math.min(0.92, rate * scale * inputs[k].need * BUFFER_SECONDS);
-			const floor = isLabor && drive > 0 ? 0.35 * drive : 0;
-			const need = m.suppression ? Math.max(floor, 1 - m.stocks[inputs[k].item][i] / target) : 1;
+			const target = isLabor ? this.firmLaborPool(i, recipe) : Math.min(0.92, rate * scale * inputs[k].need * BUFFER_SECONDS);
+			const need = m.suppression ? Math.max(0, 1 - m.stocks[inputs[k].item][i] / Math.max(1e-9, target)) : 1;
 			this.rawOut[k] = share * remain * sellRoom * need;
 			this.maxOut[k] = m.derived ? (remain * 0.96) / inputs[k].need : Infinity;
 			rawSum += this.rawOut[k];
@@ -182,8 +244,8 @@ class ActorOptimizer {
 		}
 	}
 
-	// Firms convert owned inputs without pausing, carry book cost into finished stock, and transfer
-	// commuting workers' pocket gold onto the resulting depleted workforce.
+	// Firms draw shift labor from their on-site fresh-worker pool, carry book cost into finished stock,
+	// and move completed-shift workers' pocket gold onto depletedFlow.gold.
 	stepFirm(i, recipe) {
 		const m = this.model;
 		const { inputs, rate, outItem, outYield, gate } = recipe;
@@ -196,6 +258,7 @@ class ActorOptimizer {
 			if (item === ITEM_LABOR) batches = Math.min(batches, (1 - m.depleted[i]) / need);
 		}
 
+		let usedLabor = 0;
 		if (batches > 0) {
 			let inputCost = 0;
 			for (let k = 0; k < inputs.length; k++) {
@@ -210,6 +273,7 @@ class ActorOptimizer {
 				inputCost += usedCost;
 				if (item === ITEM_COAL) m.burnedCoal += used;
 				else if (item === ITEM_LABOR) {
+					usedLabor = used;
 					const carriedGold = flow.gold[i] * ratio;
 					flow.gold[i] = Math.max(0, flow.gold[i] - carriedGold);
 					m.depletedFlow.gold[i] += carriedGold;
@@ -233,12 +297,13 @@ class ActorOptimizer {
 				else m.producedGoods += made;
 			}
 		}
+		m.workLoad[i] += this.occBlend * (usedLabor / ECONOMY_DT - m.workLoad[i]);
 
 		this.firmBids(i, recipe);
 		for (let k = 0; k < inputs.length; k++) {
 			const { item, need } = inputs[k];
 			const stock = m.stocks[item][i];
-			const target = Math.min(0.92, rate * scale * need * BUFFER_SECONDS);
+			const target = item === ITEM_LABOR ? this.firmLaborPool(i, recipe) : Math.min(0.92, rate * scale * need * BUFFER_SECONDS);
 			const canBuy = this.bidOut[k] > 0 && m.pricesAt(item)[i] <= this.maxOut[k];
 			m.flows[item].cap[i] = canBuy ? Math.max(stock, target) : stock;
 		}
@@ -267,17 +332,17 @@ class ActorOptimizer {
 		}
 	}
 
-	// Returning depleted workers pay the town's gold rest tax from their carried wallet to rest into
-	// fresh labor and deposit remaining wages into resident savings; high-tax towns price out broke workers.
+	// Returning depleted workers in the town wait pool pay the gold rest tax from their carried wallet
+	// to rest into fresh labor; high-tax or wait-crowded towns price out penniless workers.
 	restWorkers(i, comfort, workCap) {
 		const m = this.model;
 		const dep = m.depleted[i];
 		if (dep <= 1e-12) return 0;
 		const carried = m.depletedFlow.gold[i];
-		const mult = m.derived ? (m.taxMult[i] || 1) : 1;
+		const mult = this.townEffectiveMult(i);
 		if (comfort <= 0.05) {
 			if (carried <= 1e-9 || hasHigherNeighbor(m.priceHome, i)) return 0;
-			const shelterRest = Math.min(dep, 0.2 * ECONOMY_DT);
+			const shelterRest = Math.min(dep, Math.max(0.12, m.pop[i] * LABOR_PER_POP * 0.4) * ECONOMY_DT);
 			const banked = carried * Math.min(1, shelterRest / dep);
 			m.depleted[i] = Math.max(0, dep - shelterRest);
 			m.depletedFlow.gold[i] = Math.max(0, carried - banked);
@@ -293,7 +358,8 @@ class ActorOptimizer {
 			return shelterRest;
 		}
 
-		const wantRest = Math.min(dep, (0.2 + comfort * REST_RATE) * ECONOMY_DT);
+		const restRate = m.pop[i] * LABOR_PER_POP * (0.25 + 0.95 * comfort) + 0.12 * comfort;
+		const wantRest = Math.min(dep, restRate * ECONOMY_DT);
 		const feePerUnit = (this.townRestTax(i) / LABOR_PER_POP) * REST_TAX_SHARE * comfort;
 		const fullFee = wantRest * feePerUnit;
 		const afford = fullFee > 1e-12 ? Math.min(1, carried / fullFee) : 1;
@@ -341,6 +407,7 @@ class ActorOptimizer {
 
 		const taxesBefore = m.money.taxes;
 		const restedWork = this.restWorkers(i, comfort, workCap);
+		m.workLoad[i] += this.occBlend * (restedWork / ECONOMY_DT - m.workLoad[i]);
 		const supplied = Math.min(Math.max(0, workCap - m.labor[i]), Math.max(0, pop * LABOR_PER_POP * ECONOMY_DT - restedWork));
 		if (supplied > 0) {
 			m.labor[i] += supplied;
@@ -354,7 +421,7 @@ class ActorOptimizer {
 		const mult = m.derived ? (m.taxMult[i] || 1) : 1;
 		const workerGold = m.money.workerPurse[i] + m.workerGoldAt(i);
 		const afford = workerGold / (workerGold + pop * 0.25 * mult);
-		const taxDrag = mult > 1 ? 1 / mult : 1 + 0.18 * (1 - mult);
+		const taxDrag = mult > 1 ? 1 / (1 + 0.5 * (mult - 1)) : 1 + 0.18 * (1 - mult);
 		const goalPop = Math.min(POP_MAX, POP_BASE + (POP_MAX - POP_BASE) * comfort * afford * taxDrag);
 		const migrantBoost = restedWork > 0 && pop < goalPop ? Math.min(goalPop - pop, (restedWork / LABOR_PER_POP) * 0.2 * comfort) : 0;
 		const deltaPop = ECONOMY_DT * POP_RATE * (goalPop - pop) + migrantBoost;
@@ -374,9 +441,10 @@ class ActorOptimizer {
 		const tax = this.townTaxRate(i);
 		const maxCoal = m.derived ? (COAL_COMFORT / TOWN_COAL_NEED) * tax * 0.96 : Infinity;
 		const maxGoods = m.derived ? (GOODS_COMFORT / TOWN_GOODS_NEED) * tax * 0.96 : Infinity;
+		const waitPool = this.townWaitPool(i);
 		m.coalFlow.cap[i] = this.townCoalBid(i) > 0 && m.priceCoal[i] <= maxCoal ? Math.max(m.coal[i], this.townCoalTarget(i)) : m.coal[i];
 		m.goodsFlow.cap[i] = this.townGoodsBid(i) > 0 && m.priceGoods[i] <= maxGoods ? Math.max(m.goods[i], this.townGoodsTarget(i)) : m.goods[i];
-		m.depletedFlow.cap[i] = this.townHomeBid(i) > 0 ? Math.min(1, 0.25 + 0.75 * Math.max(0, 1 - m.pop[i] / POP_MAX)) : 0;
+		m.depletedFlow.cap[i] = this.townHomeBid(i) > 0 ? Math.min(0.95, Math.max(m.depleted[i], waitPool * WAIT_POOL_OVERFLOW)) : 0;
 	}
 
 	adaptTownTax(i) {
@@ -394,14 +462,17 @@ class ActorOptimizer {
 		const workerGold = m.money.workerPurse[i] + m.workerGoldAt(i);
 		const baseTax = (workerGold / WORKER_SECONDS) / pop;
 		const minProfitTax = baseTax > 1e-9 && comfort > 0.05 ? (rationCost * 1.12) / (baseTax * Math.max(0.25, comfort)) : TAX_MIN;
+		const waitExcess = Math.max(0, this.poolOccupancy(i) - WAIT_POOL_FREE);
+		const popFull = Math.max(0, m.pop[i] / POP_MAX - 0.8) / 0.2;
+		const crowdPush = WAIT_TAX_ADAPT * waitExcess + POP_FULL_TAX * popFull * popFull;
 
 		let target = 1;
 		if (drive > 0.02 && comfort > 0.55) {
-			target = Math.max(TAX_MIN, minProfitTax, 1 - 0.42 * drive * comfort);
+			target = Math.max(TAX_MIN, minProfitTax, 1 - 0.42 * drive * comfort) + crowdPush;
 		} else {
 			const shortage = Math.max(0, 0.6 - comfort) / 0.6;
 			const loss = Math.max(0, -drive);
-			target = Math.min(TAX_MAX, Math.max(minProfitTax, 1 + 1.15 * Math.max(shortage, loss)));
+			target = Math.max(minProfitTax, 1 + 1.15 * Math.max(shortage, loss) + crowdPush);
 		}
 		m.taxMult[i] += ECONOMY_DT * TAX_ADAPT * (Math.min(TAX_MAX, Math.max(TAX_MIN, target)) - m.taxMult[i]);
 	}

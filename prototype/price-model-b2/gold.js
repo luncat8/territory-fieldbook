@@ -121,21 +121,26 @@ class GoldMoney {
 		this.workerPurse[i] += netSavings;
 	}
 
-	// Firms pay wages directly into the pockets of workers on site; orphan back-pay uses remittance coin.
+	// Firms split settled wages proportionally across on-site pool and shift-finished workers; orphan back-pay uses coin.
 	payWorkers(i, amount) {
 		if (amount <= 0) return;
 		const m = this.model;
-		if (m.depleted[i] > 1e-12) m.depletedFlow.gold[i] += amount;
-		else if (m.labor[i] > 1e-12) m.laborFlow.gold[i] += amount;
-		else this.streams[PAY_WAGE].coin[i] += amount;
+		const onSite = m.labor[i] + m.depleted[i];
+		if (onSite > 1e-12) {
+			const toDepleted = amount * (m.depleted[i] / onSite);
+			m.depletedFlow.gold[i] += toDepleted;
+			m.laborFlow.gold[i] += amount - toDepleted;
+		} else {
+			this.streams[PAY_WAGE].coin[i] += amount;
+		}
 		this.wages += amount;
 	}
 
-	// Settled residents pay ongoing living tax in proportion to supplied comfort; surplus above the
-	// municipal reserve circulates back to residents only in healthy, moderate-tax towns.
+	// Settled residents pay ongoing living tax in proportion to supplied comfort and wait-pool crowding;
+	// surplus above the municipal reserve circulates back to residents only in healthy, uncrowded towns.
 	collectTax(i, comfort) {
 		const m = this.model;
-		const mult = m.derived ? (m.taxMult[i] || 1) : 1;
+		const mult = m.derived ? m.optimizer.townEffectiveMult(i) : 1;
 		const share = Math.min(0.5, this.taxShare * mult);
 		const taxPaid = this.workerPurse[i] * share * comfort;
 		this.workerPurse[i] -= taxPaid;

@@ -306,9 +306,10 @@ class FieldPlot {
 		if (i < 0) return;
 		const { money, actors } = model, actor = actors[i];
 		const carried = model.workerGoldAt(i);
+		const occPct = actor ? Math.round(model.poolOccupancy(i) * 100) : 0;
 		const detail = actor === ECONOMY_TOWN
-			? ` · Pop ${model.pop[i].toFixed(1)} · Tax ${model.townRestTax(i).toFixed(2)}g (${Math.round((model.taxMult[i] || 1) * 100)}%)`
-			: actor ? ` · Scale ${(model.scale[i] || 1).toFixed(2)}×${actor === ECONOMY_GOLD ? '' : ` · Ask ${model.sellPrice(i).toFixed(2)}`}` : '';
+			? ` · Pop ${model.pop[i].toFixed(1)} · Wait ${occPct}% · Tax ${model.townRestTax(i).toFixed(2)}g (${Math.round((model.taxMult[i] || 1) * 100)}%)`
+			: actor ? ` · Scale ${(model.scale[i] || 1).toFixed(2)}× · Pool ${occPct}%${actor === ECONOMY_GOLD ? '' : ` · Ask ${model.sellPrice(i).toFixed(2)}`}` : '';
 		const head = `${pinned ? 'Pinned · ' : ''}${ACTOR_NAMES[actor]} ${cellName(i)}${detail}`;
 		const stocks = `Coal ${model.coal[i].toFixed(3)} · Goods ${model.goods[i].toFixed(3)} · Labor ${model.labor[i].toFixed(3)} · Depl ${model.depleted[i].toFixed(3)}`;
 		const prices = `Coal ${model.priceCoal[i].toFixed(2)} · Goods ${model.priceGoods[i].toFixed(2)} · Wage ${model.priceLabor[i].toFixed(2)} · Appeal ${model.priceHome[i].toFixed(2)}`;

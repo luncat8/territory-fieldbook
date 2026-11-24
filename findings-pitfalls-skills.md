@@ -437,3 +437,24 @@ Three traps surfaced when giving cell-based workforce real carried money in `pro
   town a small `BASE_SHELTER` appeal lets lonely mining towns bring workers home, but a unconditional
   buyer hold on `ECONOMY_TOWN` would trap shed migrants on a struggling town's own cell. Hold
   `depleted` only at local `priceHome` maxima (`!hasHigherNeighbor(priceHome, i)`).
+
+## occupancy-balanced worker pools, proportional shift settlement and town rent pressure
+
+Three traps surfaced when adding fresh-worker and living wait pools in `prototype/price-model-b2/`:
+
+- **A profit-proportional wage floor (`0.35 · drive`) blocks overflow wage cooling.** Keeping a
+  non-zero labor floor on profitable firms keeps `priceLabor > 0` even when fresh workers fill the
+  on-site pool, pulling idle commuters into surrounding cells. Size the on-site fresh-worker pool
+  from a standby shift base plus smoothed realized shift throughput (`workLoad`), and emit hire
+  demand strictly as `1 − occ` so overflow cools wages to `0` while active firms buffer commute lag.
+- **Settling entry-billed wages into `depletedFlow.gold` alone starves later pool shifts.** When
+  arriving `labor` is billed into `PAY_WAGE` on pool entry and settled after one tick's shift,
+  crediting `depletedFlow.gold` whenever `depleted > 0` dumps the entire cohort's pay onto tick 1's
+  tiny departing slice and leaves the remaining pool workers penniless on subsequent shifts. Split
+  settled wages across `(labor, depleted)` by worker share so every shift departs at full wage.
+- **Multiplying `townHomeBid` by linear `popRoom = 1 − pop / POP_MAX` inverts appeal at both ends.**
+  At `pop = POP_MAX`, `popRoom = 0` zeroes home appeal and locks out a healthy town's own returning
+  commuters, while shrinking unsupplied towns get a fake high-`popRoom` bonus. Route wait-pool
+  crowding and near-`POP_MAX` fullness into `townRestTax` (`goldTax`) instead so full towns stay
+  reachable to commuters while pricing surplus migrants toward cheaper, uncrowded towns.
+

@@ -1,5 +1,5 @@
-// Owns: regression checks for B2 carried worker wallets, paid town rest, migrant savings and gold-tax appeal.
-// Edit for: worker-gold advection, rest-tax gating, distance-vs-tax migration and anti-siphon wage checks.
+// Owns: regression checks for B2 carried worker wallets, worker/town wait pools, paid rest and gold-tax appeal.
+// Edit for: pool-occupancy hire demand, wait-pool living taxes, worker-gold advection and anti-siphon wage checks.
 'use strict';
 
 const test = require('node:test');
@@ -35,6 +35,7 @@ function clearedMap() {
 	model.pop.fill(0);
 	model.scale.fill(0);
 	model.taxMult.fill(0);
+	model.workLoad.fill(0);
 	model.laborFlow.gold.fill(0);
 	model.depletedFlow.gold.fill(0);
 	model.money.reset();
@@ -189,4 +190,150 @@ test('supplied towns temporarily in negative profit do not deadlock funded worke
 	assert.ok(rested > 0.008);
 	assert.ok(model.money.taxes > 0);
 	checkLedger(model);
+});
+
+test('factories emit workforce demand inversely with fresh-worker pool occupancy and drop wages to zero on overflow', () => {
+	const model = clearedMap();
+	const factory = economyIndex(24, 14);
+	model.setActor(factory, ECONOMY_FACTORY);
+	model.priceGoods[factory] = 4;
+	model.profit[factory] = 0.6;
+	const pool = model.firmLaborPool(factory);
+	assert.ok(pool > FACTORY_RATE * FACTORY_LABOR * BUFFER_SECONDS);
+
+	const bids = [0, 0.25, 0.5, 0.85, 1.0, 1.2].map((occ) => {
+		model.labor[factory] = pool * occ;
+		return model.factoryLaborBid(factory);
+	});
+	assert.ok(bids[0] > bids[1] && bids[1] > bids[2] && bids[2] > bids[3] && bids[3] > 0);
+	assert.equal(bids[4], 0);
+	assert.equal(bids[5], 0);
+
+	const runLaborMarket = (townCoords, goldCoords) => {
+		const sim = clearedMap();
+		for (const [x, y] of townCoords) sim.setActor(economyIndex(x, y), ECONOMY_TOWN);
+		for (const [x, y] of goldCoords) sim.setActor(economyIndex(x, y), ECONOMY_GOLD);
+		for (let n = 0; n < 15 * 60; n++) {
+			for (const [x, y] of townCoords) {
+				const t = economyIndex(x, y);
+				sim.coal[t] = 0.2;
+				sim.goods[t] = 0.2;
+				sim.producedCoal = sim.burnedCoal + 0.2 * townCoords.length;
+				sim.producedGoods = sim.consumedGoods + 0.2 * townCoords.length;
+			}
+			sim.step();
+		}
+		checkLedger(sim);
+		return sim;
+	};
+	const scarce = runLaborMarket([[24, 14]], [[14, 8], [14, 14], [14, 20], [34, 8], [34, 14], [34, 20]]);
+	const overflow = runLaborMarket([[22, 12], [22, 16], [26, 14]], [[24, 14]]);
+	const gScarce = economyIndex(14, 14);
+	const gOverflow = economyIndex(24, 14);
+	assert.ok(overflow.poolOccupancy(gOverflow) > scarce.poolOccupancy(gScarce) + 0.35);
+	assert.ok(overflow.priceLabor[gOverflow] < scarce.priceLabor[gScarce] * 0.25);
+});
+
+test('towns increase living taxes and cool home appeal when their wait pool to live is crowded', () => {
+	const model = clearedMap();
+	const calm = economyIndex(10, 14);
+	const crowded = economyIndex(34, 14);
+	model.setActor(calm, ECONOMY_TOWN);
+	model.setActor(crowded, ECONOMY_TOWN);
+	for (let n = 0; n < 8 * 60; n++) {
+		for (const t of [calm, crowded]) {
+			model.coal[t] = 0.4;
+			model.goods[t] = 0.7;
+		}
+		model.producedCoal = model.burnedCoal + 0.8;
+		model.producedGoods = model.consumedGoods + 1.4;
+		if (model.depleted[crowded] < 0.45) {
+			const add = 0.45 - model.depleted[crowded];
+			model.depleted[crowded] += add;
+			model.emittedDepleted += add;
+			model.depletedFlow.gold[crowded] += add * 4;
+			model.money.seeded += add * 4;
+		}
+		model.step();
+	}
+	assert.ok(model.poolOccupancy(crowded) > model.poolOccupancy(calm) + 0.35);
+	assert.ok(model.taxMult[crowded] > model.taxMult[calm] + 0.25);
+	assert.ok(model.townRestTax(crowded) > model.townRestTax(calm) * 1.5);
+	assert.ok(model.townHomeBid(crowded) < model.townHomeBid(calm) * 0.7);
+	checkLedger(model);
+});
+
+test('worker and town wait pools balance to real occupancy and smooth shifts across commute travel', () => {
+	const model = clearedMap();
+	const mine = economyIndex(10, 10);
+	const activeFactory = economyIndex(14, 10);
+	const idleFactory = economyIndex(14, 20);
+	const activeTown = economyIndex(20, 12);
+	const quietTown = economyIndex(42, 22);
+	model.setActor(mine, ECONOMY_MINE);
+	model.setActor(activeFactory, ECONOMY_FACTORY);
+	model.setActor(idleFactory, ECONOMY_FACTORY);
+	model.setActor(activeTown, ECONOMY_TOWN);
+	model.setActor(quietTown, ECONOMY_TOWN);
+	for (let n = 0; n < 20 * 60; n++) {
+		model.coal[idleFactory] = 0;
+		model.producedCoal = sum(model.coal) + model.burnedCoal;
+		model.step();
+	}
+	assert.ok(model.workLoad[activeFactory] > 0.05);
+	assert.equal(model.workLoad[idleFactory], 0);
+	assert.ok(model.poolTarget(activeFactory) > model.poolTarget(idleFactory) * 2);
+	assert.ok(model.poolTarget(activeTown) > model.poolTarget(quietTown) * 1.8);
+
+	let stalledTicks = 0;
+	for (let n = 0; n < 300; n++) {
+		const before = model.workedLabor;
+		model.step();
+		if (model.workedLabor - before <= 1e-9) stalledTicks++;
+	}
+	assert.equal(stalledTicks, 0);
+	checkLedger(model);
+});
+
+test('full healthy towns keep positive home appeal via rent pressure while shrinking towns get no fake popRoom boost', () => {
+	const model = clearedMap();
+	const fullHealthy = economyIndex(10, 14);
+	const roomyHealthy = economyIndex(22, 14);
+	const dying = economyIndex(34, 14);
+	model.setActor(fullHealthy, ECONOMY_TOWN);
+	model.setActor(roomyHealthy, ECONOMY_TOWN);
+	model.setActor(dying, ECONOMY_TOWN);
+	model.pop[fullHealthy] = POP_MAX;
+	model.money.seeded += model.money.workerPurse[fullHealthy] * (POP_MAX / START_POP - 1);
+	model.money.workerPurse[fullHealthy] *= POP_MAX / START_POP;
+	model.satCoal[fullHealthy] = model.satGoods[fullHealthy] = 1;
+	model.satCoal[roomyHealthy] = model.satGoods[roomyHealthy] = 1;
+	model.pop[dying] = 2.5;
+	model.taxMult[dying] = 1.6;
+
+	assert.ok(model.townHomeBid(fullHealthy) > 2, 'full town still welcomes its own commuters home');
+	assert.ok(model.townRestTax(fullHealthy) > model.townRestTax(roomyHealthy), 'near-capacity town charges higher living tax');
+	assert.ok(model.townHomeBid(roomyHealthy) > model.townHomeBid(fullHealthy), 'newcomers prefer equally comfortable town with housing room');
+	assert.ok(model.townHomeBid(fullHealthy) > model.townHomeBid(dying) * 5, 'shrinking unsupplied town never outbids healthy full town');
+	checkLedger(model);
+});
+
+test('settled wages split proportionally across on-site pool and shift workers so every shift leaves paid', () => {
+	const model = clearedMap();
+	const goldMine = economyIndex(24, 14);
+	model.setActor(goldMine, ECONOMY_GOLD);
+	model.money.dig(goldMine, 5);
+	model.labor[goldMine] = 0.1;
+	model.suppliedLabor = 0.1;
+	model.money.bill(goldMine, PAY_WAGE, 0.4);
+
+	for (let shift = 0; shift < 8; shift++) {
+		model.depletedFlow.gold[goldMine] = 0;
+		model.emittedDepleted -= model.depleted[goldMine];
+		model.depleted[goldMine] = 0;
+		model.optimizer.stepFirm(goldMine, model.optimizer.recipes[ECONOMY_GOLD]);
+		model.money.step();
+		const perWorker = model.depletedFlow.gold[goldMine] / model.depleted[goldMine];
+		assert.ok(perWorker >= 3.9, `shift ${shift} paid ${perWorker}`);
+	}
 });

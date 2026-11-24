@@ -137,6 +137,7 @@ class PriceEconomy {
 		this.taxMult = new Float64Array(ECONOMY_SIZE);
 		this.satCoal = new Float64Array(ECONOMY_SIZE);
 		this.satGoods = new Float64Array(ECONOMY_SIZE);
+		this.workLoad = new Float64Array(ECONOMY_SIZE);
 		this.profit = new Float64Array(ECONOMY_SIZE);
 		this.earned = new Float64Array(ECONOMY_SIZE);
 		this.coalFlow = makeScratch((1 << ECONOMY_FACTORY) | (1 << ECONOMY_TOWN), 1, FLOW_RATE, PAY_COAL, ECONOMY_MINE);
@@ -172,7 +173,7 @@ class PriceEconomy {
 		for (const [x, y] of REFERENCE_FACTORIES) this.actors[economyIndex(x, y)] = ECONOMY_FACTORY;
 		for (const [x, y] of REFERENCE_TOWNS) this.actors[economyIndex(x, y)] = ECONOMY_TOWN;
 		for (const [x, y] of REFERENCE_GOLD) this.actors[economyIndex(x, y)] = ECONOMY_GOLD;
-		for (const field of [this.coal, this.goods, this.labor, this.depleted, this.priceCoal, this.priceGoods, this.priceLabor, this.priceHome, this.pop, this.scale, this.taxMult, this.satCoal, this.satGoods, this.profit, this.earned]) field.fill(0);
+		for (const field of [this.coal, this.goods, this.labor, this.depleted, this.priceCoal, this.priceGoods, this.priceLabor, this.priceHome, this.pop, this.scale, this.taxMult, this.satCoal, this.satGoods, this.workLoad, this.profit, this.earned]) field.fill(0);
 		for (const flow of this.flows) clearScratch(flow);
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			if (!this.actors[i]) continue;
@@ -192,14 +193,17 @@ class PriceEconomy {
 		if (kind && this.actors[i]) return false;
 		if (!kind && this.actors[i]) {
 			this.money.release(i);
-			this.pop[i] = this.scale[i] = this.taxMult[i] = this.satCoal[i] = this.satGoods[i] = this.profit[i] = 0;
+			this.pop[i] = this.scale[i] = this.taxMult[i] = this.satCoal[i] = this.satGoods[i] = this.workLoad[i] = this.profit[i] = 0;
 			for (const flow of this.flows) {
 				flow.sell[i] = 0;
 				if (flow.cost) flow.cost[i] = 0;
 			}
 		}
 		this.actors[i] = kind;
-		if (kind) this.scale[i] = 1;
+		if (kind) {
+			this.scale[i] = 1;
+			this.workLoad[i] = 0;
+		}
 		if (kind === ECONOMY_TOWN) {
 			this.pop[i] = START_POP;
 			this.taxMult[i] = 1;
@@ -215,6 +219,10 @@ class PriceEconomy {
 	}
 
 	sellPrice(i) { return this.optimizer.sellPrice(i); }
+	poolTarget(i) { return this.optimizer.poolTarget(i); }
+	poolOccupancy(i) { return this.optimizer.poolOccupancy(i); }
+	firmLaborPool(i) { return this.optimizer.firmLaborPool(i, this.optimizer.recipes[this.actors[i]]); }
+	townWaitPool(i) { return this.optimizer.townWaitPool(i); }
 	townGoodsTarget(i) { return this.optimizer.townGoodsTarget(i); }
 	townCoalTarget(i) { return this.optimizer.townCoalTarget(i); }
 	townTaxRate(i) { return this.optimizer.townTaxRate(i); }
