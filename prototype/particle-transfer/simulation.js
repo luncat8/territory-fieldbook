@@ -154,6 +154,8 @@ class PriceEconomy {
 		this.workforce = new WorkerPolicy(this);
 		this.land = new Land(this);
 		this.settlements = new Settlements(this);
+		this.tracker = new WorkerTracker(this);
+		this.workers.tracker = this.tracker;
 		this.decay = true;
 		this.derived = true;
 		this.suppression = true;
@@ -221,9 +223,32 @@ class PriceEconomy {
 		}
 		this.money.reset();
 		this.settlements.reset();
+		this.tracker.reset();
 		this.ticks = this.producedCoal = this.burnedCoal = this.producedGoods = this.consumedGoods = 0;
 		this.suppliedLabor = this.workedLabor = this.emittedDepleted = this.restedDepleted = 0;
 		this.coalRate = this.goodsRate = this.uptakeRate = 0;
+	}
+
+	// Found a named, funded worker as a walking fresh particle at i; the purse is minted into seeded so the
+	// conservation identity money == seeded + mined keeps holding.
+	spawnTrackedWorker(i, name, gold) {
+		const p = this.workers.spawnWalker(STATE_FRESH, i, WORKER_UNIT, gold);
+		if (p < 0) return null;
+		// His labor unit enters the world granted, like his gold: counted as supplied so the mass ledger stays exact.
+		this.suppliedLabor += WORKER_UNIT;
+		this.money.seeded += gold;
+		return this.tracker.track(p, name, gold);
+	}
+
+	// Grant gold to a tracked worker wherever he is: walking wallets top up directly, docked wallets also move
+	// the pool aggregate so member wallets keep matching it.
+	fundTracked(id, amount) {
+		const p = this.workers.byWid(id);
+		if (p < 0) return false;
+		this.workers.creditWallet(p, amount);
+		this.money.seeded += amount;
+		this.tracker.fund(id, amount);
+		return true;
 	}
 
 	setActor(i, kind) {
@@ -337,7 +362,7 @@ class PriceEconomy {
 
 	buyArrival(scratch, i, bill) {
 		scratch.cost[i] += bill;
-		this.money.payOnEntry(i, bill);
+		return this.money.payOnEntry(i, bill);
 	}
 }
 

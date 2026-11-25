@@ -87,10 +87,14 @@ class WorkerPolicy {
 		const rested = Math.min(dep * this.restShare * depletedFlow.still[i] * m.land.rest[i], 1 - labor[i]);
 		if (rested <= 1e-12) return;
 		const all = rested >= dep - 1e-12;
-		const gold = all ? depletedFlow.gold[i] : depletedFlow.gold[i] * (rested / dep);
+		// Docked walkers carry their own gold across the state flip; only the unclaimed share moves here —
+		// registered shift claims stay reserved for their owners in the tired pool.
+		const unclaimed = Math.max(0, depletedFlow.gold[i] - m.workers.dockedGold(STATE_DEPLETED, i) - m.workers.claimedShiftGold(i));
+		const share = depletedFlow.gold[i] * (rested / dep) * Math.max(0, 1 - m.workers.dockedAmount(STATE_DEPLETED, i) / dep);
+		const pool = Math.min(share, unclaimed);
 		depleted[i] = all ? 0 : dep - rested;
-		depletedFlow.gold[i] = all ? 0 : depletedFlow.gold[i] - gold;
-		laborFlow.gold[i] += gold;
+		depletedFlow.gold[i] = Math.max(0, depletedFlow.gold[i] - pool);
+		laborFlow.gold[i] += pool;
 		labor[i] += rested;
 		m.restedDepleted += rested;
 		m.suppliedLabor += rested;

@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-for (const file of ['simulation.js', 'steering.js', 'particles.js', 'workers.js', 'actors.js', 'gold.js', 'workforce.js', 'land.js', 'settlement.js']) {
+for (const file of ['simulation.js', 'steering.js', 'particles.js', 'workers.js', 'track.js', 'actors.js', 'gold.js', 'workforce.js', 'land.js', 'settlement.js']) {
 	vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 }
 
@@ -214,4 +214,42 @@ test('still walkers dock where they stand with intent·amount conserved, and fou
 	closeTo(founding.money.workerPurse[c], 0.7, 1e-14);
 	closeTo(founding.restedDepleted, 0.6, 1e-14);
 	checkWorkerLedger(founding);
+});
+
+test('a tracked worker keeps his purse across walk, dock, shift and rest cycles with an exact ledger', () => {
+	const model = new PriceEconomy();
+	const town = model.actors.indexOf(ECONOMY_TOWN);
+	const entry = model.spawnTrackedWorker(town, 'Audit', 500);
+	assert.ok(entry, 'tracked worker spawned with a name and opening purse');
+	let earnedOnce = false, rested = false;
+	for (let n = 0; n < Math.round(120 / ECONOMY_DT); n++) {
+		model.step();
+		model.tracker.sampleAll();
+		const p = model.workers.byWid(entry.id);
+		const wallet = p >= 0 ? model.workers.gold[p] : 0;
+		const balance = entry.funded + entry.earned - entry.spent - wallet;
+		assert.ok(Math.abs(balance) < 1e-9, `tick ${n}: ledger off by ${balance.toExponential(3)} g`);
+		if (entry.earned > 0) earnedOnce = true;
+		if (Object.keys(entry.stops).length) rested = true;
+	}
+	assert.ok(earnedOnce, 'he earned wages on the way');
+	assert.ok(rested, 'he rested somewhere');
+	assert.ok(entry.spent - entry.banked < entry.funded, 'taxes never ate the grant');
+	assert.ok(entry.history.length > 100, 'purse history sampled over the run');
+	checkWorkerLedger(model);
+});
+
+test('a rich tracked worker saves his gold over time and rests only at towns', () => {
+	const model = new PriceEconomy();
+	const town = model.actors.indexOf(ECONOMY_TOWN);
+	const entry = model.spawnTrackedWorker(town, 'Rich', 500);
+	run(model, 120);
+	// The commute can end two ways, both money-preserving: still active with his purse, or settled into a
+	// town whose worker purse banked his savings when the wait pool absorbed him.
+	const p = model.workers.byWid(entry.id);
+	const kept = entry.status === 'active' ? (p >= 0 ? model.workers.gold[p] + model.workers.moved[p] : 0) : entry.banked;
+	assert.ok(entry.earned > 0.02, 'wages grew the purse on top of the grant');
+	assert.ok(kept >= 250, 'most of the grant survives the commute cycle');
+	assert.ok(Object.keys(entry.stops).some(cell => model.actors[Number(cell)] === ECONOMY_TOWN), 'he rested at a town');
+	checkWorkerLedger(model);
 });

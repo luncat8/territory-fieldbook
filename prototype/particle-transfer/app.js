@@ -34,6 +34,7 @@ const TOOL_HINTS = {
 	factory:'Select an empty cell on either map to place a factory.',
 	town:'Select an empty cell on either map to place a town. Towns fund the chain from resident taxes.',
 	gold:'Select an empty cell on either map to place a gold mine.',
+	worker:'Select a cell to spawn a named worker there; his purse, ledger and events show in Watched workers.',
 	erase:'Select an actor to remove it. Live particles in flight still settle without gold or mass loss.'
 };
 
@@ -42,6 +43,7 @@ function bootEconomy() {
 	const model = new PriceEconomy();
 	const plots = [new FieldPlot($('resource-map'),true),new FieldPlot($('price-map'),false)];
 	const stats = new EconomyTelemetry();
+	const tracked = new TrackedPanel(model,() => selected);
 	const guide = $('field-guide'), runButton = $('run-button'), runState = $('run-state'), actorCount = $('actor-count');
 	const speedSelect = $('speed'), decay = $('price-decay'), derived = $('derived-bid'), suppression = $('stock-suppression'), flow = $('show-flow'), shape = $('particle-shape');
 	const toolButtons = document.querySelectorAll('[data-tool]'), clearButton = $('clear-towns');
@@ -84,7 +86,7 @@ function bootEconomy() {
 
 	function fit() {
 		for (const plot of plots) plot.fit();
-		stats.fit(); stats.refresh(model); updateCountLabel(); paint(); readings();
+		stats.fit(); tracked.fit(); stats.refresh(model); updateCountLabel(); paint(); readings();
 	}
 
 	function readings() {
@@ -108,6 +110,12 @@ function bootEconomy() {
 			message.textContent = pinned ? `Pinned cell ${cellName(i)}.` : 'Both maps are linked.';
 			return;
 		}
+		if (tool === 'worker') {
+			const entry = model.spawnTrackedWorker(i,null,TRACK_SPAWN_GOLD);
+			message.textContent = entry ? `Watching ${entry.name} — purse, ledger and events in Watched workers.` : 'The watched-worker roster is full (12).';
+			tracked.refresh();
+			return;
+		}
 		const kind = TOOL_KINDS[tool];
 		if (kind === 0 && !model.actors[i]) { message.textContent = 'No actor in this cell.'; return; }
 		if (!model.setActor(i,kind)) { message.textContent = 'Cell occupied. Erase its actor first.'; return; }
@@ -117,7 +125,7 @@ function bootEconomy() {
 
 	function tick() {
 		const founded = model.settlements.founded;
-		model.step(); stats.record(model); dirty = true;
+		model.step(); stats.record(model); tracked.tick(); dirty = true;
 		if (model.settlements.founded !== founded) syncActors();
 	}
 
@@ -129,7 +137,7 @@ function bootEconomy() {
 			while (accumulator >= ECONOMY_DT) { tick(); accumulator -= ECONOMY_DT; }
 		}
 		if (dirty && now-lastPaint >= 1000/30) { paint(); lastPaint = now; }
-		if (running && now-lastStats >= 250) { stats.refresh(model); updateCountLabel(); readings(); lastStats = now; }
+		if (running && now-lastStats >= 250) { stats.refresh(model); updateCountLabel(); readings(); tracked.refresh(); lastStats = now; }
 		requestAnimationFrame(frame);
 	}
 
@@ -143,10 +151,10 @@ function bootEconomy() {
 		lastFrame = performance.now();
 	}
 
-	function toggleRun() { running = !running; syncPlayback(); stats.refresh(model); updateCountLabel(); readings(); }
+	function toggleRun() { running = !running; syncPlayback(); stats.refresh(model); updateCountLabel(); readings(); tracked.refresh(); }
 
 	function reset() {
-		model.reset(); stats.reset(model); syncActors(); clearSelection();
+		model.reset(); stats.reset(model); tracked.reset(); syncActors(); clearSelection();
 		accumulator = 0; lastFrame = performance.now();
 		message.textContent = 'Reference chain reset · one mine, one factory and one town.';
 		stats.refresh(model); paint();
@@ -185,7 +193,7 @@ function bootEconomy() {
 		dirty = true;
 	});
 	runButton.addEventListener('click',toggleRun);
-	stepButton.addEventListener('click',() => { tick(); stats.refresh(model); updateCountLabel(); readings(); paint(); });
+	stepButton.addEventListener('click',() => { tick(); stats.refresh(model); updateCountLabel(); readings(); tracked.refresh(); paint(); });
 	speedSelect.addEventListener('change',() => { rate = Number(speedSelect.value); });
 	decay.addEventListener('change',() => { model.decay = decay.checked; message.textContent = `Price decay ${model.decay ? 'enabled' : 'disabled'}: ${model.decay ? 'bids and appeal weaken with distance.' : 'signals reach the whole map.'}`; });
 	derived.addEventListener('change',() => { model.derived = derived.checked; message.textContent = `Derived bid ${model.derived ? 'enabled' : 'disabled'}.`; });

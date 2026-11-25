@@ -166,10 +166,9 @@ class GoldMoney {
 		return (workerGold / WORKER_SECONDS) * mult / Math.max(1, m.pop[i]);
 	}
 
-	payRestTax(i, restTax, netSavings) {
+	payRestTax(i, restTax) {
 		this.purse[i] += restTax;
 		this.taxes += restTax;
-		this.workerPurse[i] += netSavings;
 	}
 
 	payOnEntry(i, amount) {
@@ -178,6 +177,7 @@ class GoldMoney {
 		this.model.laborFlow.gold[i] += pay;
 		this.wages += pay;
 		this.owedWage[i] += amount - pay;
+		return pay;
 	}
 
 	payWorkers(i, amount) {

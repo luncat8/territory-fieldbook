@@ -269,20 +269,22 @@ class ActorOptimizer {
 				costBuf[i] = after > 1e-12 ? Math.max(0, costBuf[i] - usedCost) : 0;
 				inputCost += usedCost;
 				if (item === ITEM_COAL) m.burnedCoal += used;
-				else if (item === ITEM_LABOR) {
-					usedLabor = used;
-					const flow = m.laborFlow;
-					const carriedGold = flow.gold[i] * ratio;
-					flow.gold[i] = Math.max(0, flow.gold[i] - carriedGold);
-					m.depletedFlow.gold[i] += carriedGold;
-					if (after <= 1e-12 && flow.gold[i] > 0) {
-						m.depletedFlow.gold[i] += flow.gold[i];
-						flow.gold[i] = 0;
-					}
-					m.workedLabor += used;
-					m.depleted[i] += used;
-					m.emittedDepleted += used;
+			else if (item === ITEM_LABOR) {
+				usedLabor = used;
+				const flow = m.laborFlow;
+				const carriedGold = flow.gold[i] * ratio;
+				const movedGold = m.workers.moveWorkGold(i, carriedGold);
+				flow.gold[i] = Math.max(0, flow.gold[i] - movedGold);
+				m.depletedFlow.gold[i] += movedGold;
+				if (after <= 1e-12 && flow.gold[i] > 0) {
+					const free = Math.max(0, flow.gold[i] - m.workers.dockedGold(STATE_FRESH, i));
+					m.depletedFlow.gold[i] += free;
+					flow.gold[i] -= free;
 				}
+				m.workedLabor += used;
+				m.depleted[i] += used;
+				m.emittedDepleted += used;
+			}
 			}
 			const made = batches * outYield;
 			if (outItem < 0) {
@@ -346,14 +348,20 @@ class ActorOptimizer {
 
 		const share = Math.min(1, restedWork / dep);
 		const arrivedGold = carried * share;
-		const restTax = Math.min(arrivedGold, restedWork * feePerUnit);
+		// The living tax can only be charged to docked tired wallets; unmirrored stock has nobody to pay yet,
+		// so taxing the bare pool would burn gold that arriving walkers still carry as their own.
+		const restTax = Math.min(arrivedGold, restedWork * feePerUnit, m.workers.dockedGold(STATE_DEPLETED, i));
 		m.depleted[i] = Math.max(0, dep - restedWork);
-		m.depletedFlow.gold[i] = Math.max(0, carried - arrivedGold);
-		if (m.depleted[i] <= 1e-12 && m.depletedFlow.gold[i] > 0) {
-			m.money.workerPurse[i] += m.depletedFlow.gold[i];
-			m.depletedFlow.gold[i] = 0;
+		// Rest spends personal wallets, not a shared purse: the living tax is charged wallet-weighted and the
+		// net rest value stays with the payers as pool claims, so a funded commuter never banks at a town.
+		m.depletedFlow.gold[i] = Math.max(0, carried - restTax);
+		m.workers.chargeRestTax(i, restTax);
+		m.money.payRestTax(i, restTax);
+		if (m.depleted[i] <= 1e-12 && m.depletedFlow.gold[i] > 0 && !m.workers.hasDocked(i, STATE_DEPLETED)) {
+			const free = Math.max(0, m.depletedFlow.gold[i] - m.workers.claimedShiftGold(i));
+			m.laborFlow.gold[i] += free;
+			m.depletedFlow.gold[i] -= free;
 		}
-		m.money.payRestTax(i, restTax, arrivedGold - restTax);
 		m.restedDepleted += restedWork;
 		const restedLabor = Math.min(Math.max(0, workCap - m.labor[i]), restedWork);
 		m.labor[i] += restedLabor;

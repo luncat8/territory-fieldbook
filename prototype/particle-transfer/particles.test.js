@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const ENGINE_FILES = ['simulation.js', 'steering.js', 'particles.js', 'workers.js', 'actors.js', 'gold.js', 'workforce.js', 'land.js', 'settlement.js'];
+const ENGINE_FILES = ['simulation.js', 'steering.js', 'particles.js', 'workers.js', 'track.js', 'actors.js', 'gold.js', 'workforce.js', 'land.js', 'settlement.js'];
 for (const file of ENGINE_FILES) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 
 const sum = values => values.reduce((total, value) => total + value, 0);
@@ -296,7 +296,7 @@ test('terrain speed table weights movement pace and scales per-cell haul cost as
 	closeMachine(desert.haulCost / meadow.haulCost, TERRAIN_SPEED[TERRAIN_MEADOW] / TERRAIN_SPEED[TERRAIN_DESERT], 1e-2);
 });
 
-test('UI boots cleanly in a stub DOM, renders particle overlays across views and updates ledgers', () => {
+function bootLab() {
 	const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 	const scripts = Array.from(html.matchAll(/<script src="([^"]+)"><\/script>/g), m => m[1]);
 
@@ -311,7 +311,6 @@ test('UI boots cleanly in a stub DOM, renders particle overlays across views and
 	}
 
 	const byId = new Map();
-	const allButtons = [];
 	const metricCards = [];
 
 	function makeEl(id = '', dataset = {}) {
@@ -344,8 +343,8 @@ test('UI boots cleanly in a stub DOM, renders particle overlays across views and
 	for (const id of ['price-decay', 'derived-bid', 'stock-suppression', 'show-flow']) byId.get(id).checked = true;
 	byId.get('speed').value = '1';
 	for (let i = 0; i < 5; i++) metricCards.push(makeEl());
-	const resourceBtns = ['coal', 'goods', 'labor', 'depleted', 'gold', 'land'].map(r => { const b = makeEl('', { resource: r }); allButtons.push(b); return b; });
-	const toolBtns = ['inspect', 'mine', 'factory', 'town', 'gold', 'erase'].map(t => { const b = makeEl('', { tool: t }); allButtons.push(b); return b; });
+	const resourceBtns = ['coal', 'goods', 'labor', 'depleted', 'gold', 'land'].map(r => makeEl('', { resource: r }));
+	const toolBtns = ['inspect', 'mine', 'factory', 'town', 'gold', 'worker', 'erase'].map(t => makeEl('', { tool: t }));
 
 	const sandbox = vm.createContext({
 		Math, Number, String, Array, Object, Uint8Array, Uint32Array, Int8Array, Int16Array, Int32Array, Float32Array, Float64Array, Infinity,
@@ -370,10 +369,43 @@ test('UI boots cleanly in a stub DOM, renders particle overlays across views and
 	});
 
 	for (const script of scripts) vm.runInContext(fs.readFileSync(path.join(__dirname, script), 'utf8'), sandbox, { filename: script });
+	return { byId, toolBtns, resourceBtns };
+}
+
+test('UI boots cleanly in a stub DOM, renders particle overlays across views and updates ledgers', () => {
+	const { byId, resourceBtns } = bootLab();
 	assert.ok(byId.get('actor-count').textContent.includes('1 M · 1 F · 1 T'));
 	assert.ok(Number(byId.get('coal-made').textContent) > 1);
 	for (const btn of resourceBtns) btn.trigger('click');
 	byId.get('step-button').trigger('click');
 	byId.get('resource-map').trigger('pointermove', { clientX: 120, clientY: 120 });
 	assert.ok(byId.get('resource-map').nextElementSibling.textContent.includes('HaulVault') || byId.get('resource-map').nextElementSibling.textContent.includes('Town'));
+});
+
+test('watched-worker panel spawns a named worker, funds him and renders purse, ledger and events', () => {
+	const { byId, toolBtns } = bootLab();
+	assert.equal(byId.get('tracked-panel').hidden, true, 'the panel hides until a worker is watched');
+
+	byId.get('tracked-gold').value = '40';
+	byId.get('tracked-spawn').trigger('click');
+	assert.equal(byId.get('tracked-panel').hidden, false);
+	assert.ok(byId.get('tracked-select').innerHTML.includes('<option'), 'the picker lists the watched worker');
+	assert.ok(byId.get('tracked-props').innerHTML.includes('Purse'), 'properties render');
+	assert.ok(byId.get('tracked-props').innerHTML.includes('40.000 g'), 'the opening purse shows');
+	assert.ok(byId.get('tracked-props').innerHTML.includes('Ledger check'), 'the ledger balance row renders');
+
+	byId.get('tracked-fund-amount').value = '25';
+	byId.get('tracked-fund').trigger('click');
+	assert.ok(byId.get('tracked-props').innerHTML.includes('65.000 g'), 'the grant lands in the purse');
+	assert.ok(byId.get('tracked-events').innerHTML.includes('granted'), 'the grant is announced in the event feed');
+
+	byId.get('step-button').trigger('click');
+	assert.ok(byId.get('tracked-props').innerHTML.includes('exact'), 'the ledger stays exact as he commutes');
+
+	const workerTool = toolBtns.find(btn => btn.dataset.tool === 'worker');
+	workerTool.trigger('click');
+	byId.get('resource-map').trigger('click', { clientX: 200, clientY: 100 });
+	assert.ok(byId.get('tracked-select').innerHTML.split('<option').length >= 3, 'the worker tool adds a second watched worker');
+	assert.ok(byId.get('edit-message').textContent.includes('Watching'), 'the message names the watched worker');
+	assert.ok(byId.get('tracked-count').textContent.includes('2/12'), 'the roster counter tracks the cap');
 });

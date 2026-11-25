@@ -135,14 +135,17 @@ class Settlements {
 		const used = wood / WOOD_PER_WORK;
 		const gold = m.laborFlow.gold[i] * (used / m.labor[i]);
 		this.fellAround(i, wood);
+		// The felling shift carries personal gold to the tired pool wallet-weighted, like any firm shift.
+		const movedGold = m.workers.moveWorkGold(i, gold);
 		m.labor[i] -= used;
-		m.laborFlow.gold[i] -= gold;
+		m.laborFlow.gold[i] = Math.max(0, m.laborFlow.gold[i] - movedGold);
 		if (m.labor[i] <= 1e-12) {
-			m.depletedFlow.gold[i] += m.laborFlow.gold[i];
-			m.laborFlow.gold[i] = 0;
+			const free = Math.max(0, m.laborFlow.gold[i] - m.workers.dockedGold(STATE_FRESH, i));
+			m.depletedFlow.gold[i] += free;
+			m.laborFlow.gold[i] -= free;
 		}
 		m.depleted[i] += used;
-		m.depletedFlow.gold[i] += gold;
+		m.depletedFlow.gold[i] += movedGold;
 		m.workedLabor += used;
 		m.emittedDepleted += used;
 		this.tier[i] = Math.min(WOOD_TIER_CAP, this.tier[i] + wood / WOOD_PER_TIER);
@@ -176,14 +179,19 @@ class Settlements {
 		for (let y = Math.max(0, cy - FOUND_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, cy + FOUND_RADIUS); y++) {
 			for (let x = Math.max(0, cx - FOUND_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, cx + FOUND_RADIUS); x++) {
 				const n = economyIndex(x, y);
-				if (m.actors[n]) continue;
-				settled += m.depleted[n];
-				savings += m.depletedFlow.gold[n];
-				m.depleted[n] = 0;
-				m.depletedFlow.gold[n] = 0;
-				m.depletedFlow.intent[n] = 0;
+			if (m.actors[n]) continue;
 				workers += m.labor[n];
+				// Parked unemployed workers join the new town with their wallets, stock and shift-claim backing
+				// before the founding grant claims the leftover pool gold; those that do not fit stay parked.
+				m.workers.relocateDocked(n, c);
 				if (n !== c) this.gatherLabor(n, c);
+				// Whoever stayed parked cashes his shift claims now, so the grant never confiscates their backing.
+				m.workers.cashClaims(n);
+			settled += m.depleted[n];
+			savings += m.depletedFlow.gold[n];
+			m.depleted[n] = 0;
+			m.depletedFlow.gold[n] = 0;
+			m.depletedFlow.intent[n] = 0;
 			}
 		}
 		settled += m.workers.absorbNear(cx, cy, FOUND_RADIUS);
@@ -207,9 +215,13 @@ class Settlements {
 		const moved = Math.min(m.labor[from], 1 - m.labor[to]);
 		if (moved <= 0) return;
 		const all = moved >= m.labor[from];
-		const gold = all ? m.laborFlow.gold[from] : m.laborFlow.gold[from] * (moved / m.labor[from]);
+		// Docked workers keep their wallets parked at the source cell, so only the pool gold beyond their
+		// backing may be gathered into the new town.
+		const parked = m.workers.dockedGold(STATE_FRESH, from);
+		let gold = all ? Math.max(0, m.laborFlow.gold[from] - parked)
+			: Math.min(m.laborFlow.gold[from] * (moved / m.labor[from]), Math.max(0, m.laborFlow.gold[from] - parked));
 		m.labor[from] = all ? 0 : m.labor[from] - moved;
-		m.laborFlow.gold[from] = all ? 0 : m.laborFlow.gold[from] - gold;
+		m.laborFlow.gold[from] = Math.max(0, m.laborFlow.gold[from] - gold);
 		m.labor[to] += moved;
 		m.laborFlow.gold[to] += gold;
 	}

@@ -65,8 +65,24 @@
 			</article>
 			<article class="panel"><div class="panel-heading"><i data-icon="cursor"></i><h2>Map tools</h2><span id="actor-count" class="actor-count"></span></div>
 				<p class="tool-hint" id="tool-hint">Select a cell on either map to inspect site storage, passing particles, prices and wallets.</p>
-				<div class="tools" role="group" aria-label="Map editing tool"><button data-tool="inspect" aria-pressed="true" type="button"><i data-icon="crosshair"></i>Inspect</button><button data-tool="mine" aria-pressed="false" type="button"><i data-icon="diamond"></i>Mine</button><button data-tool="factory" aria-pressed="false" type="button"><i data-icon="square"></i>Factory</button><button data-tool="town" aria-pressed="false" type="button"><i data-icon="circle"></i>Town</button><button data-tool="gold" aria-pressed="false" type="button"><i data-icon="hexagon"></i>Gold</button><button data-tool="erase" aria-pressed="false" type="button"><i data-icon="erase"></i>Erase</button></div>
+				<div class="tools" role="group" aria-label="Map editing tool"><button data-tool="inspect" aria-pressed="true" type="button"><i data-icon="crosshair"></i>Inspect</button><button data-tool="mine" aria-pressed="false" type="button"><i data-icon="diamond"></i>Mine</button><button data-tool="factory" aria-pressed="false" type="button"><i data-icon="square"></i>Factory</button><button data-tool="town" aria-pressed="false" type="button"><i data-icon="circle"></i>Town</button><button data-tool="gold" aria-pressed="false" type="button"><i data-icon="hexagon"></i>Gold</button><button data-tool="worker" aria-pressed="false" type="button"><i data-icon="radio"></i>Worker</button><button data-tool="erase" aria-pressed="false" type="button"><i data-icon="erase"></i>Erase</button></div>
 				<div class="tool-bottom"><span id="edit-message" role="status">Both maps are linked.</span><button id="clear-towns" class="text-button" type="button"><i data-icon="clear"></i>Clear towns</button></div>
+			</article>
+			<article class="panel tracked" id="tracked-panel" hidden>
+				<div class="panel-heading"><i data-icon="radio"></i><h2>Watched workers</h2><span id="tracked-count" class="actor-count"></span></div>
+				<p class="tool-hint">Spawn a named worker, grant him gold and audit how he carries and spends it.</p>
+				<div class="setting"><label for="tracked-select">Watched worker</label><select id="tracked-select"></select></div>
+				<div class="tracked-actions">
+					<span class="tracked-field"><label for="tracked-gold">Spawn gold</label><input id="tracked-gold" type="number" min="0" step="10" value="50"></span>
+					<button id="tracked-spawn" class="text-button" type="button"><i data-icon="play"></i>Spawn at picked cell</button>
+				</div>
+				<div class="tracked-actions">
+					<span class="tracked-field"><label for="tracked-fund-amount">Grant gold</label><input id="tracked-fund-amount" type="number" min="0" step="10" value="50"></span>
+					<button id="tracked-fund" class="text-button" type="button"><i data-icon="up"></i>Grant</button>
+				</div>
+				<dl class="tracked-props" id="tracked-props"></dl>
+				<canvas id="tracked-purse" class="tracked-purse" aria-label="Watched worker purse over time"></canvas>
+				<ol id="tracked-events" class="tracked-events"></ol>
 			</article>
 		</section>
 		<footer class="footer"><span><i class="footer-mark"></i>Fluxfield <b>/</b> Particle transfer lab</span><span>Fixed timestep <b>·</b> 60 Hz</span></footer>
@@ -84,6 +100,8 @@
 	<script src="steering.js"></script>
 	<script src="particles.js"></script>
 	<script src="workers.js"></script>
+	<script src="track.js"></script>
+	<script src="tracked.js"></script>
 	<script src="actors.js"></script>
 	<script src="gold.js"></script>
 	<script src="workforce.js"></script>
