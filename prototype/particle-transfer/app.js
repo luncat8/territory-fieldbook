@@ -16,6 +16,7 @@ const ICON_PATHS = {
 	cursor:'m4 3 6.5 18 3.2-7.5L21 10z',crosshair:'M12 3v5m0 8v5M3 12h5m8 0h5M19 12a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z',
 	diamond:'m12 2 10 10-10 10L2 12z',hexagon:'M12 2l8.7 5v10L12 22l-8.7-5V7z',square:'M4 4h16v16H4z',circle:'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z',
 	erase:'m3 14 10-10a2 2 0 0 1 3 0l5 5a2 2 0 0 1 0 3l-8 8H9l-6-6Zm6-6 8 8M12 20h9',
+	pulse:'M3 12h4l3-8 4 16 3-8h4',copy:'M8 8h12v12H8zM4 16V4h12',
 	reset:'M3 4v6h6M4 9a8 8 0 1 1 .7 8',clear:'M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7',close:'m6 6 12 12M18 6 6 18'
 };
 const labIcon = name => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON_PATHS[name]}"/></svg>`;
@@ -43,7 +44,9 @@ function bootEconomy() {
 	const model = new PriceEconomy();
 	const plots = [new FieldPlot($('resource-map'),true),new FieldPlot($('price-map'),false)];
 	const stats = new EconomyTelemetry();
-	const tracked = new TrackedPanel(model,() => selected);
+	const diagnostics = new EconomyDiagnostics(model);
+	const tracked = new TrackedPanel(model,() => selected,diagnostics);
+	const inspector = new EconomyPanel(diagnostics,() => model.tracker.list);
 	const guide = $('field-guide'), runButton = $('run-button'), runState = $('run-state'), actorCount = $('actor-count');
 	const speedSelect = $('speed'), decay = $('price-decay'), derived = $('derived-bid'), suppression = $('stock-suppression'), flow = $('show-flow'), shape = $('particle-shape');
 	const toolButtons = document.querySelectorAll('[data-tool]'), clearButton = $('clear-towns');
@@ -125,7 +128,7 @@ function bootEconomy() {
 
 	function tick() {
 		const founded = model.settlements.founded;
-		model.step(); stats.record(model); tracked.tick(); dirty = true;
+		model.step(); stats.record(model); diagnostics.record(); tracked.tick(); dirty = true;
 		if (model.settlements.founded !== founded) syncActors();
 	}
 
@@ -137,7 +140,7 @@ function bootEconomy() {
 			while (accumulator >= ECONOMY_DT) { tick(); accumulator -= ECONOMY_DT; }
 		}
 		if (dirty && now-lastPaint >= 1000/30) { paint(); lastPaint = now; }
-		if (running && now-lastStats >= 250) { stats.refresh(model); updateCountLabel(); readings(); tracked.refresh(); lastStats = now; }
+		if (running && now-lastStats >= 250) { refreshPanels(); lastStats = now; }
 		requestAnimationFrame(frame);
 	}
 
@@ -151,13 +154,15 @@ function bootEconomy() {
 		lastFrame = performance.now();
 	}
 
-	function toggleRun() { running = !running; syncPlayback(); stats.refresh(model); updateCountLabel(); readings(); tracked.refresh(); }
+	function refreshPanels() { stats.refresh(model); updateCountLabel(); readings(); tracked.refresh(); inspector.refresh(); }
+
+	function toggleRun() { running = !running; syncPlayback(); refreshPanels(); }
 
 	function reset() {
-		model.reset(); stats.reset(model); tracked.reset(); syncActors(); clearSelection();
+		model.reset(); stats.reset(model); diagnostics.reset(); tracked.reset(); syncActors(); clearSelection();
 		accumulator = 0; lastFrame = performance.now();
 		message.textContent = 'Reference chain reset · one mine, one factory and one town.';
-		stats.refresh(model); paint();
+		refreshPanels(); paint();
 	}
 
 	for (const plot of plots) {
@@ -193,7 +198,7 @@ function bootEconomy() {
 		dirty = true;
 	});
 	runButton.addEventListener('click',toggleRun);
-	stepButton.addEventListener('click',() => { tick(); stats.refresh(model); updateCountLabel(); readings(); tracked.refresh(); paint(); });
+	stepButton.addEventListener('click',() => { tick(); refreshPanels(); paint(); });
 	speedSelect.addEventListener('change',() => { rate = Number(speedSelect.value); });
 	decay.addEventListener('change',() => { model.decay = decay.checked; message.textContent = `Price decay ${model.decay ? 'enabled' : 'disabled'}: ${model.decay ? 'bids and appeal weaken with distance.' : 'signals reach the whole map.'}`; });
 	derived.addEventListener('change',() => { model.derived = derived.checked; message.textContent = `Derived bid ${model.derived ? 'enabled' : 'disabled'}.`; });
@@ -220,7 +225,7 @@ function bootEconomy() {
 	window.addEventListener('resize',fit);
 	stats.reset(model);
 	for (let n = 0; n < Math.round(16/ECONOMY_DT); n++) tick();
-	syncActors(); syncPlayback(); fit();
+	syncActors(); syncPlayback(); fit(); refreshPanels();
 	document.fonts.ready.then(fit);
 	requestAnimationFrame(frame);
 }
