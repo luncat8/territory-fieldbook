@@ -50,9 +50,11 @@ class ActorOptimizer {
 		return Math.tanh(m.profit[i] / ref);
 	}
 
+	// Storage is sized for the town's rooms (housing cap), not for whoever is home: the people cycle
+	// between home and work, so present-pop sizing would collapse buffers below one particle batch
+	// while everyone commutes. Consumption still follows who is present.
 	townPopPlan(i) {
-		const boost = Math.max(0, this.townDrive(i));
-		return Math.min(POP_MAX, this.model.pop[i] + POP_HEADROOM * (1 + boost));
+		return POP_MAX;
 	}
 
 	townCoalTarget(i) {
@@ -250,10 +252,10 @@ class ActorOptimizer {
 		const m = this.model;
 		const pop = m.pop[i];
 		const comfortBefore = COAL_COMFORT * m.satCoal[i] + GOODS_COMFORT * m.satGoods[i];
-		const workCap = Math.min(1, pop * LABOR_PER_POP * BUFFER_SECONDS);
+		const workCap = Math.min(1, pop * LABOR_PER_POP * BUFFER_SECONDS, 1 - m.depleted[i]);
 
 		let restedLabor = 0, restedWork = 0;
-		if (m.depleted[i] > 0 && comfortBefore > 0.2 && m.profit[i] >= -0.03) {
+		if (m.depleted[i] > 0 && comfortBefore > 0.2) {
 			restedWork = Math.min(m.depleted[i], (0.2 + comfortBefore * REST_RATE) * ECONOMY_DT);
 			restedLabor = Math.min(Math.max(0, workCap - m.labor[i]), restedWork);
 			m.depleted[i] -= restedWork;
@@ -284,17 +286,37 @@ class ActorOptimizer {
 		const taxIncome = m.money.collectTax(i, comfort);
 		m.earned[i] += taxIncome - (coalCost + goodsCost) / ECONOMY_DT;
 
-		const mult = m.derived ? (m.taxMult[i] || 1) : 1;
-		const afford = m.money.workerPurse[i] / (m.money.workerPurse[i] + pop * 0.25 * mult);
-		const taxDrag = mult > 1 ? 1 / mult : 1 + 0.18 * (1 - mult);
-		const goalPop = Math.min(POP_MAX, POP_BASE + (POP_MAX - POP_BASE) * comfort * afford * taxDrag);
-		const migrantBoost = restedWork > 0 && pop < goalPop ? Math.min(goalPop - pop, (restedWork / LABOR_PER_POP) * 0.2 * comfort) : 0;
-		const deltaPop = ECONOMY_DT * POP_RATE * (goalPop - pop) + migrantBoost;
-		m.pop[i] = Math.min(POP_MAX, Math.max(0, pop + deltaPop));
-		if (deltaPop < 0) {
-			const shed = Math.min(1 - m.depleted[i], -deltaPop * LABOR_PER_POP);
-			m.depleted[i] += shed;
-			m.emittedDepleted += shed;
+		// Population is the residents' own affair, never a town headcount target: fed and solvent
+		// people split (each birth books the child's fresh capacity as granted supply), and a town in
+		// famine thins after hunger persists (the lost people's mass books as starved on both sides).
+		// The town's only lever is pricing the room — tax — never spawning, shedding or steering anyone.
+		// Enough money means the household purse still backs a starter purse per person: a town that
+		// taxes its residents below that line has people who cannot afford to split.
+		const perCapita = m.money.workerPurse[i] / Math.max(1e-9, pop);
+		const fed = comfort >= BIRTH_COMFORT && perCapita >= START_TAX_PER_POP * WORKER_SECONDS;
+		// A split needs somewhere to stand: births clip to the home cell's labor room, or the flow
+		// engine would silently clamp the overflow and break the mass ledger.
+		const room = Math.max(0, 1 - m.labor[i]);
+		const birth = fed ? Math.min(POP_MAX - pop, ECONOMY_DT * POP_RATE * pop, room / LABOR_PER_POP) : 0;
+		if (birth > 0) {
+			m.pop[i] = pop + birth;
+			const born = birth * LABOR_PER_POP;
+			m.labor[i] += born;
+			m.suppliedLabor += born;
+			m.births += birth;
+		}
+		m.famineSeconds[i] = comfort <= FAMINE_COMFORT ? m.famineSeconds[i] + ECONOMY_DT : 0;
+		if (m.famineSeconds[i] >= FAMINE_SECONDS && pop > 0) {
+			const loss = Math.min(pop, ECONOMY_DT * POP_RATE * pop * 2);
+			const mass = loss * LABOR_PER_POP;
+			const fromLabor = Math.min(m.labor[i], mass);
+			const fromDepleted = Math.min(m.depleted[i], mass - fromLabor);
+			m.labor[i] -= fromLabor;
+			m.depleted[i] -= fromDepleted;
+			m.starvedLabor += fromLabor;
+			m.starvedTired += fromDepleted;
+			m.starved += loss;
+			m.pop[i] = pop - loss;
 		}
 
 		const tax = this.townTaxRate(i);
@@ -302,7 +324,10 @@ class ActorOptimizer {
 		const maxGoods = m.derived ? (GOODS_COMFORT / TOWN_GOODS_NEED) * tax * 0.96 : Infinity;
 		m.coalFlow.cap[i] = this.townCoalBid(i) > 0 && m.priceCoal[i] <= maxCoal ? Math.max(m.coal[i], this.townCoalTarget(i)) : m.coal[i];
 		m.goodsFlow.cap[i] = this.townGoodsBid(i) > 0 && m.priceGoods[i] <= maxGoods ? Math.max(m.goods[i], this.townGoodsTarget(i)) : m.goods[i];
-		m.depletedFlow.cap[i] = this.townHomeBid(i) > 0 ? Math.min(1, 0.25 + 0.75 * Math.max(0, 1 - m.pop[i] / POP_MAX)) : 0;
+		// Towns manage no rest pool: room is the plain cell bound while the town can actually serve
+		// (comfort from real supplies). An unsupplied town rests nobody and holds nobody — tired
+		// workers pass through toward towns that can feed them instead of starving in place.
+		m.depletedFlow.cap[i] = comfort > 0.05 ? 1 : 0;
 	}
 
 	adaptTownTax(i) {
