@@ -163,8 +163,7 @@ class WorkerParticles extends WorkerLifecycle {
 		this.clearFlows(this.model.laborFlow);
 		this.clearFlows(this.model.depletedFlow);
 		this.syncFromCells();
-		this.releaseState(STATE_FRESH);
-		this.releaseState(STATE_DEPLETED);
+		this.release();
 		this.advanceAll();
 		this.admit(STATE_FRESH);
 		this.admit(STATE_DEPLETED);
@@ -268,19 +267,52 @@ class WorkerParticles extends WorkerLifecycle {
 		return p;
 	}
 
-	// A docked worker leaves purely by gradient. Fresh workers employed at a firm stay (the firm consumes them);
-	// every other docked worker walks once its uphill slope clears the dock slope. No town holds or releases.
-	releaseState(s) {
-		const price = this.priceOf(s), alt = this.altOf(s);
+	// A docked worker leaves purely by gradient. A tired worker who has rested partway (fresh units recovered)
+	// goes to a job without waiting for full recovery, so his fresh units free the town labor cap that paid rest
+	// needs; a fresh worker never turns home. Firm workers stay to work until exhausted or the full depleted pool
+// blocks their shift. No town holds or releases.
+	release() {
+		const m = this.model, steer = this.steer;
 		for (let p = 0; p < this.count; p++) {
-			if (this.dockCell[p] < 0 || this.state[p] !== s) continue;
+			if (this.dockCell[p] < 0) continue;
 			const i = this.dockCell[p];
-			if (s === STATE_FRESH && this.isFirm(i)) continue;
-			const mix = s === STATE_FRESH ? 0 : this.mixOf(p);
-			if (!this.steer.sampleGradient(price, alt, mix, i, -Infinity)) continue;
-			if (this.steer.grad[2] < WORKER_DOCK_SLOPE) continue;
-			this.launch(p, i);
+			const fresh = this.portion(p, STATE_FRESH), tired = this.portion(p, STATE_DEPLETED);
+			const homeMix = walletWeight(this.gold[p], this.amount[p], m.workforce.refFee);
+			if (this.isFirm(i)) {
+				// A full depleted pool caps the recipe, so the worker's leftover fresh can never be worked and
+				// the shift could never complete; the mostly-tired ones end it and free the room for the rest.
+				const stuck = m.depleted[i] + WORKER_DUST >= m.depletedFlow.cap[i] && tired >= fresh;
+				if (this.state[p] === STATE_FRESH && !stuck) continue;
+				if (!steer.sampleGradient(m.priceHome, m.priceRest, homeMix, i, -Infinity)) continue;
+				if (steer.grad[2] < WORKER_DOCK_SLOPE) continue;
+				this.travel(p, i, STATE_DEPLETED);
+				continue;
+			}
+			const laborOk = steer.sampleGradient(m.priceLabor, null, 0, i, -Infinity);
+			const laborSteep = laborOk ? steer.grad[2] : 0, laborHx = steer.grad[3], laborHy = steer.grad[4];
+			const homeOk = steer.sampleGradient(m.priceHome, m.priceRest, homeMix, i, -Infinity);
+			const homeSteep = homeOk ? steer.grad[2] : 0, homeHx = steer.grad[3], homeHy = steer.grad[4];
+			const laborClear = laborOk && laborSteep >= WORKER_DOCK_SLOPE;
+			const homeClear = homeOk && homeSteep >= WORKER_DOCK_SLOPE;
+			let want = -1;
+			if (this.state[p] === STATE_FRESH) {
+				if (laborClear) want = STATE_FRESH;
+			} else if (fresh > WORKER_DUST && laborClear && (!homeClear || fresh >= tired)) want = STATE_FRESH;
+			else if (homeClear) want = STATE_DEPLETED;
+			if (want < 0) continue;
+			steer.grad[2] = want === STATE_FRESH ? laborSteep : homeSteep;
+			steer.grad[3] = want === STATE_FRESH ? laborHx : homeHx;
+			steer.grad[4] = want === STATE_FRESH ? laborHy : homeHy;
+			this.travel(p, i, want);
 		}
+	}
+
+	travel(p, i, want) {
+		if (this.state[p] !== want) {
+			this.crossDock(p, i, this.state[p]);
+			this.state[p] = want;
+		}
+		this.launch(p, i);
 	}
 
 	launch(p, i) {

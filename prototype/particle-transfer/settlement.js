@@ -166,25 +166,46 @@ class Settlements {
 	foundTown(c) {
 		const m = this.model;
 		const cx = c % ECONOMY_WIDTH, cy = Math.floor(c / ECONOMY_WIDTH);
+		const x0 = Math.max(0, cx - FOUND_RADIUS), x1 = Math.min(ECONOMY_WIDTH - 1, cx + FOUND_RADIUS);
+		const y0 = Math.max(0, cy - FOUND_RADIUS), y1 = Math.min(ECONOMY_HEIGHT - 1, cy + FOUND_RADIUS);
 		let settled = 0, savings = 0, workers = 0;
-		for (let y = Math.max(0, cy - FOUND_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, cy + FOUND_RADIUS); y++) {
-			for (let x = Math.max(0, cx - FOUND_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, cx + FOUND_RADIUS); x++) {
+		// Summed before relocation: relocated parkers carry their tired stock into c, which a single pass
+		// would count twice or miss depending on whether c was already visited.
+		for (let y = y0; y <= y1; y++) {
+			for (let x = x0; x <= x1; x++) {
 				const n = economyIndex(x, y);
-			if (m.actors[n]) continue;
+				if (!m.actors[n]) settled += m.depleted[n];
+			}
+		}
+		for (let y = y0; y <= y1; y++) {
+			for (let x = x0; x <= x1; x++) {
+				const n = economyIndex(x, y);
+				if (m.actors[n]) continue;
 				workers += m.labor[n];
 				// Parked unemployed workers join the new town with their wallets, stock and shift-claim backing
 				// before the founding grant claims the leftover pool gold; those that do not fit stay parked.
 				m.workers.relocateDocked(n, c);
 				if (n !== c) this.gatherLabor(n, c);
-			settled += m.depleted[n];
-			savings += m.depletedFlow.gold[n];
-			m.depleted[n] = 0;
-			m.depletedFlow.gold[n] = 0;
-			m.depletedFlow.intent[n] = 0;
+				savings += m.depletedFlow.gold[n];
+				m.depleted[n] = 0;
+				m.depletedFlow.gold[n] = 0;
+				m.depletedFlow.intent[n] = 0;
 			}
 		}
 		settled += m.workers.absorbNear(cx, cy, FOUND_RADIUS);
 		savings += m.workers.absorbedGold;
+		// absorbNear only settles depleted-state workers; docked fresh parkers survive with their tired
+		// portions, which must stay backed by stock or their fatigue reappears from nothing when they leave.
+		for (let y = y0; y <= y1; y++) {
+			for (let x = x0; x <= x1; x++) {
+				const n = economyIndex(x, y);
+				if (m.actors[n]) continue;
+				const left = m.workers.dockedAmount(STATE_DEPLETED, n);
+				if (left <= 0) continue;
+				m.depleted[n] = left;
+				settled -= left;
+			}
+		}
 		m.restedDepleted += settled;
 		m.actors[c] = ECONOMY_TOWN;
 		m.scale[c] = m.taxMult[c] = 1;
