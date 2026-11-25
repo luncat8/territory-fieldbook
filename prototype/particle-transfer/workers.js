@@ -11,6 +11,16 @@ const FACILITY_UNEMPLOY_WORKERS = 4;
 const FOUND_FIRM_COOLDOWN_TICKS = 300;
 const STATE_FRESH = 0;
 const STATE_DEPLETED = 1;
+const STARVE_SECONDS = 60;
+// A shift longer than this hunger level is interrupted by a food trip: the worker heads home to eat
+// before the starvation budget runs out (draft: food is bought at the town bazaar, not delivered to work).
+const FOOD_TRIP_HUNGER = STARVE_SECONDS * 0.5;
+const FED_COMFORT = 0.15;
+const BIRTH_COMFORT = 0.7;
+// Starter purse per person a parent needs before splitting; matches the seeded per-capita purse
+// (START_TAX_PER_POP * WORKER_SECONDS), which lives in gold.js and loads after this file.
+const BIRTH_PURSE = 2.6;
+const BIRTH_COOLDOWN_TICKS = 1800;
 
 class WorkerParticles extends WorkerLifecycle {
 	constructor(model) {
@@ -27,6 +37,8 @@ class WorkerParticles extends WorkerLifecycle {
 		this.worked = new Float64Array(WORKER_CAP);
 		this.gold = new Float64Array(WORKER_CAP);
 		this.intent = new Float64Array(WORKER_CAP);
+		this.hunger = new Float64Array(WORKER_CAP);
+		this.birthTick = new Int32Array(WORKER_CAP);
 		this.wid = new Int32Array(WORKER_CAP);
 		this.dockCell = new Int32Array(WORKER_CAP);
 		this.arriveCell = new Int32Array(WORKER_CAP);
@@ -45,9 +57,9 @@ class WorkerParticles extends WorkerLifecycle {
 		this.dockHead.fill(-1);
 		this.queue.fill(0);
 		this.unemployed.fill(0);
+		this.hunger.fill(0);
 		this.nextId = 1;
 		this.emitted = this.arrivals = this.docked = 0;
-		this.absorbedGold = 0;
 		this.unemploymentTotal = 0;
 		this.lastFoundTick = 0;
 	}
@@ -167,6 +179,7 @@ class WorkerParticles extends WorkerLifecycle {
 		this.advanceAll();
 		this.admit(STATE_FRESH);
 		this.admit(STATE_DEPLETED);
+		this.live();
 		this.compact();
 		this.sweepUnowned();
 		this.updateUnemployment();
@@ -241,6 +254,8 @@ class WorkerParticles extends WorkerLifecycle {
 		this.worked[p] = 0;
 		this.gold[p] = gold;
 		this.intent[p] = intent;
+		this.hunger[p] = 0;
+		this.birthTick[p] = this.model.ticks;
 		this.wid[p] = this.nextId++;
 		this.arriveCell[p] = -1;
 		this.dockCell[p] = i;
@@ -260,6 +275,8 @@ class WorkerParticles extends WorkerLifecycle {
 		this.worked[p] = 0;
 		this.gold[p] = gold;
 		this.intent[p] = 0;
+		this.hunger[p] = 0;
+		this.birthTick[p] = this.model.ticks;
 		this.wid[p] = this.nextId++;
 		this.dockCell[p] = -1;
 		this.arriveCell[p] = -1;
@@ -269,8 +286,8 @@ class WorkerParticles extends WorkerLifecycle {
 
 	// A docked worker leaves purely by gradient. A tired worker who has rested partway (fresh units recovered)
 	// goes to a job without waiting for full recovery, so his fresh units free the town labor cap that paid rest
-	// needs; a fresh worker never turns home. Firm workers stay to work until exhausted, then head home.
-	// No town holds or releases.
+	// needs. Firm workers stay to work until exhausted — or until hunger says the shift must break for a food
+	// trip home, whichever comes first. No town holds or releases.
 	release() {
 		const m = this.model, steer = this.steer;
 		for (let p = 0; p < this.count; p++) {
@@ -279,9 +296,10 @@ class WorkerParticles extends WorkerLifecycle {
 			const fresh = this.portion(p, STATE_FRESH), tired = this.portion(p, STATE_DEPLETED);
 			const homeMix = walletWeight(this.gold[p], this.amount[p], m.workforce.refFee);
 			if (this.isFirm(i)) {
-				// A mostly-tired worker ends its shift and frees the room for the rest; its leftover fresh
-				// portion is too small to matter. No pool-cap condition — towns and firms manage no wait pool.
-				const stuck = tired >= fresh;
+				// A mostly-tired worker ends its shift and frees the room for the rest; a hungry worker breaks
+				// for the bazaar even mid-shift. Its leftover fresh portion is too small to matter. No
+				// pool-cap condition — towns and firms manage no wait pool.
+				const stuck = tired >= fresh || this.hunger[p] > FOOD_TRIP_HUNGER;
 				if (this.state[p] === STATE_FRESH && !stuck) continue;
 				if (!steer.sampleGradient(m.priceHome, m.priceRest, homeMix, i, -Infinity)) continue;
 				if (steer.grad[2] < WORKER_DOCK_SLOPE) continue;
@@ -329,7 +347,6 @@ class WorkerParticles extends WorkerLifecycle {
 
 	advanceAll() {
 		const m = this.model, steer = this.steer;
-		let recovered = 0;
 		this.queue.fill(0);
 		for (let p = 0; p < this.count; p++) {
 			if (this.dockCell[p] >= 0) continue;
@@ -339,16 +356,16 @@ class WorkerParticles extends WorkerLifecycle {
 			const ci = this.cellOf(p);
 			const buyer = (flow.buyers & (1 << m.actors[ci])) !== 0;
 			const moving = steer.sampleGradient(price, alt, mix, ci, -Infinity) && steer.grad[2] >= WORKER_DOCK_SLOPE;
-			if (buyer && flow.cap[ci] - stock[ci] > WORKER_DUST && (s === STATE_FRESH || !moving)) {
-				if (!this.fits(p, ci)) recovered += this.restWalking(p, ci, 1);
-				if (this.state[p] !== s) continue;
+			// A worker only waits at a buyer while that buyer is locally the best option: waiting registers
+			// the queue that cools the posted bid, and once another buyer outbids the field the walker
+			// leaves instead of being held forever on a room sliver no shift-end will open.
+			if (buyer && !moving && this.fits(p, ci)) {
 				this.arriveCell[p] = ci;
 				this.vx[p] = this.vy[p] = 0;
 				continue;
 			}
-			const still = GRADIENT_KNEE / (steer.grad[2] + GRADIENT_KNEE);
-			if (!buyer) recovered += this.restWalking(p, ci, still);
-			if (this.state[p] !== s) continue;
+		const still = GRADIENT_KNEE / (steer.grad[2] + GRADIENT_KNEE);
+		if (this.state[p] !== s) continue;
 			if (s === STATE_DEPLETED) this.intent[p] = m.settlements.nextIntent(this.intent[p], still, ci);
 			if (!moving || this.amount[p] <= WORKER_DUST) {
 				this.vx[p] = this.vy[p] = 0;
@@ -361,8 +378,6 @@ class WorkerParticles extends WorkerLifecycle {
 			flow.flowY[ci] += this.vy[p] * this.amount[p];
 			flow.flowRate[ci] += this.amount[p];
 		}
-		m.restedDepleted += recovered;
-		m.suppliedLabor += recovered;
 	}
 
 	fits(p, i) {
@@ -421,44 +436,130 @@ class WorkerParticles extends WorkerLifecycle {
 		}
 	}
 
-	// Founding converts depleted workers within the radius into residents; walking workers bring their wallets,
-	// docked workers' wallets already sit in the cell stock that foundTown banks. Both cease to be workers.
-	absorbNear(cx, cy, radius) {
-		let settled = 0;
-		this.absorbedGold = 0;
-		const home = economyIndex(Math.round(cx), Math.round(cy));
+	// Workers own their life cycle. A town only feeds whoever is docked there; nobody spawns or despawns
+	// from the town side. Fed, comfortable workers with savings split in two, and a worker unfed for
+	// STARVE_SECONDS starves wherever he is.
+	live() {
+		const m = this.model;
 		for (let p = 0; p < this.count; p++) {
-			if (this.state[p] !== STATE_DEPLETED) continue;
-			if (Math.abs(this.x[p] - cx) > radius || Math.abs(this.y[p] - cy) > radius) continue;
-			if (this.dockCell[p] >= 0 && this.model.actors[this.dockCell[p]]) continue;
-			if (this.dockCell[p] < 0) {
-				settled += this.tired[p];
-				this.model.workedLabor += this.portion(p, STATE_FRESH);
-				this.absorbedGold += this.gold[p];
-			}
-			if (this.tracker && this.gold[p] > 0) this.tracker.bank(this.wid[p], this.gold[p], home);
-			this.amount[p] = this.gold[p] = this.intent[p] = 0;
+			const i = this.dockCell[p] >= 0 ? this.dockCell[p] : this.cellOf(p);
+			if (m.actors[i] === ECONOMY_TOWN && m.workforce.comfortAt(i) > FED_COMFORT) this.hunger[p] = 0;
+			else this.hunger[p] += ECONOMY_DT;
 		}
-		this.compact();
-		return settled;
+		for (let p = this.count - 1; p >= 0; p--) {
+			if (this.hunger[p] < STARVE_SECONDS) continue;
+			this.starve(p);
+		}
+		this.split();
 	}
 
-	// Founding towns gather parked unemployed workers: docked fresh parkers bring their wallets and stock to
-	// the new cell so no wallet loses its pool backing; those that exceed the town's labor room stay parked.
+	// A starved worker leaves the world: his purse orphans where he fell (towns inherit, open ground goes
+	// to the haul vault) and his portions book as starved on both mass sides, so no identity needs a case.
+	starve(p) {
+		const m = this.model;
+		const cell = this.cellOf(p);
+		m.starvedLabor += this.portion(p, STATE_FRESH);
+		m.starvedTired += this.tired[p];
+		m.starved++;
+		if (this.tracker) this.tracker.starved(this.wid[p], this.gold[p], cell);
+		const dock = this.dockCell[p];
+		if (dock >= 0) {
+			// His portions leave the host stock with him: a docked worker's mass lives in the cell pools,
+			// so removing the object without releasing them would leave phantom mass behind.
+			m.labor[dock] = Math.max(0, m.labor[dock] - this.portion(p, STATE_FRESH));
+			m.depleted[dock] = Math.max(0, m.depleted[dock] - this.tired[p]);
+			this.flowOf(this.state[p]).gold[dock] = Math.max(0, this.flowOf(this.state[p]).gold[dock] - this.gold[p]);
+		}
+		if (this.gold[p] > 0) m.money.orphan(cell, this.gold[p]);
+		if (dock >= 0) this.unlink(p);
+		this.removeAt(p);
+	}
+
+	// A fed worker whose needs are met and who holds a starter purse splits in two. The child is a new
+	// person: his portions join the home cell stock and book as granted supply, like the tracked-worker
+	// tool; he starts broke and earns his own purse, so savings are never split and no ledger needs a
+	// case. Births pace on the cooldown and the home cell's room, with no town action at all.
+	split() {
+		const m = this.model;
+		for (let p = 0; p < this.count; p++) {
+			if (this.count >= WORKER_CAP) return;
+			if (this.hunger[p] > WORKER_DUST || this.dockCell[p] < 0) continue;
+			if (m.ticks - this.birthTick[p] < BIRTH_COOLDOWN_TICKS) continue;
+			const home = this.dockCell[p];
+			if (m.actors[home] !== ECONOMY_TOWN || m.workforce.comfortAt(home) < BIRTH_COMFORT) continue;
+			if (this.gold[p] < BIRTH_PURSE * (this.amount[p] / WORKER_UNIT)) continue;
+			const fresh = this.portion(p, STATE_FRESH);
+			if (m.labor[home] + fresh > m.laborFlow.cap[home] + WORKER_DUST) continue;
+			if (m.depleted[home] + this.tired[p] > 1 + WORKER_DUST) continue;
+			this.spawnSplit(p, home, fresh);
+		}
+	}
+
+	spawnSplit(p, home, fresh) {
+		const m = this.model;
+		const child = this.count++;
+		this.state[child] = this.state[p];
+		this.x[child] = this.x[p];
+		this.y[child] = this.y[p];
+		this.vx[child] = this.vy[child] = 0;
+		this.amount[child] = this.amount[p];
+		this.tired[child] = this.tired[p];
+		this.worked[child] = 0;
+		this.gold[child] = 0;
+		this.intent[child] = 0;
+		this.hunger[child] = 0;
+		this.birthTick[child] = m.ticks;
+		this.wid[child] = this.nextId++;
+		this.arriveCell[child] = -1;
+		this.dockCell[child] = home;
+		this.link(child, home);
+		this.birthTick[p] = m.ticks;
+		m.labor[home] += fresh;
+		m.depleted[home] += this.tired[child];
+		m.suppliedLabor += fresh;
+		m.emittedDepleted += this.tired[child];
+		m.births++;
+		if (this.tracker) this.tracker.born(this.wid[p], this.wid[child], home);
+	}
+
+	// Founding docks walking depleted settlers at the new town as its first resting residents; their
+	// savings bank into the household purse. Settlers the cell cannot hold keep walking with their
+	// wallets, and forget the pledge once a home field reaches them.
+	absorbNear(cx, cy, radius) {
+		const m = this.model;
+		const home = economyIndex(Math.round(cx), Math.round(cy));
+		for (let p = 0; p < this.count; p++) {
+			if (this.state[p] !== STATE_DEPLETED || this.dockCell[p] >= 0) continue;
+			if (Math.abs(this.x[p] - cx) > radius || Math.abs(this.y[p] - cy) > radius) continue;
+			if (!this.fits(p, home)) continue;
+			const gold = this.gold[p];
+			this.park(p, home);
+			this.gold[p] = 0;
+			m.depletedFlow.gold[home] = Math.max(0, m.depletedFlow.gold[home] - gold);
+			m.money.workerPurse[home] += gold;
+			if (this.tracker && gold > 0) this.tracker.bank(this.wid[p], gold, home);
+		}
+	}
+
+	// Founding towns gather parked workers: docked workers bring their wallets, stock and shift-claim
+	// backing to the new cell so no wallet loses its pool backing; those that exceed the town's room
+	// stay parked.
 	relocateDocked(from, to) {
 		const m = this.model;
 		let moved = 0;
 		let p = this.dockHead[from];
 		while (p >= 0) {
 			const nx = this.dockNext[p];
-			if (this.state[p] === STATE_FRESH && this.amount[p] > WORKER_DUST && m.labor[to] + this.amount[p] <= 1 + 1e-9) {
+			const fresh = this.portion(p, STATE_FRESH), tired = this.tired[p];
+			const room = m.labor[to] + fresh <= 1 + 1e-9 && m.depleted[to] + tired <= 1 + 1e-9;
+			if (this.amount[p] > WORKER_DUST && room) {
 				const g = this.gold[p];
 				this.unlink(p);
 				this.link(p, to);
 				this.dockCell[p] = to;
-				m.laborFlow.gold[from] = Math.max(0, m.laborFlow.gold[from] - g);
-				m.laborFlow.gold[to] += g;
-				const fresh = this.portion(p, STATE_FRESH), tired = this.tired[p];
+				const flow = this.flowOf(this.state[p]);
+				flow.gold[from] = Math.max(0, flow.gold[from] - g);
+				flow.gold[to] += g;
 				m.labor[from] -= fresh;
 				m.labor[to] += fresh;
 				m.depleted[from] = Math.max(0, m.depleted[from] - tired);
@@ -529,6 +630,8 @@ class WorkerParticles extends WorkerLifecycle {
 		this.worked[p] = this.worked[last];
 		this.gold[p] = this.gold[last];
 		this.intent[p] = this.intent[last];
+		this.hunger[p] = this.hunger[last];
+		this.birthTick[p] = this.birthTick[last];
 		this.wid[p] = this.wid[last];
 		this.arriveCell[p] = this.arriveCell[last];
 		this.dockCell[p] = lastDock;
@@ -555,6 +658,8 @@ class WorkerParticles extends WorkerLifecycle {
 		this.worked[p] = 0;
 		this.gold[p] = gold;
 		this.intent[p] = flow.intent ? flow.intent[i] : 0;
+		this.hunger[p] = 0;
+		this.birthTick[p] = this.model.ticks;
 		this.wid[p] = this.nextId++;
 		this.dockCell[p] = -1;
 		this.arriveCell[p] = -1;
