@@ -1,5 +1,5 @@
 // Owns: measured session histories, throughput readouts and the live conservation balance sheet.
-// Edit for: sparkline metrics and carried worker-gold ledger readouts.
+// Edit for: sparkline metrics, carried worker-gold, harvest and waste ledger readouts.
 'use strict';
 
 class EconomyTelemetry {
@@ -27,6 +27,8 @@ class EconomyTelemetry {
 		this.goldMined = $('gold-mined');
 		this.goldHeld = $('gold-held');
 		this.workerCarried = $('worker-carried');
+		this.ledger = {};
+		for (const id of ['wood-in', 'wood-out', 'wood-held', 'food-in', 'food-out', 'food-held', 'matter-used', 'co2-made', 'litter-made', 'litter-held']) this.ledger[id] = $(id);
 	}
 
 	reset(model) {
@@ -106,8 +108,25 @@ class EconomyTelemetry {
 		this.goldMined.textContent = model.money.mined.toFixed(2);
 		this.goldHeld.textContent = this.values[4].toFixed(2);
 		if (this.workerCarried) this.workerCarried.textContent = this.carriedTotal.toFixed(2);
+		this.showMatter(model);
 		const seconds = Math.floor(model.ticks * ECONOMY_DT);
 		this.clock.textContent = `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
+	}
+
+	showMatter(model) {
+		const { harvest:h, land } = model, out = this.ledger;
+		let wood = 0, food = 0;
+		for (let i = 0; i < ECONOMY_SIZE; i++) { wood += h.wood[i]; food += h.food[i]; }
+		out['wood-in'].textContent = (h.seededWood + h.harvestedWood).toFixed(3);
+		out['wood-out'].textContent = (h.usedWood + h.builtWood).toFixed(3);
+		out['wood-held'].textContent = wood.toFixed(3);
+		out['food-in'].textContent = (h.seededFood + h.harvestedFood).toFixed(3);
+		out['food-out'].textContent = h.eatenFood.toFixed(3);
+		out['food-held'].textContent = food.toFixed(3);
+		out['matter-used'].textContent = land.used.toFixed(3);
+		out['co2-made'].textContent = land.co2.toFixed(3);
+		out['litter-made'].textContent = land.littered.toFixed(3);
+		out['litter-held'].textContent = land.litterHeld().toFixed(3);
 	}
 
 	sparkline(card) {
