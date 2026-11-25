@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-for (const file of ['simulation.js', 'actors.js', 'gold.js', 'workforce.js', 'land.js', 'settlement.js']) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
+for (const file of ['simulation.js', 'actors.js', 'towns.js', 'gold.js', 'workforce.js', 'land.js', 'settlement.js', 'harvest.js']) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 
 const sum = (values) => values.reduce((total, value) => total + value, 0);
 const closeTo = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-7, `${actual} ≠ ${expected}`);
@@ -105,16 +105,24 @@ test('tired workers inside a town home field go home instead of founding', () =>
 	assert.equal(model.settlements.founded, 0);
 });
 
-test('a young town fells forest up to half tier, then only comfort lifts it', () => {
+function forestAround(model, c) {
+	let total = 0;
+	for (let i = 0; i < ECONOMY_SIZE; i++) {
+		if (Math.abs(i % ECONOMY_WIDTH - c % ECONOMY_WIDTH) <= HARVEST_RADIUS && Math.abs(Math.floor(i / ECONOMY_WIDTH) - Math.floor(c / ECONOMY_WIDTH)) <= HARVEST_RADIUS) total += model.settlements.forest[i];
+	}
+	return total;
+}
+
+test('a young town builds from wood its residents harvest, up to half tier, then only comfort lifts it', () => {
 	const model = emptyMap();
 	strand(model, 20, 14, 0.4, 0.5);
 	run(model, 6);
 	const young = model.actors.indexOf(ECONOMY_TOWN);
-	const forest = model.settlements.sumAround(model.settlements.forest, young);
+	const forest = forestAround(model, young);
 	run(model, 60);
 	const tier = model.settlements.tier[young];
-	assert.ok(model.settlements.felled > 0);
-	assert.ok(model.settlements.sumAround(model.settlements.forest, young) < forest);
+	assert.ok(model.harvest.harvestedWood > 0 && model.harvest.builtWood > 0);
+	assert.ok(forestAround(model, young) < forest);
 	assert.ok(tier > 0.2 && tier <= WOOD_TIER_CAP + 1e-9, `tier ${tier}`);
 	assert.ok(model.settlements.restFactor(young) < 1 && model.settlements.taxFactor(young) < 1);
 	goldBalanced(model);
