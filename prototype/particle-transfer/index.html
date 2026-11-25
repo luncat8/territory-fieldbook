@@ -84,6 +84,12 @@
 				<canvas id="tracked-purse" class="tracked-purse" aria-label="Watched worker purse over time"></canvas>
 				<ol id="tracked-events" class="tracked-events"></ol>
 			</article>
+			<article class="panel economy" id="economy-panel">
+				<div class="panel-heading"><i data-icon="pulse"></i><h2>Economy inspector</h2><span id="economy-copy-state" class="actor-count" role="status"></span><button id="economy-copy" class="text-button" type="button"><i data-icon="copy"></i>Copy all stats</button></div>
+				<p class="tool-hint">Map-wide averages for workers, gold, wages and prices. Red rows and the flags point at where the chain stalls. Copy all stats copies the full report, the watched workers, every actor and the 10-second history as plain text.</p>
+				<ul id="economy-flags" class="economy-flags"></ul>
+				<dl class="tracked-props economy-props" id="economy-props"></dl>
+			</article>
 		</section>
 		<footer class="footer"><span><i class="footer-mark"></i>Fluxfield <b>/</b> Particle transfer lab</span><span>Fixed timestep <b>·</b> 60 Hz</span></footer>
 	</main>
@@ -108,8 +114,10 @@
 	<script src="workforce.js"></script>
 	<script src="land.js"></script>
 	<script src="settlement.js"></script>
+	<script src="diagnostics.js"></script>
 	<script src="fields.js"></script>
 	<script src="telemetry.js"></script>
+	<script src="economy-panel.js"></script>
 	<script src="app.js"></script>
 </body>
 </html>
