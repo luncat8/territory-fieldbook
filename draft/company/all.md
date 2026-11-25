@@ -9,7 +9,7 @@ think how to better use workforces to achieve this
 we can pick random cell around sawmill to cut forest according to workforce in sawmill.
 place logs on map at cell where it was cut.
 then move by demand.
-to control how menu log really need - we can use same demand field: if gradient low - then no need to cut meany trees.
+to control how many logs really need - we can use same demand field: if gradient low - then no need to cut meany trees.
 
 #### sawmill-like factories that work with map cells around
 

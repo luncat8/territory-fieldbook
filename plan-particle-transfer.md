@@ -1,222 +1,236 @@
 # Particle transfer model plan
 
-Standalone design for the particle-based money/economy engine described in
-`draft/particle_transfer_model.md` and `particle_transfer_model-LLM-thoughts.md`. It replaces the
-cell-field transport of `map-money-gold.js` with Lagrangian goods and worker particles over the same
-pricing, pool, rest, tax and settlement rules that `prototype/price-model-b2` already proves smooth
-(46/46 tests). All numbers live in the owning source file.
+Design for the particle economy engine of `draft/particle_transfer_model.md` (with `draft/town-settlement.md`,
+`draft/workers-food.md`, `draft/company/`). Fields carry **prices and appeal** only; every moving or stored
+good and **every person** is a particle object with an owner, a cost basis and (for workers) a wallet. The
+pricing, pool, tax, land and settlement rules are the ones `prototype/price-model-b2` already runs on a cell
+field; this engine swaps the transport substrate (Eulerian cell flow → Lagrangian SoA particles) under them.
+All numbers live in the owning source file; numbers below are starting values.
 
 ## Scope
 
-Default money economy for the map: diffused fields carry **prices and living appeal** only; all moving
-goods and moving workforce are **particles** with explicit ownership, per-particle cost basis, spoilage,
-transport cost and carried gold. The engine ships behind the existing `mape.moneyEngine` switch
-(`mapeStepMoney` in `map-economy.js`) and becomes the default once the standalone lab passes conservation
-and profit-identity tests.
-
-**Transport-substrate swap, not a rule rewrite.** `prototype/price-model-b2` runs the full rule set on a
-pure cell field. Its `workforce.js` (`WorkerPolicy`) and `settlement.js` (`Settlements`) are engine-neutral
-— they read only shared fields and act per cell. This plan applies the same classes **per particle** and
-changes only the transport substrate (Eulerian field advection → Lagrangian SoA particles). New code is the
-particle pool, spawn accumulators, per-particle cost/spoilage/transport accrual, arrival split and particle
-rendering.
-
-Deferred: Transport Company staffing/depot economy, road/ship overrides, return-payment leg as a visible
-coin particle (initially a direct credit).
+- Built and verified in a standalone lab `prototype/particle-transfer/` on a B2 base, then ported to the game as
+  `mape.moneyEngine === 'particle'` and made the default.
+- Goods particles: variable `amount` (spawn accumulator, spoilage). Worker particles: fixed headcount with a
+  continuous `tired` portion, persistent identity and wallet.
+- Town population = the worker objects inside it. A town is not a worker router: it never holds, releases or
+  rate-limits workers. It sells rest for tax and buys goods for comfort.
+- Deferred (own drafts/plans): house owners, food bag and bazaar, free workers gathering on the map, Transport
+  Company staffing/depots, visible return-payment coin particles, roads/ships, town upkeep and depot wear,
+  shelter mortality, construction material (wood) for new firms, several firms per cell.
 
 ## Time model
 
-One sim tick = `SIM_STEP_SEC = 0.05 s` (`main.js`); speeds multiply tick count, never `dt`. Every rate is
-per simulation second and every update is a bounded fraction of what it applies to (see
-`units-and-scales.md`): one pass per field per tick, no multipass, `D · dt ≤ MAPE_MIX_MAX`, fade with
-`exp(−k · dt)`. Particles advance a bounded displacement per tick (`speed · dt`, terrain-weighted), so the
-rule is identical at any particle count and never overshoots a cell.
+Lab tick `ECONOMY_DT = 1/60 s` (B2); game tick `SIM_STEP_SEC` (`main.js`), speeds multiply tick count, never
+`dt`. Every rate is per simulation second and every update is a bounded fraction of its source
+(`units-and-scales.md`): one diffusion pass per field per tick, fades as `exp(−k·dt)`. A particle moves at most
+`speed · dt` per tick (< 1 cell), so rules do not depend on particle count.
 
 ## Fields (not conserved — diffused + faded)
 
-- Buyer commodity bids: `priceCoal`, `priceIron`, `priceGoods`, `priceLogs`, `priceFood`.
-- Firm wage bid: `priceLabor`.
-- Town living appeal: `priceHome = START_PRICE · shelter(comfort) · (START_TAX_PER_POP / goldTax)` and
-  `priceRest = START_PRICE · shelter(comfort)`, both positive at towns, inverse to actual gold living tax,
-  fading with distance so workers pick the cheapest and nearest supplied town. No `popRoom` multiplier:
-  wait-pool crowding and near-capacity fullness act through `goldTax` (`townRestTax`) instead.
+- Buyer bids: `priceCoal`, `priceGoods` (later `priceIron`, `priceLogs`, `priceFood`). Firm wage bid: `priceLabor`.
+- Home fields (B2 `workforce.js`): `priceRest` (rest quality: comfort, tier, free-space lift, land rest, crowding)
+  and `priceHome` (rest per gold of actual tax: `shelter · refTax / goldTax`, no `popRoom`).
+- Bids come from the B2 optimizer: output value split over inputs inside `JOINT_BUDGET_SHARE`, cooled by owed
+  bills (`creditCool`), zero when input buffers are full, profit smoothed by `tanh(profit / ref)`.
 
-Fields are computed by the same bid optimizer as B2 (`actors.js`): output value split across inputs within a
-joint budget (`JOINT_BUDGET_SHARE`), cooled by owed bills (`creditCool`), suppressed to zero when input
-buffers are full, profit smoothed through `tanh(profit / ref)` to drive scale and bid shares.
+## Particle pools
 
-## Particles (conserved mass & gold — preallocated TypedArray SoA pools)
+Fixed-capacity typed-array SoA, dense, compacted by swap-remove (loops never skip holes). No allocation,
+closure or object literal per tick. Positions are continuous cell coordinates; `hx, hy` is the smoothed heading.
 
-- **Goods particles:** `{ kind, x, y, vx, vy, amount, factoryCost, transportCost, owner }`
-- **Worker particles:** `{ state (FRESH | DEPLETED), x, y, vx, vy, amount, gold, homeTown }`
-- **Settled town residents:** stay pooled in town cell `pop[i]` (household savings `workerPurse[i]`); they
-  spawn `FRESH` particles to commute up `priceLabor` and `DEPLETED` migrant particles (carrying proportional
-  `workerPurse`) when a town shrinks (`deltaPop < 0`). Resident savings never attach to idle commuting
-  `FRESH` particles.
+- **Goods:** `kind, x, y, hx, hy, amount, factoryCost, transportCost, owner`.
+- **Workers:** `id, state, cell, x, y, hx, hy, amount, tired, gold, intent, since`.
+  `amount = WORKER_UNIT` is fixed (lab: 1 worker; the 64×64 sizing pass may raise it to a fixed crew).
+  `tired ∈ [0, amount]` is the depleted portion; fresh portion = `amount − tired`. `id` is stable across
+  compaction so a worker can be watched for its whole life. `since` is the tick of the last state change.
 
-`x`, `y` are continuous cell coordinates; `vx`, `vy` are the smoothed heading. Pools are fixed-capacity
-typed-array SoA with a free-list; no per-tick allocation, closure or object literal in the hot path.
+Docked workers (pool, shift, wait, room, still) are the same objects with `cell` set; they are not drawn while
+docked but always counted, carry their gold and keep their state.
 
-## Goods particle cost, transport & depletion
+## Cell view: how B2 rules are reused unchanged
 
-- **At producer spawn (`owner`):** `factoryCost` carries the exact input book cost + labor wages spent to make
-  `amount` (per-particle, not a cell average). A producer launches a particle only when the local uphill price
-  gradient clears `selfPrice = (factoryCost / amount) · (1 + margin)` — the cost-basis sell floor.
-- **In transit:** `transportCost += haulCostRate · amount · dt` (haul effort per unit scales as `1 / conductance`).
-  Perishable kinds deplete: `amount *= exp(−spoilRate · dt)` (food fast; logs/goods slowly or zero;
-  coal/iron/ore do not deplete). Spoiled mass is booked in the conservation ledger:
-  `produced − consumed − spoiled = stored + spawnBuffers + inParticles`.
-- **Derived price, never mutated independently:** `item.price = (factoryCost + transportCost) / amount`. Both
-  transport effort and spoilage shrinking `amount` raise `item.price` along the route.
+B2 rules read per-cell stocks. Each tick, after workers move, one pass over workers rebuilds per-cell
+aggregates (`fill(0)` then accumulate): `labor[i]` (fresh in firm pool + shift), `depleted[i]` (town wait pool),
+`pop[i]` (town occupants: room + wait), `stillDep[i]`, `stillFresh[i]`, wallet sums and `intent · amount` sums.
+`WorkerPolicy`, `Land`, `Settlements` and the actors read this view; their outputs (labor used, rest given, tax
+due, founding) are applied back to the individual workers of that cell in proportion to their share. A rule never
+writes the view.
 
-## Buyer arrival, profit identity & the Transport Company
+## Goods particles
 
-A buyer cell accepts incoming particles only up to `cap − stock`, normalized across competing requests
-(mirrors B2's `receiving`/`room` admission, so a full town never over-accepts).
+- **Spawn:** each producer cell accumulates `(spawnAmount[i], spawnCost[i])`; at `≥ SPAWN_UNIT` it emits one
+  particle with proportional cost, only if the uphill price gradient clears the sell floor
+  `selfPrice = (factoryCost / amount) · (1 + SELL_MARGIN)`. Idle flush: a partial batch above the dust floor is
+  emitted after ~2.5 s without additions, so a closing mine never traps stock.
+- **In transit:** climbs its kind's price field. `transportCost` accrues per distance hauled
+  (`haulCostRate · amount · ds / conductance`; zero while held). Spoilage `amount *= exp(−spoilRate · dt)`
+  (food fast, logs/goods slow, coal/iron/ore none) is booked as `spoiled`.
+- **Derived price:** `item.price = (factoryCost + transportCost) / amount`, never stored. Rendered colour.
+- **Arrival:** a buyer admits up to `cap − stock`, normalized across all particles arriving that tick; the
+  rejected remainder counts as that buyer's queue (cools its bid, never its cap). On admission:
+  1. buyer pays `buyerPay = amount · priceKind[buyer]` from its purse;
+  2. `transportPaid = min(buyerPay, transportCost)` → single map-wide **Transport Company** vault (gentle drip
+     back to active towns so the vault does not hoard);
+  3. `factoryRevenue = buyerPay − transportPaid` → `owner` purse (direct credit).
+  Profit identity: `profit = amount · (buyerUnitPrice − item.price)`; gold is conserved by construction.
+- **Underwater** (`buyerUnitPrice < item.price`): re-steer up any gradient that still clears `item.price`; at a
+  local price maximum non-perishables wait in consignment (no transport accrual), perishables sell at spot before
+  rotting and book the loss on `owner` so the over-supplier scales down.
 
-On arrival at a buyer with room:
-1. Buyer pays `buyerPay = amount · buyerUnitPrice` from its gold purse.
-2. `transportPaid = min(buyerPay, transportCost)` goes to a single map-wide **Transport Company** vault
-   (carriers based across towns and facilities; a gentle dividend/wage drip back to active towns prevents
-   vault hoarding until the Transport Company economy is modelled).
-3. `factoryRevenue = buyerPay − transportPaid` settles to `particle.owner` (direct credit).
+## Worker life cycle
 
-Exact profit identity: `profit = factoryRevenue − factoryCost = buyerPay − (factoryCost + transportCost) =
-amount · (buyerUnitPrice − item.price)`. Map gold stays strictly conserved
-(`−buyerPay + transportPaid + factoryRevenue = 0`).
+States: `WALK_JOB`, `FIRM_POOL`, `SHIFT`, `WALK_HOME`, `TOWN_WAIT`, `ROOM`, `STILL`.
 
-## Underwater arrivals (`buyerUnitPrice < item.price`)
+1. **Job.** A worker with `tired = 0` climbs `priceLabor`. At a firm: a free shift slot → `SHIFT`; else a free
+   pool place → `FIRM_POOL` (FIFO into shifts); else keep walking. Pool + queue count toward occupancy, so the
+   posted wage falls to `0` on overflow (bid only — the admission cap stays, or an emptied pool locks itself out).
+2. **Wage at entry.** On joining the pool the firm prepays the shift: `priceLabor[firm] · amount` from its
+   purse into `gold`. A firm that cannot prepay admits nobody (its bid is already cooled by `creditCool`), so no
+   wage debt and no minted gold exist. Wage level is fixed at entry; later overflow never cuts it.
+3. **Work.** In `SHIFT`, `tired += WORK_RATE · amount · dt`; the firm recipe consumes exactly that labor. At
+   `tired = amount` the worker becomes `WALK_HOME`.
+4. **Home choice.** `WALK_HOME` climbs the wallet-blended score `(1 − w) · priceHome + w · priceRest`,
+   `w = walletWeight(gold, amount)`: broke workers chase rest per gold, funded workers chase rest quality (the
+   pareto choice). A town takes him only if no neighbour scores higher for his `w`, so he is not caught by the
+   first town on the path.
+5. **Wait.** Rooms full but wait-pool place free → `TOWN_WAIT`, no tax, no rest. Wait crowding raises
+   `townRestTax` (B2), steering newcomers elsewhere. Pool full → keep walking.
+6. **Rest.** A free room → `ROOM`: pays `fee = townRestTax · tired` into the town purse. A worker with less
+   than the fee pays all he has and buys rest in proportion; the rest of his `tired` recovers at the shelter rate
+   after leaving. In the room `tired` falls at the town rest rate (comfort, tier, land, free-space lift).
+7. **Leave.** At `tired = 0` he leaves the room immediately (the room is free for the queue). If the
+   `priceLabor` slope at his cell clears the dock gate he walks to the next job; otherwise he becomes
+   `STILL` fresh — **free workforce** (counted for new firms, below).
+8. **Still.** Any walker whose slope falls below the dock gate becomes `STILL`. Still with `tired > 0` rests at
+   the shelter floor for free (`IDLE_RATE · land.rest`), even if not fully depleted, and builds settle intent.
+   A still worker re-launches as soon as his own gradient clears the gate.
 
-If local price drops mid-flight (a nearer supplier filled the town first):
-- **Re-steer first:** if an adjacent uphill price gradient clears `item.price`, follow it toward a hungrier buyer.
-- **At a buyer below `item.price`:** hold only at local price maxima (no higher neighbor); otherwise keep climbing.
-  - **Non-perishables** (ore, coal, logs, durable goods) hold in consignment above their cost floor until the
-    local bid recovers.
-  - **Perishables (food)** sell at the current buyer spot price before rotting to zero, booking the realized
-    negative profit on `owner` so the over-supplying farm/factory scales down.
+Reference cycle (the draft check, exact numbers are tuning): worker with 50 g walks to a job, is paid 5 at entry
+(55), works until tired, walks to the best town for his wallet, waits in its pool while rooms are full, pays 6 on
+check-in (49), rests, leaves, walks to the next job — same `id`, same `amount` throughout.
 
-## Worker cycle, pools & living tax
+## Towns
 
-- **Occupancy-balanced pools smooth commute lag:** firms size an on-site fresh-worker pool from a standby shift
-  base plus smoothed realized shift throughput (`workLoad[i]`, exponential blend `OCCUPANCY_RATE`); hire demand
-  (`priceLabor` bid) scales as `1 − occupancy` all the way to `0` on overflow. Towns size their incoming
-  `DEPLETED` wait pool from resident base plus realized returning-worker rest throughput; wait-pool crowding
-  above normal turnaround (`WAIT_POOL_FREE`) and near-capacity fullness raise `townRestTax(i)` and `taxMult[i]`.
-- **Cycle:** town spawns `FRESH` particles when local `priceLabor` beats the walk gate and the firm pool is below
-  target; they climb `priceLabor` to firms. The firm pays real gold wages from its `purse` directly into
-  `particle.gold` at the work cell — settled wages split proportionally across all on-site worker particles so
-  every shift departs at full wage — and flips used particles to `DEPLETED`. `DEPLETED` particles climb
-  `priceHome` to the cheapest and nearest supplied town.
-- **Dominated-town release:** a town rests a worker only if no neighbor has higher home appeal
-  (`!hasHigherNeighbor(priceHome)`); otherwise the worker keeps climbing instead of being trapped.
-- **Paid rest & tax:** on arrival the worker pays the town's gold living/rest tax out of `particle.gold` into
-  municipal `purse[town]`, banks leftover wages into `workerPurse[town]`, and rests back into town workforce.
-  High-tax towns price out broke workers, pushing them toward cheaper towns.
-- **Grace and shelter rest prevent stranding:** low-tax towns (`mult ≤ 1.15`) grant a small free rest share;
-  towns with near-zero comfort still accept funded workers via shelter rest (banking savings, no tax). Settled
-  residents pay ongoing living tax in proportion to supplied comfort and wait-pool crowding; surplus above the
-  municipal reserve circulates back to residents only in healthy, uncrowded towns.
-- **Town wealth class (picked from B2):** every town gets a deterministic strategy — **cheap** drops living tax
-  to fill vacant slots and keeps its built size; **med** buys needs then grows; **rich** holds a cozy occupancy
-  (queue ≈ 0) and cuts size first when it cannot meet resident needs.
-- **Resident target shrink guards (picked from B2):** cheap/med never shed residents just for being poor (tax is
-  the lever that keeps them full); they shrink slowly only when long-vacant or broke. Full housing still offers
-  a rest floor; an uncrowded town rests workers better (free-space comfort lift).
-- **Still-particle measure (picked from B2):** a worker's stillness derives from the local price slope (B2's
-  `still` field). Still `DEPLETED` particles rest slowly for free (shelter floor) so nobody strands.
+- **Rooms** = built size (B2 tier pop cap × land site quality). **Occupants** = `ROOM` + `TOWN_WAIT` workers.
+  Needs (coal, goods) are consumed per occupant-second; satisfaction gives comfort.
+- **Tax and size by wealth class** (deterministic per cell, B2): **cheap** drops tax to fill vacant rooms, grows
+  when the queue fills; **med** buys needs, then grows; **rich** keeps a cozy occupancy (queue ≈ 0, a few free
+  rooms), raises tax rather than growing, cuts size first when needs are unmet. Cheap/med keep built size and
+  shrink slowly only when long vacant or broke.
+- **Births and deaths** change headcount, never mass of a worker. Per-town accumulators: births
+  `+= BIRTH_RATE · occupants · max(0, comfort − BIRTH_COMFORT) · dt` while rooms are vacant; deaths
+  `+= DEATH_RATE · occupants · max(0, DEATH_COMFORT − comfort) · dt`. At `≥ amount` a newborn worker object
+  (gold 0, `tired = 0`) leaves the town, or the most-tired occupant is removed and his gold goes to the town purse.
+- Gold: towns start with seeded purses; worker wallets are seeded at spawn; the gold mine is the only source.
 
-## Settlement founding from still particles (picked from B2)
+## Settlement founding (still depleted workers)
 
-Penniless still workers found a new low-tier settlement where no town home field reaches them. B2's tested
-mechanics, applied per particle:
+B2 `Settlements` / `Land`, per worker:
 
-- **Still tally:** sum `amount` of `DEPLETED` particles whose stillness is high, within radius 2 of a candidate
-  empty cell.
-- **Reach gate:** only found where local `priceHome + priceRest` is below 0.25, so founding happens beyond town
-  signal, not inside an existing town's halo.
-- **Threshold & cadence:** found when the gathered still sum clears 0.35; scan every ~5 s, not every tick, so a
-  new settlement's home field spreads before the next scan.
-- **Conversion:** gathered workers become residents via the migrant rate (`0.2 / LABOR_PER_POP`), capped at the
-  tier pop cap; they bring their carried savings — no vault gold is minted, so the young town starts broke and
-  lives on tax. Only `DEPLETED` counts (fresh labor queueing at a full firm is waiting for work, not homeless).
-- **Young-town build:** a settlement under the wood tier cap builds from its own forest (idle residents fell
-  nearby wood) before bought comfort lifts the tier; tier floors scale rest, tax, bids and housing. Founding
-  assigns the deterministic wealth class of its cell.
+- **Intent.** A `STILL` worker with `tired > 0` beyond town reach (`priceHome + priceRest < FOUND_REACH`) raises
+  `intent` toward 1 over `INTENT_SECONDS`, otherwise lowers it. At `intent = 1` he writes `amount` into the gather
+  grid around him (radius `FOUND_RADIUS`), tracking the best `gather · land.site` at write time — no map rescans.
+- **Found.** When the best score clears `FOUND_SETTLERS` (cooldown `FOUND_COOLDOWN_TICKS`), a young town is
+  placed there with its cell's wealth class and town claim stamped. The gathered workers check into its rooms free
+  of tax, carrying their own gold; no gold is minted, the town starts broke and lives on tax.
+- **Young town** (tier below `WOOD_TIER_CAP`): its resting occupants fell nearby forest into its first tier
+  (storyline: they build their homes while recovering); bought comfort lifts the tier above that. Land sets the
+  site: water edge and forest/meadow edge best, swamp worst; wasteland and other towns' claim repel.
 
-## Spawn accumulators & particle sizing
+## Firm founding (free workforce)
 
-- Do not spawn dust particles (`< SPAWN_UNIT`). Each producer/town cell accumulates float
-  `(spawnAmount[i], spawnCost[i])` until `spawnAmount[i] ≥ SPAWN_UNIT`, then emits one combined particle carrying
-  proportional cost `spawnCost[i] · (SPAWN_UNIT / spawnAmount[i])`.
-- **Target batch size (64×64 map):** ~0.5–1.0 units per goods particle and ~1–2 workers per workforce particle
-  (~200–800 live particles total, zero per-tick allocations).
-- **Idle flush:** if a producer stops adding to `spawnAmount[i]` for ~2–3 s while it exceeds the dust floor and
-  an uphill gradient exists, flush one final partial particle so depleted mines or paused plants never trap stock.
-- **Particle death sweep:** when a particle's `amount` falls below the dust floor (`≤ 1e-12`), sweep its carried
-  gold to the owning purse (`workerPurse` at towns, seller coin stream elsewhere) rather than zeroing it, so
-  machine-precision gold conservation holds (mirrors B2's `money.orphan`).
+- `STILL` fresh workers write `amount` into an idle grid at write time, like the gather grid.
+- Every `FIRM_SCAN_TICKS`, where the idle sum within radius 2 clears `FIRM_FOUNDERS`, the best empty nearby cell
+  is chosen by value: output bid minus recipe input cost at that cell, gated by resources (a mine needs a
+  deposit; a factory needs coal reach). It becomes a construction site that posts a labor bid; build time scales
+  with workforce; on completion it is a firm with an empty purse that sells before it pays (no minted gold).
+- Heavy-input firms prefer the weighted centre of their deposits (draft `company/new-construction-build.md`);
+  wood for construction is deferred.
 
-## Steering & movement
+## Steering & movement (`steering.js`, shared by goods and workers)
 
-- Particles steer by a smoothed price-gradient heading (`STEERING_BLEND = dt / (0.18 + dt)` exponential blend of
-  `headX/headY`), not the raw per-tick gradient, to avoid jitter.
-- Movement gates on `GRADIENT_KNEE`: slopes below the knee do not move, so flat fields hold particles in place.
-- Speed is terrain-weighted (edge conductance, harmonic mean of endpoint speeds); haul effort per unit scales as
-  `1 / conductance`. Direction shares use the unweighted gradient sum `g·c / (Σg + ref)` so uniformly slow ground
-  keeps its pace.
-- Buyer holds apply only at local price maxima; otherwise particles keep climbing toward higher bids.
+- Gradient sampled from the 8-neighbour edges, weighted by edge conductance (harmonic mean of endpoint terrain
+  speeds); haul effort per unit `∝ 1 / conductance`.
+- Smoothed heading `STEERING_BLEND = dt / (0.18 + dt)`; launch from a dock along the steepest uphill edge (a
+  blended heading cancels between two equal buyers and would never leave).
+- Speed `∝ s / (s + GRADIENT_KNEE)` (no hard knee gate — a decayed wage field must still pull). Workers dock as
+  `STILL` below `DOCK_SLOPE = 0.1 · GRADIENT_KNEE`. Goods 6 cells/s, workers 12 cells/s at full slope.
+- Arrival tests are cell-based (particle enters the buyer/firm/town cell), never distance-to-centre.
+
+## Conservation ledgers (checked every test tick)
+
+- Goods per kind: `produced − consumed − spoiled = stored + spawnBuffers + inParticles`.
+- Headcount: `Σ worker.amount = seeded + births − deaths` (founding moves workers, never changes headcount).
+- Labor: `Σ tired = worked − rested` (work raises, rest lowers; accumulate recovery once per tick, not per worker,
+  to keep float drift below tolerance).
+- Gold: `purses + wallets + vault + firm purses = seeded + mined` to `< 1e-7`.
 
 ## Rendering
 
-- In item map views, render live particles in continuous canvas coordinates above dimmed terrain + site storage:
-  - `item.price` (`totalCost / amount`) → color ramp (cheap to dear).
-  - `amount` → light/brightness and dot radius.
-- Paired demand/price map renders the diffused price/appeal field and equal-price contours. Stock intensity uses
-  a log scale; price uses a linear scale with 1-2-5 nice-ceil steps so legends stay stable while uncapped prices
-  drift.
+- Goods views: live particles at continuous coordinates over dimmed terrain; `item.price` → colour ramp,
+  `amount` → brightness and radius.
+- Worker views (`Labor`, `Depleted`): walkers coloured by wallet per worker, brightness by fresh/tired portion;
+  docked stocks drawn as cell intensity (pool, wait, room, still) under them.
+- Paired map: the diffused price/appeal field with equal-price contours; stock log scale, price linear with
+  1-2-5 nice-ceil steps.
+- Inspector: hover a cell for pools, rooms/occupants/queue, tax, wealth class, intent, idle sum; click a worker to
+  watch it (id, state, wallet, tired, last payments).
 
 ## File layout
 
-- **Lab:** `prototype/particle-transfer/` — standalone lab mirroring the `price-model-b2` structure so the engine
-  is verified before porting: `simulation.js` (fields, diffusion, particle pool, transport), `particles.js`
-  (SoA pools, spawn accumulators, steering), `actors.js` (bids, pools, tax — lifted from B2), `workforce.js`
-  (`WorkerPolicy`, reused from B2), `settlement.js` (`Settlements`, reused from B2), `gold.js` (conserved gold,
-  Transport Company vault), `fields.js`/`telemetry.js`/`app.js`/`index.html`/`styles.css` (render + UI), and
-  `*.test.js`.
-- **Port target:** `map-money-gold.js` (default money economy), dispatched by `mapeStepMoney` when
-  `mape.moneyEngine === 'particle'`. New code gets its own owner file + header + map entry per `AGENTS.md`; no
-  junk drawers.
+Lab `prototype/particle-transfer/` (each file < 500 lines, header per `AGENTS.md`):
 
-## Phased implementation (minimal first)
+- `simulation.js` — grid, fields, cell view rebuild, tick order.
+- `steering.js` — conductance, gradient sampling, heading, bounded move.
+- `goods.js` — goods SoA pool, spawn accumulators, arrival split, consignment.
+- `workers.js` — worker SoA pool, life-cycle states and transitions, admission, entry wage.
+- `actors.js` — firm recipes, bids, pools (from B2); `towns.js` — rooms, tax, wealth class, births/deaths
+  (split out of B2 `actors.js`, which is already over 500 lines).
+- `workforce.js`, `land.js`, `settlement.js` — B2 copies, reading the cell view.
+- `founding.js` — idle grid and firm founding.
+- `gold.js` — purses, wallets, Transport Company vault and drip.
+- `fields.js`, `telemetry.js`, `track.js`, `app.js`, `index.html`, `styles.css` — render, ledgers, watched worker, UI.
+- `*.test.js` — node tests.
 
-1. **Goods particles only:** coal → goods chain (one mine, one factory, one town). Price diffusion, spawn
-   accumulators, cost-basis sell gate, buyer room admission, arrival split with Transport Company vault. Verify
-   mass and gold conservation to machine precision.
-2. **Worker particles:** `FRESH`/`DEPLETED` cycle with carried gold, proportional wage settlement, rest tax,
-   occupancy-balanced pools, gold-tax appeal, dominated-town release, grace/shelter rest — reusing B2's
-   `WorkerPolicy`/`Settlements` per particle — plus wealth-class tax and settlement founding from still particles.
-3. **Full engine:** multiple kinds, spoilage rates per kind, Transport Company dividend drip, particle rendering,
-   64×64 sizing pass, then flip `mape.moneyEngine` default to `'particle'`.
+Game port: `map-money-particle.js` (+ split owner files as needed), dispatched by `mapeStepMoney` when
+`mape.moneyEngine === 'particle'`; new owners get AGENTS.md map entries.
+
+## Phases (minimal first, each ends green)
+
+0. **Lab base:** pure copy of B2 into the lab (move commit), tests still green.
+1. **Goods particles:** coal → goods chain (one mine, one factory, one town; workers still B2 cell flow).
+   Accumulators, sell floor, admission, arrival split, Transport Company vault, consignment.
+2. **Worker objects:** seeded worker particles replace cell labor/depleted flow and `pop[i]`; the full life cycle,
+   entry wage, wait pool, rooms, wallet-blended steering, shelter rest, cell view feeding B2 rules.
+3. **Towns and founding:** wealth class on rooms/occupants, births/deaths, settlement founding from still
+   depleted workers, young-town build, firm founding from free workforce.
+4. **Full engine:** more kinds and spoilage rates, Transport Company drip, watched-worker UI, 64×64 sizing
+   (200–800 live particles), port to the game and flip the default to `'particle'`.
 
 ## Validation
 
 - **L0:** `node --check` on touched files.
-- **L1:** `node --test` in the lab — conservation identities (`sum(stock) == produced − consumed − spoiled`,
-  `money.total() == seeded + mined` to `< 1e-7`), profit identity (`profit == amount · (buyerUnitPrice −
-  item.price)`), pool-occupancy wage cooling to zero on overflow, gold-tax appeal ordering (cheaper + nearer
-  wins, inflated towns lose), dominated-town release, grace rest for penniless workers, settlement founding from
-  still particles.
-- **L2:** full suite + manual pass list on port to the game. Run `smoke` + `dom_smoke` after touching
-  `main.js`, `index.html` or load order.
+- **L1:** `node --test` in the lab:
+  - all conservation ledgers above, every tick of a 120 s reference run;
+  - profit identity per arrival; full buyer never over-accepts; underwater perishable books a loss;
+  - reference cycle: one watched worker with 50 g — wallet `+wage` at entry, `−fee` at check-in, same `id` and
+    `amount` through job → walk → wait → room → leave → next job;
+  - pool overflow drives the wage to 0 but an emptied pool still admits; town crowding raises tax;
+  - broke worker picks the value town, funded worker the rest-quality town; dominated town does not catch;
+  - rested worker leaves the room at once; with no job gradient he is `STILL` fresh and counted idle;
+  - still depleted crowd beyond town reach founds a young town on good land, not in desert or in a claim;
+  - idle crowd near a deposit founds a mine; no gold minted by any founding;
+  - births/deaths keep headcount ledger exact.
+- **L2:** after port: `smoke` + `dom_smoke` + `mape_*` comparison and the manual list.
 
 ## Manual verification checklist
 
-- Open the lab and switch across `Coal`, `Goods`, `Labor`, `Depleted`, `Gold`.
-- On **Gold**, verify flow runs from towns to firms (bills) and from mines/factories back to towns along worker
-  return paths, and hover transit cells to inspect positive carried gold.
-- Place a high-tax/isolated town beside a supplied low-tax town and verify `Depleted` particles route into the
-  cheaper supplied town while all ledgers balance.
-- Flood a firm with fresh workers and verify `Pool %` rises and `Wage` drops to `0` on overflow; crowd a town and
-  verify `Wait %` and `Tax` rise together.
-- Clear towns and verify a hamlet founds from gathered still depleted particles, builds its first tier from forest,
-  and restarts production.
+- Goods views: particles stream mine → factory → town, warming in colour as transport cost adds up.
+- Watch a worker: the 50 g reference cycle plays out on screen; inspector wallet matches the event list.
+- Crowd a town: queue grows, tax rises, newcomers turn to a cheaper town; rooms free up as rested workers leave.
+- Flood a firm: pool %, wage → 0; remove the extra demand and the pool refills.
+- Remove all jobs near a town: rested workers stand still outside it; after a while a new firm appears.
+- Remove all towns: tired workers shelter-rest on the spot, a young town founds on meadow/water edge away from
+  facilities and desert, fells forest into its first tier, production restarts.
+- Compare a cheap and a rich town (e.g. 5/10, 10/10 occupants/rooms): cheap fills and grows, rich keeps free rooms.

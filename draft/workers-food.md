@@ -20,7 +20,7 @@ all companies (factories, mines, towns) has slots for workers and some pool queu
 
 # worker types possible to enable by checkboxes in game settings
 
-## nomad default - both cells end particle engines
+## nomad default - both cells and particle engines
 live in any town, tired nomad worker move by gradient (or if engine support - to best comfort town according to his money).
 generate random nomad workers who prefer to save money from 0 up to 5 time visit until choose more rich towns. calculate and show what strategy is more profitable
 
@@ -53,6 +53,10 @@ then try to found firm for produce something with good price here and map source
 
 fresh workers without significant work demand gradient become free workers until tired. free workers move by gradient of some resources with biggest price/jobToGather and occasionally gather resources on map like food or wood. efficiency is lower then fabs. 
 worker has paid once his product transported to buyer. probably this possible only for particle transportation engine. for cell engine as worker is not an object - we can think other approach or accept as is 
+
+i dislike idea to deaths in badly supplied towns. better let workers move by map to slowly pick food themselves, call this special worker mode to not disturb by other tasks. this need another map with food gradient from rich-food location like water and forest. we can use low res, like 32x32 or update not every frame if this is costly.
+in addition to this we can implement free food sources across map like monastery garden - work as farm but give free food for out of money. so it will work good with this gradient food source system.
+
 
 # improve  resource conservation for town, other firms
 

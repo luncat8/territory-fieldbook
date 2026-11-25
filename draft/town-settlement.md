@@ -44,7 +44,7 @@ towns for rich workers - should be implemented in more natural way. we can set 3
 
 Deferred for future: to make this better work need some upkeep cost and wearing items inside town's depot so keep big town almost empty will cause loss.
 
-rich cuts . other keep built size and shrink slowly only if very low on money or vacant for a long time.
+rich cuts size first. other keep built size and shrink slowly only if very low on money or vacant for a long time.
 
 better also add some increment to comfort in case of free space in town. is this case rich town want keep queue pool 0 and few free slots to fit comfort level.
 example (numbers are subject to balance, usually we operate with more workers to keep things smooth, float numbers also possible): 
