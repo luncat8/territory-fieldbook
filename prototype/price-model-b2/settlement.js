@@ -1,5 +1,5 @@
 // Owns: settlement tiers, forest stock, worker settle intent, the settler gather grid, young-town founding and tier growth.
-// Edit for: intent pace, founding threshold, forest-felling build, tier effects on rest, tax, bids and housing. Spacing: land.js.
+// Edit for: intent pace, founding threshold, wood-built first tier, tier effects on rest, tax, bids and housing. Harvest: harvest.js.
 'use strict';
 
 const FOUND_RADIUS = 2;
@@ -10,8 +10,7 @@ const FOUND_COOLDOWN_TICKS = 300;
 const SETTLER_POP = 0.2 / LABOR_PER_POP;
 const WOOD_TIER_CAP = 0.5;
 const WOOD_PER_TIER = 6;
-const WOOD_PER_WORK = 1;
-const BUILD_RATE = 0.15;
+const BUILD_WOOD_RATE = 0.1;
 const TIER_RATE = 0.05;
 const FOREST_REGROW = 0.004;
 const TIER_REST_FLOOR = 0.35;
@@ -28,7 +27,6 @@ class Settlements {
 		this.gather = new Float64Array(ECONOMY_SIZE);
 		this.intentStep = ECONOMY_DT / INTENT_SECONDS;
 		this.regrowShare = 1 - Math.exp(-ECONOMY_DT * FOREST_REGROW);
-		this.buildShare = 1 - Math.exp(-ECONOMY_DT * BUILD_RATE);
 		this.seedForest();
 	}
 
@@ -42,7 +40,7 @@ class Settlements {
 		this.forest.set(this.forestCap);
 		this.gather.fill(0);
 		this.model.land.refresh();
-		this.ticks = this.founded = this.felled = 0;
+		this.ticks = this.founded = 0;
 		this.lastFound = -FOUND_COOLDOWN_TICKS;
 		this.bestSite = -1;
 		this.bestScore = FOUND_SETTLERS;
@@ -54,8 +52,8 @@ class Settlements {
 		this.model.land.refresh();
 	}
 
-	// A "young town" is a settlement still in construction (tier below WOOD_TIER_CAP). It can gather resources
-	// itself — felling nearby forest — instead of buying them, which is why founding does not mint gold.
+	// A "young town" is a settlement still in construction (tier below WOOD_TIER_CAP). It gathers its own wood
+	// (harvest.js) instead of buying it, which is why founding does not mint gold.
 	isYoungTown(i) {
 		return this.model.actors[i] === ECONOMY_TOWN && this.tier[i] < WOOD_TIER_CAP;
 	}
@@ -64,7 +62,7 @@ class Settlements {
 	restFactor(i) { return this.tierLerp(i, TIER_REST_FLOOR) * this.model.land.rest[i]; }
 	taxFactor(i) { return this.tierLerp(i, TIER_TAX_FLOOR); }
 	bidFactor(i) { return this.tierLerp(i, TIER_BID_FLOOR); }
-	popCap(i) { return POP_MAX * this.tierLerp(i, TIER_POP_FLOOR); }
+	popCap(i) { return POP_MAX * this.tierLerp(i, TIER_POP_FLOOR) * this.model.land.housing(i); }
 
 	// Ready settlers write their count into the gather grid as they decide, so founding never rescans the map.
 	step() {
@@ -110,64 +108,23 @@ class Settlements {
 		}
 	}
 
-	// Wood raises a young town to the cap; beyond it only bought comfort (goods, coal) lifts the tier. Tiers never decay.
+	// Harvested wood raises a young town to the cap; beyond it only bought comfort (goods, coal) lifts the tier. Tiers never decay.
 	growTier(i) {
 		if (this.tier[i] < WOOD_TIER_CAP) {
-			this.buildFromForest(i);
+			const wood = this.model.harvest.takeWood(i, BUILD_WOOD_RATE * ECONOMY_DT);
+			this.tier[i] = Math.min(WOOD_TIER_CAP, this.tier[i] + wood / WOOD_PER_TIER);
 			return;
 		}
 		const goal = WOOD_TIER_CAP + (1 - WOOD_TIER_CAP) * this.model.workforce.comfortAt(i);
 		if (goal > this.tier[i]) this.tier[i] = Math.min(1, this.tier[i] + ECONOMY_DT * TIER_RATE * (goal - this.tier[i]));
 	}
 
-	// Like a sawmill site, a young town builds from its own forest with its own idle residents:
-	// still labor at home fells the surrounding wood and returns tired.
-	buildFromForest(i) {
-		const m = this.model;
-		const idle = m.labor[i] * m.laborFlow.still[i];
-		const wood = Math.min(idle * this.buildShare * WOOD_PER_WORK, this.sumAround(this.forest, i));
-		if (wood <= 1e-12) return;
-		const used = Math.min(wood / WOOD_PER_WORK, 1 - m.depleted[i]);
-		const gold = m.laborFlow.gold[i] * (used / m.labor[i]);
-		this.fellAround(i, wood);
-		m.labor[i] -= used;
-		m.laborFlow.gold[i] -= gold;
-		if (m.labor[i] <= 1e-12) {
-			m.depletedFlow.gold[i] += m.laborFlow.gold[i];
-			m.laborFlow.gold[i] = 0;
-		}
-		m.depleted[i] += used;
-		m.depletedFlow.gold[i] += gold;
-		m.workedLabor += used;
-		m.emittedDepleted += used;
-		this.tier[i] = Math.min(WOOD_TIER_CAP, this.tier[i] + wood / WOOD_PER_TIER);
-		this.felled += wood;
-	}
-
-	sumAround(field, i) {
-		const cx = i % ECONOMY_WIDTH, cy = Math.floor(i / ECONOMY_WIDTH);
-		let total = 0;
-		for (let y = Math.max(0, cy - FOUND_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, cy + FOUND_RADIUS); y++) {
-			for (let x = Math.max(0, cx - FOUND_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, cx + FOUND_RADIUS); x++) total += field[economyIndex(x, y)];
-		}
-		return total;
-	}
-
-	fellAround(i, wood) {
-		const share = wood / this.sumAround(this.forest, i);
-		const cx = i % ECONOMY_WIDTH, cy = Math.floor(i / ECONOMY_WIDTH);
-		for (let y = Math.max(0, cy - FOUND_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, cy + FOUND_RADIUS); y++) {
-			for (let x = Math.max(0, cx - FOUND_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, cx + FOUND_RADIUS); x++) this.forest[economyIndex(x, y)] *= 1 - share;
-		}
-	}
-
-	// The gathered workers become residents and bring their savings; no vault gold is minted, so the young
-	// town starts broke and lives on tax from the wages its residents earn. It carries on with the wealth class
-	// of its founding cell.
+	// The gathered tired settlers become residents and bring their savings; no vault gold is minted, so the young
+	// town starts broke and lives on tax. Fresh labor nearby is not theirs to move: it stays and walks on its own.
 	foundTown(c) {
 		const m = this.model;
 		const cx = c % ECONOMY_WIDTH, cy = Math.floor(c / ECONOMY_WIDTH);
-		let settled = 0, savings = 0, workers = 0;
+		let settled = 0, savings = 0;
 		for (let y = Math.max(0, cy - FOUND_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, cy + FOUND_RADIUS); y++) {
 			for (let x = Math.max(0, cx - FOUND_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, cx + FOUND_RADIUS); x++) {
 				const n = economyIndex(x, y);
@@ -176,8 +133,6 @@ class Settlements {
 				savings += m.depletedFlow.gold[n];
 				m.depleted[n] = 0;
 				m.depletedFlow.gold[n] = 0;
-				workers += m.labor[n];
-				if (n !== c) this.gatherLabor(n, c);
 			}
 		}
 		m.restedDepleted += settled;
@@ -186,24 +141,13 @@ class Settlements {
 		m.wealthClass[c] = wealthClassFor(c);
 		m.vacantTicks[c] = 0;
 		this.tier[c] = 0;
-		m.pop[c] = Math.min(this.popCap(c), Math.max(POP_BASE, (settled + workers) * SETTLER_POP));
+		m.pop[c] = Math.min(this.popCap(c), Math.max(POP_BASE, settled * SETTLER_POP));
 		m.satCoal[c] = m.satGoods[c] = m.workLoad[c] = m.profit[c] = 0;
 		m.money.workerPurse[c] += savings;
+		m.harvest.founded(c);
 		this.lastFound = this.ticks;
 		m.land.refresh();
 		this.founded++;
-	}
-
-	gatherLabor(from, to) {
-		const m = this.model;
-		const moved = Math.min(m.labor[from], 1 - m.labor[to]);
-		if (moved <= 0) return;
-		const all = moved >= m.labor[from];
-		const gold = all ? m.laborFlow.gold[from] : m.laborFlow.gold[from] * (moved / m.labor[from]);
-		m.labor[from] = all ? 0 : m.labor[from] - moved;
-		m.laborFlow.gold[from] = all ? 0 : m.laborFlow.gold[from] - gold;
-		m.labor[to] += moved;
-		m.laborFlow.gold[to] += gold;
 	}
 }
 
