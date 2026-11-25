@@ -150,7 +150,7 @@ class GoldMoney {
 	// surplus above the municipal reserve circulates back to residents only in healthy, uncrowded towns.
 	collectTax(i, comfort) {
 		const m = this.model;
-		const mult = m.derived ? m.optimizer.townEffectiveMult(i) : 1;
+		const mult = m.derived ? m.towns.townEffectiveMult(i) : 1;
 		const share = Math.min(0.5, this.taxShare * mult);
 		const taxPaid = this.workerPurse[i] * share * comfort;
 		this.workerPurse[i] -= taxPaid;
