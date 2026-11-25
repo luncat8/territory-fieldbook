@@ -62,6 +62,7 @@ class Land {
 	refresh() {
 		const { actors } = this.model;
 		this.waste.fill(0);
+		if (this.model.farms) this.waste.set(this.model.farms.waste);
 		this.claim.fill(0);
 		this.waterEdge.fill(0);
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
@@ -78,7 +79,7 @@ class Land {
 		for (let a = 0; a < ECONOMY_SIZE; a++) {
 			const kind = actors[a];
 			if (kind === ECONOMY_TOWN) this.stampCone(this.claim, a, TOWN_SPACING, 1);
-			else if (kind && kind !== ECONOMY_GARDEN) this.stampCone(this.waste, a, WASTE_REACH, WASTE_DEPTH);
+			else if (kind && kind !== ECONOMY_GARDEN && kind !== ECONOMY_FARM) this.stampCone(this.waste, a, WASTE_REACH, WASTE_DEPTH);
 		}
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			const t = this.terrain[i];

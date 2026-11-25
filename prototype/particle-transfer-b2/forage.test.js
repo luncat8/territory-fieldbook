@@ -1,4 +1,4 @@
-// Owns: unsupplied-town zero-death foraging, coarse food gradient and Monastery garden tests.
+// Owns: unsupplied-town self-foraging survival, coarse food gradient and Monastery garden tests.
 // Edit for: WORKER_FORAGE isolation, low-res gradient cadence and free charity farm mechanics.
 'use strict';
 
@@ -8,21 +8,21 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'gold.js', 'goods.js', 'workforce.js', 'workers.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js'];
+const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'gold.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js'];
 for (const file of SCRIPTS) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 
 function run(model, seconds) {
 	for (let n = 0; n < Math.round(seconds / ECONOMY_DT); n++) model.step();
 }
 
-test('unsupplied towns suffer zero deaths: hungry workers self-forage and return to work', () => {
+test('hungry workers survive unsupplied towns by self-foraging and return to work', () => {
 	const model = new PriceEconomy();
 	for (let i = 0; i < ECONOMY_SIZE; i++) {
 		if (model.actors[i] === ECONOMY_FACTORY) model.setActor(i, 0);
 	}
 	const initialHeadcount = model.workers.totalAmount();
 	run(model, 70);
-	assert.equal(model.workers.totalAmount(), initialHeadcount + model.workers.births, 'no worker may ever die in an unsupplied town');
+	assert.equal(model.workers.totalAmount(), initialHeadcount + model.workers.births, 'workers with reachable food survive this run');
 	assert.ok(model.workers.forageEntries >= initialHeadcount, `expected hungry workers to enter forage mode, got ${model.workers.forageEntries}`);
 	assert.ok(model.forage.gardenFed + model.forage.wildPicked > 10, 'expected substantial self-picked food across garden and wild sources');
 	assert.ok(Math.abs(model.money.seeded + model.money.mined - model.money.total()) < 1e-7, 'gold remains strictly conserved during foraging');

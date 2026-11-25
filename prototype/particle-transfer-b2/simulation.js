@@ -11,10 +11,13 @@ const ECONOMY_FACTORY = 2;
 const ECONOMY_TOWN = 3;
 const ECONOMY_GOLD = 4;
 const ECONOMY_GARDEN = 5;
+const ECONOMY_FARM = 6;
 const ITEM_COAL = 0;
 const ITEM_GOODS = 1;
 const ITEM_LABOR = 2;
 const ITEM_DEPLETED = 3;
+const ITEM_FOOD = 4;
+const GOODS_ITEMS = [ITEM_COAL, ITEM_GOODS, ITEM_FOOD];
 const SOURCE_RATE = 0.34;
 const FACTORY_RATE = 0.34;
 const FACTORY_YIELD = 1;
@@ -118,7 +121,11 @@ class PriceEconomy {
 		this.shiftLabor = new Float64Array(ECONOMY_SIZE);
 		this.profit = new Float64Array(ECONOMY_SIZE);
 		this.earned = new Float64Array(ECONOMY_SIZE);
-		this.stocks = [this.coal, this.goods, this.labor, this.depleted];
+		this.food = new Float64Array(ECONOMY_SIZE);
+		this.wood = new Float64Array(ECONOMY_SIZE);
+		this.priceFood = new Float64Array(ECONOMY_SIZE);
+		this.nextPriceFood = new Float64Array(ECONOMY_SIZE);
+		this.stocks = [this.coal, this.goods, this.labor, this.depleted, this.food];
 		this.decay = true;
 		this.derived = true;
 		this.suppression = true;
@@ -128,6 +135,8 @@ class PriceEconomy {
 		this.money = new GoldMoney(this);
 		this.goodsPool = new GoodsPool(this);
 		this.workers = new WorkerPool(this);
+		this.workerLife = new WorkerLife(this);
+		this.farms = new FarmSystem(this);
 		this.workforce = new WorkerPolicy(this);
 		this.optimizer = new ActorOptimizer(this);
 		this.towns = new TownRules(this);
@@ -137,7 +146,7 @@ class PriceEconomy {
 	}
 
 	pricesAt(item) {
-		return item === ITEM_COAL ? this.priceCoal : item === ITEM_GOODS ? this.priceGoods : item === ITEM_LABOR ? this.priceLabor : this.priceHome;
+		return item === ITEM_FOOD ? this.priceFood : item === ITEM_COAL ? this.priceCoal : item === ITEM_GOODS ? this.priceGoods : item === ITEM_LABOR ? this.priceLabor : this.priceHome;
 	}
 
 	unitCostAt(item, i) {
@@ -168,11 +177,18 @@ class PriceEconomy {
 				this.wealthClass[i] = wealthClassFor(i);
 			}
 		}
+		this.farms.reset();
 		this.land.seedTerrain();
 		this.land.refresh();
 		this.settlements.seedForest();
 		this.settlements.reset();
 		this.forage.reset();
+		this.workerLife.reset();
+		this.food.fill(0);
+		this.wood.fill(0);
+		this.priceFood.fill(0);
+		this.nextPriceFood.fill(0);
+		this.producedFood = this.consumedFood = 0;
 		this.goodsPool.reset();
 		this.workers.reset();
 		this.towns.reset();
@@ -183,18 +199,21 @@ class PriceEconomy {
 		this.workedLabor = this.restedDepleted = 0;
 		this.coalRate = this.goodsRate = this.uptakeRate = 0;
 		this.rebuildCellView();
+		this.land.refresh();
 		this.forage.warm();
 	}
 
 	setActor(i, kind) {
-		if (kind && (this.actors[i] || this.land.terrain[i] === TERRAIN_WATER)) return false;
+		if (kind && (this.actors[i] || this.forage.plotOwner[i] || this.farms.plotOwner[i] || this.land.terrain[i] === TERRAIN_WATER)) return false;
 		if (!kind && this.actors[i]) {
 			const prev = this.actors[i];
 			if (prev === ECONOMY_GARDEN) this.forage.releasePlots(i);
+			if (prev === ECONOMY_FARM) this.farms.release(i);
 			this.workers.evictCell(i);
 			this.goodsPool.flushOwner(i);
 			this.money.release(i);
-			this.coal[i] = this.goods[i] = 0;
+			this.coal[i] = this.goods[i] = this.food[i] = this.wood[i] = 0;
+			this.goodsPool.stockCost[ITEM_FOOD][i] = 0;
 			this.goodsPool.stockCost[0][i] = this.goodsPool.stockCost[1][i] = 0;
 			this.rooms[i] = this.scale[i] = this.taxMult[i] = this.satCoal[i] = this.satGoods[i] = this.workLoad[i] = this.profit[i] = 0;
 			this.towns.clearTown(i);
@@ -216,6 +235,8 @@ class PriceEconomy {
 			this.localWealth[i] = SEED_WORKER_GOLD;
 			this.towns.initTown(i);
 			this.money.seedTown(i);
+		} else if (kind === ECONOMY_FARM) {
+			this.farms.init(i);
 		} else if (kind === ECONOMY_GARDEN) {
 			this.forage.claimPlots(i);
 		}
@@ -271,7 +292,9 @@ class PriceEconomy {
 		this.optimizer.stepFirms();
 		this.towns.stepTowns();
 		this.goodsPool.step();
+		this.farms.step();
 		this.workers.step();
+		this.workerLife.step();
 		this.rebuildCellView();
 		this.settlements.step();
 		this.founding.step();
@@ -290,12 +313,15 @@ class PriceEconomy {
 		const decay = this.decay ? PRICE_DECAY : 0;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			const a = actors[i];
-			let bCoal = -1, bGoods = -1, bLabor = -1, bHome = -1, bRest = -1;
+			let bCoal = -1, bGoods = -1, bLabor = -1, bHome = -1, bRest = -1, bFood = -1;
 			if (a === ECONOMY_TOWN) {
 				bCoal = towns.coalBid(i);
 				bGoods = towns.goodsBid(i);
+				bFood = towns.foodBid(i);
 				bHome = workforce.homeValueBid(i);
 				bRest = workforce.homeRestBid(i);
+			} else if (a === ECONOMY_FARM) {
+				bLabor = this.farms.wageBid(i);
 			} else if (a && a !== ECONOMY_GARDEN && !founding.isBuilding(i)) {
 				const recipe = optimizer.recipes[a];
 				optimizer.firmBids(i, recipe);
@@ -305,12 +331,16 @@ class PriceEconomy {
 					else if (item === ITEM_LABOR) bLabor = optimizer.bidOut[m];
 				}
 			}
+			this.nextPriceFood[i] = stepBid(this.priceFood, i, this.priceFood[i], bFood, decay);
 			nextPriceCoal[i] = stepBid(priceCoal, i, priceCoal[i], bCoal, decay);
 			nextPriceGoods[i] = stepBid(priceGoods, i, priceGoods[i], bGoods, decay);
 			nextPriceLabor[i] = stepBid(priceLabor, i, priceLabor[i], bLabor, decay);
 			nextPriceHome[i] = stepBid(priceHome, i, priceHome[i], bHome, decay);
 			nextPriceRest[i] = stepBid(priceRest, i, priceRest[i], bRest, decay);
 		}
+		const foodSwap = this.priceFood;
+		this.priceFood = this.nextPriceFood;
+		this.nextPriceFood = foodSwap;
 		this.priceCoal = nextPriceCoal;
 		this.nextPriceCoal = priceCoal;
 		this.priceGoods = nextPriceGoods;

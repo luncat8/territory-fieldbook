@@ -64,10 +64,10 @@ function makeNode(tag = 'DIV', id = '', depth = 0) {
 
 const cardStub = { querySelector() { return makeNode('SPAN', '', 1); } };
 
-test('index.html boots all 15 scripts, renders every resource tab, places a Garden and updates watched worker', () => {
+test('index.html boots all 17 scripts, renders every resource tab, places a Garden/Farm and updates watched worker', () => {
 	const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 	const scripts = Array.from(html.matchAll(/<script src="([^"]+)"><\/script>/g), m => m[1]);
-	assert.equal(scripts.length, 15);
+	assert.equal(scripts.length, 17);
 	const byId = new Map();
 	for (const [, id] of html.matchAll(/\bid="([^"]+)"/g)) {
 		const node = makeNode(id.includes('map') || id.includes('relief') ? 'CANVAS' : 'DIV', id);
@@ -75,8 +75,8 @@ test('index.html boots all 15 scripts, renders every resource tab, places a Gard
 		byId.set(id, node);
 	}
 	const metrics = Array.from({ length: 5 }, () => makeNode('DIV'));
-	const resources = ['coal', 'goods', 'labor', 'depleted', 'forage', 'gold', 'land'].map(r => { const b = makeNode('BUTTON'); b.dataset.resource = r; return b; });
-	const tools = ['inspect', 'mine', 'factory', 'town', 'gold', 'garden', 'erase'].map(t => { const b = makeNode('BUTTON'); b.dataset.tool = t; return b; });
+	const resources = ['coal', 'food', 'goods', 'labor', 'depleted', 'forage', 'gold', 'land'].map(r => { const b = makeNode('BUTTON'); b.dataset.resource = r; return b; });
+	const tools = ['inspect', 'mine', 'factory', 'town', 'gold', 'garden', 'farm', 'erase'].map(t => { const b = makeNode('BUTTON'); b.dataset.tool = t; return b; });
 	let rafCb = null;
 	const sandbox = {
 		console, Math, Number, String, Array, Object, Float64Array, Float32Array, Int32Array, Int16Array, Uint32Array, Uint16Array, Uint8Array, Uint8ClampedArray,
@@ -118,6 +118,9 @@ test('index.html boots all 15 scripts, renders every resource tab, places a Gard
 	gardenTool.click();
 	byId.get('resource-map').dispatch('click', { clientX: 260, clientY: 150 });
 	assert.match(byId.get('actor-count').textContent, /2 A/, 'Garden tool should place a second Monastery garden');
+	tools.find(b => b.dataset.tool === 'farm').click();
+	byId.get('resource-map').dispatch('click', { clientX: 350, clientY: 150 });
+	assert.match(byId.get('actor-count').textContent, /1 H/, 'Farm tool should place a commercial farm');
 	byId.get('clear-towns').click();
 	rafCb(1250);
 	assert.ok(!byId.get('gold-held').textContent.includes('NaN'));

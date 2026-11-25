@@ -18,8 +18,10 @@ class EconomyTelemetry {
 		this.goodsEaten = $('goods-eaten');
 		this.goodsSpoiled = $('goods-spoiled');
 		this.goodsHeld = $('goods-held');
+		this.foodBalance = $('food-balance');
 		this.headSeeded = $('head-seeded');
 		this.headBirths = $('head-births');
+		this.headDeaths = $('head-deaths');
 		this.headActive = $('head-active');
 		this.tiredWorked = $('tired-worked');
 		this.tiredRested = $('tired-rested');
@@ -98,11 +100,15 @@ class EconomyTelemetry {
 		this.goodsEaten.textContent = model.consumedGoods.toFixed(3);
 		this.goodsSpoiled.textContent = model.goodsPool.spoiled[ITEM_GOODS].toFixed(3);
 		this.goodsHeld.textContent = this.values[1].toFixed(3);
+		let foodHeld = model.goodsPool.spawnBufferTotal(ITEM_FOOD) + model.goodsPool.inTransitTotal(ITEM_FOOD);
+		for (let i = 0; i < ECONOMY_SIZE; i++) foodHeld += model.food[i];
+		this.foodBalance.textContent = `${model.producedFood.toFixed(3)} harvested − ${model.consumedFood.toFixed(3)} sold − ${model.goodsPool.spoiled[ITEM_FOOD].toFixed(3)} spoiled ≈ ${foodHeld.toFixed(3)} held+transit`;
 		this.headSeeded.textContent = model.workers.seededWorkers.toFixed(0);
 		this.headBirths.textContent = model.workers.births.toFixed(0);
+		this.headDeaths.textContent = model.workerLife.deaths.toFixed(0);
 		this.headActive.textContent = model.workers.totalAmount().toFixed(0);
 		this.tiredWorked.textContent = (model.workers.seededTired + model.workedLabor).toFixed(2);
-		this.tiredRested.textContent = model.restedDepleted.toFixed(2);
+		this.tiredRested.textContent = (model.restedDepleted + model.workerLife.removedTired).toFixed(2);
 		this.tiredHeld.textContent = model.workers.totalTired().toFixed(2);
 		this.goldSeeded.textContent = model.money.seeded.toFixed(2);
 		this.goldMined.textContent = model.money.mined.toFixed(2);

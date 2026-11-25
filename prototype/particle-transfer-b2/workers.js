@@ -50,6 +50,7 @@ class WorkerPool {
 		this.food = new Float64Array(MAX_WORKERS);
 		this.intent = new Float64Array(MAX_WORKERS);
 		this.since = new Int32Array(MAX_WORKERS);
+		this.columns = [this.id, this.state, this.cell, this.x, this.y, this.hx, this.hy, this.amount, this.tired, this.paidRest, this.gold, this.food, this.intent, this.since];
 		this.watchedId = -1;
 		this.logHead = 0;
 		this.logCount = 0;
@@ -97,6 +98,7 @@ class WorkerPool {
 		this.gold[w] = gold;
 		this.food[w] = food;
 		this.since[w] = this.model.ticks || 0;
+		this.model.workerLife.init(w);
 		if (isSeed) { this.seededWorkers += WORKER_UNIT; this.seededTired += tired; }
 		else this.births += WORKER_UNIT;
 		return w;

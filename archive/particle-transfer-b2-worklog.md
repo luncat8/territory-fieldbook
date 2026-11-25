@@ -11,3 +11,17 @@ decisions: hungry/broke workers enter undisturbed `WORKER_FORAGE` (ignoring job/
 decisions: multi-input firms scale labor pool target by `0.15 + 0.85 * matReady` so empty factories keep ~1 standby worker while mines extract coal first
 pitfalls: coarse forage cells must use `target <= ambient ? ambient : max(ambient, relaxed)` so weak meadow sources never pull down garden/shore halos — full note in findings
 next: playtest `prototype/particle-transfer-b2/index.html` at 64×64 scale (`32×32` forage grid), then port to `map-money-particle.js` under `mape.moneyEngine === 'particle'`
+
+plan: plan-particle-transfer.md — food farms and worker-owned demographics
+changed: prototype/particle-transfer-b2/{farms,worker-life}.js — field construction, paid seasonal harvest, personal splits/starvation (feature)
+changed: prototype/particle-transfer-b2/{simulation,goods,actors,founding,land,forage,gold}.js — food trade, farm wages/siting/claims/waste (feature)
+changed: prototype/particle-transfer-b2/{towns,settlement,workers}.js — remove town births/free food and founding teleport/check-in; preserve worker identity (fix)
+changed: prototype/particle-transfer-b2/{app,fields,telemetry,index.html}.js/html — Food tab, Farm tool, food/split/starvation ledgers (feature)
+changed: plan-particle-transfer.md, plan-map-economy.md, AGENTS.md — authoritative worker lifecycle and farm design; distinguish cell-engine population (fix)
+validation: syntax checks pass; lab suite 26/26; final food-life + DOM suites 11/11; git diff --check pass
+validation: canonical 120s farm chain produces >10 food, sells >1 food; food/gold/headcount/tired balances within 1e-8
+validation: 180s reference run retains 24 workers, 0 starved, gold error <2e-11; reachable wild food prevents starvation
+decisions: town services never own worker creation/removal/routing; founding creates rooms without moving any worker
+decisions: split shares gold/food/tired; starvation returns wallet to vault and books removed tired mass
+decisions: 45s personal split cooldown plus current needs/food/wealth gates; 120s empty-bag starvation grace
+next: manual farm/worker checklist in plan-particle-transfer.md, then particle game-port sizing

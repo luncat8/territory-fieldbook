@@ -78,7 +78,7 @@ class FirmFounding {
 	stepConstruction() {
 		const m = this.model, { workers } = m;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			if (!this.building[i]) continue;
+			if (!this.building[i] || m.actors[i] === ECONOMY_FARM) continue;
 			const sx = i % ECONOMY_WIDTH, sy = Math.floor(i / ECONOMY_WIDTH);
 			for (let w = 0; w < workers.count; w++) {
 				if (workers.state[w] !== WORKER_STILL || workers.tired[w] >= workers.amount[w] - 1e-6) continue;
@@ -109,8 +109,12 @@ class FirmFounding {
 		for (let y = Math.max(0, ay - FIRM_SEARCH_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, ay + FIRM_SEARCH_RADIUS); y++) {
 			for (let x = Math.max(0, ax - FIRM_SEARCH_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, ax + FIRM_SEARCH_RADIUS); x++) {
 				const i = economyIndex(x, y);
-				if (actors[i] || land.terrain[i] === TERRAIN_WATER || forage.plotOwner[i]) continue;
+				if (actors[i] || land.terrain[i] === TERRAIN_WATER || forage.plotOwner[i] || m.farms.plotOwner[i]) continue;
 				if (land.claim[i] > 0.72) continue;
+				if (m.priceFood[i] > FARM_MIN_PRICE && m.farms.canSite(i)) {
+					const value = m.priceFood[i] * FARM_YIELD / FARM_SEASON_SECONDS;
+					if (value > bestValue) { bestValue = value; bestCell = i; bestKind = ECONOMY_FARM; }
+				}
 				if (this.deposit[i] && m.priceCoal[i] > PRICE_GATE * 2) {
 					const mineVal = m.priceCoal[i] * SOURCE_RATE - m.priceLabor[i] * SOURCE_RATE * MINE_LABOR * 0.5;
 					if (mineVal > bestValue) { bestValue = mineVal; bestCell = i; bestKind = ECONOMY_MINE; }
@@ -127,6 +131,7 @@ class FirmFounding {
 		m.workLoad[bestCell] = m.profit[bestCell] = 0;
 		this.building[bestCell] = 1;
 		this.buildProgress[bestCell] = 0;
+		if (bestKind === ECONOMY_FARM) m.farms.init(bestCell);
 		this.lastFound = this.ticks;
 		this.founded++;
 		land.refresh();

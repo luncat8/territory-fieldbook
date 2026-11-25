@@ -11,15 +11,16 @@ const ISO_EDGES = [[],[3,0],[0,1],[3,1],[1,2],[3,0,1,2],[0,2],[3,2],[2,3],[0,2],
 const STOCK_EXPOSURE = 800;
 const STOCK_LOG = Math.log1p(STOCK_EXPOSURE);
 const SCALE_FLOOR = { price: 0.5, gold: 1 };
-const ACTOR_NAMES = ['Cell', 'Mine', 'Factory', 'Town', 'Gold mine', 'Monastery garden'];
-const ACTOR_TAGS = ['', 'M', 'F', 'T', 'G', 'A'];
+const ACTOR_NAMES = ['Cell', 'Mine', 'Factory', 'Town', 'Gold mine', 'Monastery garden', 'Food farm'];
+const ACTOR_TAGS = ['', 'M', 'F', 'T', 'G', 'A', 'H'];
 const ACTOR_INK = [
 	[],
 	['#77512c', '#ffdb9f', '#ffd69b'],
 	['#2f4a3f', '#9fe0c0', '#a9e8c8'],
 	['#514065', '#e6d3ff', '#e2cff4'],
 	['#5c4a12', '#f7d65a', '#f7dc78'],
-	['#2f4a2c', '#b9f09b', '#ccf5b5']
+	['#2f4a2c', '#b9f09b', '#ccf5b5'],
+	['#544821', '#f1dc83', '#f4e9a7']
 ];
 const cellName = i => `${String(i % ECONOMY_WIDTH).padStart(2, '0')}, ${String(Math.floor(i / ECONOMY_WIDTH)).padStart(2, '0')}`;
 
@@ -125,7 +126,7 @@ class FieldPlot {
 	}
 
 	readActors(actors) {
-		const counts = [0, 0, 0, 0, 0, 0];
+		const counts = [0, 0, 0, 0, 0, 0, 0];
 		this.markers.length = 0;
 		for (let i = 0; i < actors.length; i++) {
 			const kind = actors[i];
@@ -151,12 +152,12 @@ class FieldPlot {
 		}
 		if (this.resource === 'labor') return this.isStock ? model.labor : model.priceLabor;
 		if (this.isStock) {
-			const k = this.resource === 'coal' ? ITEM_COAL : ITEM_GOODS;
-			const st = k === ITEM_COAL ? model.coal : model.goods, sp = model.goodsPool.spawnAmount[k];
+			const k = this.resource === 'coal' ? ITEM_COAL : this.resource === 'food' ? ITEM_FOOD : ITEM_GOODS;
+			const st = model.stocks[k], sp = model.goodsPool.spawnAmount[k];
 			for (let i = 0; i < ECONOMY_SIZE; i++) v[i] = st[i] + sp[i];
 			return v;
 		}
-		return this.resource === 'coal' ? model.priceCoal : model.priceGoods;
+		return this.resource === 'coal' ? model.priceCoal : this.resource === 'food' ? model.priceFood : model.priceGoods;
 	}
 
 	intensity(value) {
@@ -172,7 +173,7 @@ class FieldPlot {
 		const key = `${this.isStock ? 'S' : 'P'}:${this.resource}:${this.scale}`;
 		if (key !== this.legendKey) {
 			this.legendKey = key;
-			const unit = this.resource === 'gold' && this.isStock ? ' g' : (!this.isStock && (this.resource === 'coal' || this.resource === 'goods' || this.resource === 'labor')) ? ' g/u' : '';
+			const unit = this.resource === 'gold' && this.isStock ? ' g' : (!this.isStock && (this.resource === 'coal' || this.resource === 'food' || this.resource === 'goods' || this.resource === 'labor')) ? ' g/u' : '';
 			this.scaleLabel.innerHTML = `${this.isStock && this.resource !== 'land' && this.resource !== 'forage' ? 'Log' : 'Linear'} scale <b>0 – ${this.scale}${unit}</b>`;
 		}
 	}
@@ -187,7 +188,7 @@ class FieldPlot {
 			}
 			const base = TERRAIN_TINT[terrain[i]];
 			let br = base[0], bg = base[1], bb = base[2];
-			if (plotOwner[i]) { br += 10; bg += 22; bb += 8; }
+			if (plotOwner[i] || model.farms.plotOwner[i]) { br += 10; bg += 22; bb += 8; }
 			const [sr, sg, sb] = sampleStops(STOCK_RGB, t);
 			const mix = t > 0.01 ? 0.2 + 0.8 * t : 0;
 			const r = Math.round(br * (1 - mix) + sr * mix);
@@ -226,8 +227,8 @@ class FieldPlot {
 	}
 
 	drawParticles(model) {
-		if (this.resource === 'coal' || this.resource === 'goods') {
-			this.drawGoodsParticles(model, this.resource === 'coal' ? ITEM_COAL : ITEM_GOODS);
+		if (this.resource === 'coal' || this.resource === 'food' || this.resource === 'goods') {
+			this.drawGoodsParticles(model, this.resource === 'coal' ? ITEM_COAL : this.resource === 'food' ? ITEM_FOOD : ITEM_GOODS);
 			return;
 		}
 		this.drawWorkerParticles(model);
@@ -371,6 +372,8 @@ class FieldPlot {
 		let detail = '';
 		if (actor === ECONOMY_TOWN) {
 			detail = ` · ${WEALTH_NAMES[model.wealthClass[i]]} · Tier ${Math.round(settlements.tier[i] * 100)}% · Occ ${model.pop[i].toFixed(0)}/${model.rooms[i].toFixed(1)} · Wait ${occPct}% · Tax ${model.townRestTax(i).toFixed(2)}g`;
+		} else if (actor === ECONOMY_FARM) {
+			detail = ` · Fields ${model.farms.plots[i]} · Crew ${model.shiftCount[i]}/${model.farms.crewTarget(i)} · Build ${Math.round(model.founding.buildProgress[i] * 100)}% · Harvest ${(FARM_SEASON_SECONDS - model.farms.clock[i]).toFixed(1)}s`;
 		} else if (actor === ECONOMY_GARDEN) {
 			detail = ` · Plots ${forage.plotCount(i)} · Free food ${forage.gardenStock[i].toFixed(2)} · Next ${(GARDEN_SEASON_SEC - forage.gardenClock[i]).toFixed(1)}s`;
 		} else if (actor) {
@@ -379,10 +382,10 @@ class FieldPlot {
 		}
 		const name = settlements.isYoungTown(i) ? 'Young town' : ACTOR_NAMES[actor];
 		const head = `${pinned ? 'Pinned · ' : ''}${name} ${cellName(i)}${detail}`;
-		const stocks = `Coal ${model.coal[i].toFixed(2)} · Goods ${model.goods[i].toFixed(2)} · Fresh ${model.labor[i].toFixed(2)} · Tired ${model.depleted[i].toFixed(2)} · Forage ${model.forageCount[i].toFixed(0)}`;
-		const prices = `Coal ${model.priceCoal[i].toFixed(2)} · Goods ${model.priceGoods[i].toFixed(2)} · Wage ${model.priceLabor[i].toFixed(2)} · Home ${model.priceHome[i].toFixed(2)}/${model.priceRest[i].toFixed(2)} · FoodGrad ${forage.scoreAtCell(i).toFixed(2)}`;
+		const stocks = `Food ${model.food[i].toFixed(2)} · Coal ${model.coal[i].toFixed(2)} · Goods ${model.goods[i].toFixed(2)} · Fresh ${model.labor[i].toFixed(2)} · Tired ${model.depleted[i].toFixed(2)} · Forage ${model.forageCount[i].toFixed(0)}`;
+		const prices = `Food ${model.priceFood[i].toFixed(2)} · Coal ${model.priceCoal[i].toFixed(2)} · Goods ${model.priceGoods[i].toFixed(2)} · Wage ${model.priceLabor[i].toFixed(2)} · Home ${model.priceHome[i].toFixed(2)}/${model.priceRest[i].toFixed(2)} · FoodGrad ${forage.scoreAtCell(i).toFixed(2)}`;
 		const wallet = actor === ECONOMY_TOWN
-			? `Town ${money.purse[i].toFixed(2)}g · Rations ${model.towns.rationPool[i].toFixed(2)} · WorkerGold ${model.workerGold[i].toFixed(2)}g · Profit ${model.profit[i].toFixed(2)}/s`
+			? `Town ${money.purse[i].toFixed(2)}g · Rations ${model.food[i].toFixed(2)} · WorkerGold ${model.workerGold[i].toFixed(2)}g · Profit ${model.profit[i].toFixed(2)}/s`
 			: `Purse ${money.purse[i].toFixed(2)}g · WorkerGold ${model.workerGold[i].toFixed(2)}g · Owed ${money.owedWage[i].toFixed(2)}g · Vault ${money.vault.toFixed(2)}g`;
 		const shore = land.waterEdge[i] ? ' (Shore)' : '';
 		const ground = `${TERRAIN_NAMES[land.terrain[i]]}${shore} · WildFood ${forage.wildFood[i].toFixed(2)} · Rest ${land.rest[i].toFixed(2)} · Site ${land.site[i].toFixed(2)} · Forest ${settlements.forest[i].toFixed(2)}`;

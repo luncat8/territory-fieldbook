@@ -87,7 +87,7 @@ class ForageSystem {
 		for (let y = Math.max(0, gy - GARDEN_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, gy + GARDEN_RADIUS); y++) {
 			for (let x = Math.max(0, gx - GARDEN_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, gx + GARDEN_RADIUS); x++) {
 				const i = economyIndex(x, y);
-				if (land.terrain[i] === TERRAIN_WATER || (actors[i] && i !== g) || this.plotOwner[i] !== 0) continue;
+				if (land.terrain[i] === TERRAIN_WATER || (actors[i] && i !== g) || this.plotOwner[i] !== 0 || this.model.farms.plotOwner[i]) continue;
 				this.plotOwner[i] = tag;
 				settlements.forest[i] *= 0.25;
 			}

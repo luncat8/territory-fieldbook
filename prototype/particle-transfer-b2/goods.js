@@ -26,18 +26,18 @@ class GoodsPool {
 		this.owner = new Int32Array(MAX_GOODS_PARTICLES);
 		this.waitTicks = new Uint16Array(MAX_GOODS_PARTICLES);
 		this.arriving = new Uint8Array(MAX_GOODS_PARTICLES);
-		this.spawnAmount = [new Float64Array(ECONOMY_SIZE), new Float64Array(ECONOMY_SIZE)];
-		this.spawnCost = [new Float64Array(ECONOMY_SIZE), new Float64Array(ECONOMY_SIZE)];
-		this.spawnIdle = [new Uint16Array(ECONOMY_SIZE), new Uint16Array(ECONOMY_SIZE)];
-		this.stockCost = [new Float64Array(ECONOMY_SIZE), new Float64Array(ECONOMY_SIZE)];
-		this.cap = [new Float64Array(ECONOMY_SIZE), new Float64Array(ECONOMY_SIZE)];
-		this.sellFloor = [new Float64Array(ECONOMY_SIZE), new Float64Array(ECONOMY_SIZE)];
-		this.buyerQueue = [new Float64Array(ECONOMY_SIZE), new Float64Array(ECONOMY_SIZE)];
+		this.spawnAmount = Array.from({ length: 5 }, () => new Float64Array(ECONOMY_SIZE));
+		this.spawnCost = Array.from({ length: 5 }, () => new Float64Array(ECONOMY_SIZE));
+		this.spawnIdle = Array.from({ length: 5 }, () => new Uint16Array(ECONOMY_SIZE));
+		this.stockCost = Array.from({ length: 5 }, () => new Float64Array(ECONOMY_SIZE));
+		this.cap = Array.from({ length: 5 }, () => new Float64Array(ECONOMY_SIZE));
+		this.sellFloor = Array.from({ length: 5 }, () => new Float64Array(ECONOMY_SIZE));
+		this.buyerQueue = Array.from({ length: 5 }, () => new Float64Array(ECONOMY_SIZE));
 		this.incoming = new Float64Array(ECONOMY_SIZE);
 		this.room = new Float64Array(ECONOMY_SIZE);
 		this.accept = new Float64Array(ECONOMY_SIZE);
-		this.spoiled = new Float64Array(2);
-		this.spoilShare = [0, 1 - Math.exp(-ECONOMY_DT * SPOIL_GOODS)];
+		this.spoiled = new Float64Array(5);
+		this.spoilShare = [0, 1 - Math.exp(-ECONOMY_DT * SPOIL_GOODS), 0, 0, 1 - Math.exp(-ECONOMY_DT * 0.012)];
 		this.queueBlend = 1 - Math.exp(-ECONOMY_DT * 3);
 		this.maxProfitError = 0;
 		this.arrivals = 0;
@@ -46,7 +46,7 @@ class GoodsPool {
 
 	reset() {
 		this.count = 0;
-		for (let k = 0; k < 2; k++) {
+		for (const k of GOODS_ITEMS) {
 			this.spawnAmount[k].fill(0);
 			this.spawnCost[k].fill(0);
 			this.spawnIdle[k].fill(0);
@@ -69,7 +69,7 @@ class GoodsPool {
 	}
 
 	flushOwner(cell) {
-		for (let k = 0; k < 2; k++) {
+		for (const k of GOODS_ITEMS) {
 			const rem = this.spawnAmount[k][cell];
 			if (rem > 1e-12) this.emit(k, cell, rem, this.spawnCost[k][cell]);
 			else if (rem > 0) this.spoiled[k] += rem;
@@ -79,6 +79,7 @@ class GoodsPool {
 		}
 		if (this.model.coal[cell] > 0) this.spoiled[0] += this.model.coal[cell];
 		if (this.model.goods[cell] > 0) this.spoiled[1] += this.model.goods[cell];
+		this.spoiled[ITEM_FOOD] += this.model.food[cell];
 	}
 
 	emit(kind, cell, amt, cost) {
@@ -146,7 +147,7 @@ class GoodsPool {
 	// Emits a batch once accumulated stock reaches SPAWN_UNIT (or flushes idle partial batches) when uphill price clears sellFloor.
 	stepSpawn() {
 		const { steering } = this.model;
-		for (let k = 0; k < 2; k++) {
+		for (const k of GOODS_ITEMS) {
 			const price = this.model.pricesAt(k);
 			const sAmt = this.spawnAmount[k], sCost = this.spawnCost[k], sIdle = this.spawnIdle[k];
 			for (let i = 0; i < ECONOMY_SIZE; i++) {
@@ -179,6 +180,7 @@ class GoodsPool {
 		this.stepMove();
 		this.admitKind(ITEM_COAL);
 		this.admitKind(ITEM_GOODS);
+		this.admitKind(ITEM_FOOD);
 	}
 
 	// Moves particles uphill, accrues haul cost on effort, handles underwater re-steering/consignment and flags buyer arrivals.
@@ -218,7 +220,7 @@ class GoodsPool {
 				}
 				// At a local maximum while underwater: coal waits in consignment; perishable goods spot-sell before rotting.
 				if (this.waitTicks[p] < 60000) this.waitTicks[p]++;
-				if (k === ITEM_GOODS && hasRoom && bid > 0 && this.waitTicks[p] >= CONSIGN_WAIT_TICKS) {
+				if (k !== ITEM_COAL && hasRoom && bid > 0 && this.waitTicks[p] >= CONSIGN_WAIT_TICKS) {
 					this.arriving[p] = 1;
 				}
 				this.hx[p] = 0;

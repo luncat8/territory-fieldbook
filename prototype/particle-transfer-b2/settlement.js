@@ -73,7 +73,7 @@ class Settlements {
 		this.bestScore = FOUND_SETTLERS;
 		this.pledged = false;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			if (!forage.plotOwner[i]) this.forest[i] += this.regrowShare * (this.forestCap[i] - this.forest[i]);
+			if (!forage.plotOwner[i] && !m.farms.plotOwner[i]) this.forest[i] += this.regrowShare * (this.forestCap[i] - this.forest[i]);
 			if (m.actors[i] === ECONOMY_TOWN && this.tier[i] < 1) this.growTier(i);
 		}
 		for (let w = 0; w < workers.count; w++) {
@@ -97,7 +97,7 @@ class Settlements {
 				const n = economyIndex(x, y);
 				this.gather[n] += amount;
 				const score = this.gather[n] * land.site[n];
-				if (actors[n] || score <= this.bestScore) continue;
+				if (actors[n] || this.model.farms.plotOwner[n] || this.model.forage.plotOwner[n] || score <= this.bestScore) continue;
 				this.bestScore = score;
 				this.bestSite = n;
 			}
@@ -145,7 +145,7 @@ class Settlements {
 		}
 	}
 
-	// Gathered workers check into the new young town free of tax with their own wallets; headcount and gold are conserved.
+	// Founding creates rooms, not occupants: nearby workers must walk in and buy rest normally.
 	foundTown(c) {
 		const m = this.model, { workers } = m;
 		const cx = c % ECONOMY_WIDTH, cy = Math.floor(c / ECONOMY_WIDTH);
@@ -169,25 +169,6 @@ class Settlements {
 		m.towns.initTown(c);
 		if (settlers > 0) m.localWealth[c] = Math.max(0.5, wealthSum / settlers);
 		m.rooms[c] = Math.min(this.popCap(c), Math.max(POP_BASE, settlers + 2));
-		let checkedIn = 0;
-		for (let w = 0; w < workers.count; w++) {
-			if (workers.state[w] !== WORKER_STILL) continue;
-			const wc = workers.cell[w];
-			if (wc !== c && m.actors[wc]) continue;
-			const wx = wc % ECONOMY_WIDTH, wy = Math.floor(wc / ECONOMY_WIDTH);
-			if (Math.abs(wx - cx) > FOUND_RADIUS || Math.abs(wy - cy) > FOUND_RADIUS) continue;
-			workers.cell[w] = c;
-			workers.x[w] = cx + 0.5;
-			workers.y[w] = cy + 0.5;
-			workers.intent[w] = 0;
-			if (workers.tired[w] > 1e-6 && checkedIn + workers.amount[w] <= m.rooms[c] + 1e-6) {
-				workers.paidRest[w] = workers.tired[w];
-				workers.setState(w, WORKER_ROOM);
-				checkedIn += workers.amount[w];
-			} else if (workers.tired[w] > 1e-6) {
-				workers.setState(w, WORKER_TOWN_WAIT);
-			}
-		}
 		this.lastFound = this.ticks;
 		m.land.refresh();
 		this.founded++;

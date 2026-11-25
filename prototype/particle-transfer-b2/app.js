@@ -21,6 +21,7 @@ const ICON_PATHS = {
 const labIcon = name => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON_PATHS[name]}"/></svg>`;
 const RESOURCE_TITLES = {
 	coal: ['Coal particles & buffers', 'Live coal particles coloured by cost + haul price', 'Coal price', 'Diffused buyer bid per cell'],
+	food: ['Food particles & farmland', 'Commercial harvests, bazaar food stocks and deliveries', 'Food price', 'Town bazaar bids attract farms and food'],
 	goods: ['Goods particles & buffers', 'Live goods particles coloured by cost + haul price', 'Goods price', 'Diffused buyer bid per cell'],
 	labor: ['Fresh workforce', 'Walking commuters and docked firm pools', 'Wage', 'Diffused firm entry-wage bid per cell'],
 	depleted: ['Tired & resting workers', 'Homebound walkers, wait queues and town rooms', 'Home appeal', 'Blended rest value and quality field'],
@@ -32,15 +33,16 @@ const TOOL_HINTS = {
 	inspect: 'Click a worker or cell to watch its wallet, food and state, or hover to inspect cell stocks.',
 	mine: 'Click walkable land to place a coal mine.',
 	factory: 'Click walkable land to place a goods factory.',
-	town: 'Click walkable land to place a town. Hungry workers in unsupplied towns forage rather than dying.',
+	town: 'Click walkable land to place a town. Workers buy rest and food; towns never create or remove workers.',
 	gold: 'Click walkable land to place a gold mine.',
+	farm: 'Click walkable land to build a food farm. Paid crews clear forest or use local wood, then harvest every seven seconds.',
 	garden: 'Click walkable land to place a Monastery garden: farms surrounding plots and gives free food.',
 	erase: 'Click an actor to remove it. Docked workers step outside with their wallets intact.'
 };
 
 function bootEconomy() {
 	for (const node of document.querySelectorAll('[data-icon]')) node.outerHTML = labIcon(node.dataset.icon);
-	const toolKinds = { inspect: 0, erase: 0, mine: ECONOMY_MINE, factory: ECONOMY_FACTORY, town: ECONOMY_TOWN, gold: ECONOMY_GOLD, garden: ECONOMY_GARDEN };
+	const toolKinds = { inspect: 0, erase: 0, mine: ECONOMY_MINE, factory: ECONOMY_FACTORY, town: ECONOMY_TOWN, gold: ECONOMY_GOLD, garden: ECONOMY_GARDEN, farm: ECONOMY_FARM };
 	const model = new PriceEconomy();
 	const plots = [new FieldPlot($('resource-map'), true), new FieldPlot($('price-map'), false)];
 	const stats = new EconomyTelemetry();
@@ -63,12 +65,12 @@ function bootEconomy() {
 	$('gold-rate-note').textContent = GOLD_RATE.toFixed(2);
 
 	function syncActors() {
-		const counts = [0, 0, 0, 0, 0, 0];
+		const counts = [0, 0, 0, 0, 0, 0, 0];
 		for (const kind of model.actors) counts[kind]++;
-		const [, mines, factories, towns, gold, gardens] = counts;
+		const [, mines, factories, towns, gold, gardens, farms] = counts;
 		let young = 0;
 		for (let i = 0; i < ECONOMY_SIZE; i++) if (model.settlements.isYoungTown(i)) young++;
-		$('actor-count').textContent = `${mines} M · ${factories} F · ${towns} T${young ? ` (${young}y)` : ''} · ${gold} G · ${gardens} A`;
+		$('actor-count').textContent = `${mines} M · ${factories} F · ${towns} T${young ? ` (${young}y)` : ''} · ${gold} G · ${gardens} A · ${farms} H`;
 		clearButton.disabled = !towns;
 		for (const plot of plots) plot.readActors(model.actors);
 		dirty = true;

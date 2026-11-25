@@ -487,3 +487,10 @@ Traps from moving the particle draft's worker rules into `prototype/price-model-
   cells with `target <= ambient ? ambient : max(ambient, relaxed)` so food sources only lift the field.
 
 
+## worker splits and food refills
+
+- A near-full-food requirement must be an eligibility gate after an age/cooldown, not a long continuous
+  prosperity timer: bags normally fall below the near-full threshold before workers buy their next ration.
+  Requiring 45 uninterrupted near-full seconds with refill at 75% silently disables reproduction.
+- Worker pool compaction must copy lifecycle columns as well as motion/wallet columns. Reverse traversal
+  lets splits append and deaths swap-remove without processing a survivor or newborn twice that tick.

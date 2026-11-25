@@ -37,17 +37,20 @@ class ActorOptimizer {
 		if (actor === ECONOMY_MINE) return m.goodsPool.sellFloor[ITEM_COAL][i];
 		if (actor === ECONOMY_FACTORY) return m.goodsPool.sellFloor[ITEM_GOODS][i];
 		if (actor === ECONOMY_TOWN) return m.towns.restTax(i);
+		if (actor === ECONOMY_FARM) return m.goodsPool.sellFloor[ITEM_FOOD][i];
 		return 0;
 	}
 
 	shiftSlots(i) {
 		const actor = this.model.actors[i];
+		if (actor === ECONOMY_FARM) return this.model.farms.crewTarget(i);
 		if (!this.recipes[actor]) return 0;
 		return Math.max(1, Math.round(2 * (this.model.scale[i] || 1)));
 	}
 
 	poolSlots(i) {
 		const actor = this.model.actors[i];
+		if (actor === ECONOMY_FARM) return this.model.farms.crewTarget(i);
 		if (!this.recipes[actor]) return 0;
 		return Math.max(1, Math.ceil(1.5 + 1.5 * (this.model.scale[i] || 1)));
 	}
@@ -74,6 +77,7 @@ class ActorOptimizer {
 	poolTarget(i) {
 		const m = this.model, actor = m.actors[i];
 		if (actor === ECONOMY_TOWN) return m.towns.waitCap(i);
+		if (actor === ECONOMY_FARM) return m.farms.crewTarget(i);
 		return this.recipes[actor] ? this.firmLaborPool(i, this.recipes[actor]) : 0;
 	}
 
@@ -83,12 +87,13 @@ class ActorOptimizer {
 			const cap = m.towns.waitCap(i);
 			return cap > 0 ? m.waitCount[i] / cap : 0;
 		}
-		const pool = this.firmLaborPool(i, this.recipes[actor]);
+		const pool = actor === ECONOMY_FARM ? m.farms.crewTarget(i) : this.firmLaborPool(i, this.recipes[actor]);
 		return pool > 0 ? (m.shiftCount[i] + m.poolCount[i]) / pool : 0;
 	}
 
 	isHiringFirm(i) {
 		const m = this.model, actor = m.actors[i], recipe = this.recipes[actor];
+		if (actor === ECONOMY_FARM) return m.farms.wageBid(i) > 0 && m.shiftCount[i] + m.poolCount[i] < m.farms.crewTarget(i) + 1;
 		if (!recipe || m.founding.isBuilding(i)) return false;
 		const fallback = recipe.outItem === ITEM_COAL ? START_PRICE * 0.5 : START_PRICE;
 		const outPrice = recipe.outItem < 0 ? 1 : (m.derived ? m.pricesAt(recipe.outItem)[i] : fallback);

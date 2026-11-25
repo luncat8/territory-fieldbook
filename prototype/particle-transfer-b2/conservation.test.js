@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'gold.js', 'goods.js', 'workforce.js', 'workers.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js'];
+const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'gold.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js'];
 for (const file of SCRIPTS) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 
 const sum = values => values.reduce((total, value) => total + value, 0);
@@ -42,8 +42,10 @@ function checkLedgers(model) {
 	const goodsHeld = sum(model.goods) + goodsPool.spawnBufferTotal(ITEM_GOODS) + goodsPool.inTransitTotal(ITEM_GOODS);
 	closeTo(model.producedCoal - model.burnedCoal - goodsPool.spoiled[ITEM_COAL], coalHeld);
 	closeTo(model.producedGoods - model.consumedGoods - goodsPool.spoiled[ITEM_GOODS], goodsHeld);
-	closeTo(workers.seededWorkers + workers.births, workers.totalAmount(), 1e-9);
-	closeTo(workers.seededTired + model.workedLabor - model.restedDepleted, workers.totalTired());
+	const foodHeld = sum(model.food) + goodsPool.spawnBufferTotal(ITEM_FOOD) + goodsPool.inTransitTotal(ITEM_FOOD);
+	closeTo(model.producedFood - model.consumedFood - goodsPool.spoiled[ITEM_FOOD], foodHeld);
+	closeTo(workers.seededWorkers + workers.births - model.workerLife.deaths, workers.totalAmount(), 1e-9);
+	closeTo(workers.seededTired + model.workedLabor - model.restedDepleted - model.workerLife.removedTired, workers.totalTired());
 	closeTo(money.seeded + money.mined, money.total());
 }
 
@@ -117,5 +119,5 @@ test('over-hauled goods particle consigns into a hungry town after CONSIGN_WAIT_
 	checkLedgers(model);
 	assert.equal(model.goodsPool.count, 0, 'stranded goods particle should consign into hungry town');
 	assert.ok(model.goodsPool.underwaterLosses >= 1, 'consignment below haul cost should record an underwater spot sale');
-	assert.ok(model.towns.rationPool[town] > 0 || model.goods[town] > 0 || model.consumedGoods > 0);
+	assert.ok(model.goods[town] > 0 || model.consumedGoods > 0);
 });

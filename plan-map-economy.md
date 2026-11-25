@@ -1,5 +1,11 @@
 # Map-economy engine prototype plan — 4.1b
 
+Scope: the cell-based engines described here use aggregate population fields. They do not define the
+particle engine's worker lifecycle. For `prototype/particle-transfer-b2/` and its game-port design,
+`plan-particle-transfer.md` is authoritative: towns never spawn/despawn/teleport workers; workers split
+when fed, prosperous and mostly satisfied, and despawn only after prolonged personal food absence.
+
+
 Standalone design for the map-economy engine prototype from draft 4.1a. It covers
 settlements with populations, demand as a distance field, gradient goods flow,
 factory placement and construction, resource and product storage, transportation

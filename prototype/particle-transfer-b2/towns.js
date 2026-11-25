@@ -1,10 +1,9 @@
-// Owns: town rooms, wait queues, ration pools, wealth-class tax/size adaptation and births (never town deaths).
-// Edit for: room rest speed, ration fees, Cheap/Med/Rich strategies and comfort-gated birth accumulation.
+// Owns: town rest services, bazaar food sales and wealth-class tax/room adaptation.
+// Edit for: service prices, input bids and Cheap/Med/Rich strategies; never worker lifecycle.
 'use strict';
 
 const BASE_REST_FEE = 1.05;
 const BASE_RATION_FEE = 0.45;
-const FOOD_PER_GOODS = 5.5;
 const ROOM_REST_BASE = 0.22;
 const ROOM_REST_COMFORT = 0.38;
 const WAIT_POOL_FREE = 0.25;
@@ -22,8 +21,6 @@ const RICH_OCC = 0.8;
 const VACANT_OCC = 0.3;
 const VACANT_SECONDS = 25;
 const NEED_FLOOR = 0.25;
-const BIRTH_RATE = 0.008;
-const BIRTH_COMFORT = 0.68;
 
 class TownRules {
 	constructor(model) {
@@ -31,14 +28,10 @@ class TownRules {
 		this.satBlend = 1 - Math.exp(-ECONOMY_DT * SAT_RATE);
 		this.profitBlend = 1 - Math.exp(-ECONOMY_DT * PROFIT_RATE);
 		this.wealthBlend = 1 - Math.exp(-ECONOMY_DT * 0.4);
-		this.rationPool = new Float64Array(ECONOMY_SIZE);
-		this.birthAcc = new Float64Array(ECONOMY_SIZE);
 		this.revenueTick = new Float64Array(ECONOMY_SIZE);
 	}
 
 	reset() {
-		this.rationPool.fill(0);
-		this.birthAcc.fill(0);
 		this.revenueTick.fill(0);
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			if (this.model.actors[i] === ECONOMY_TOWN) this.initTown(i);
@@ -46,15 +39,13 @@ class TownRules {
 	}
 
 	initTown(i) {
-		this.rationPool[i] = 0;
-		this.birthAcc[i] = 0;
+		this.model.food[i] = 0;
 		this.revenueTick[i] = 0;
 		this.model.localWealth[i] = SEED_WORKER_GOLD;
 	}
 
 	clearTown(i) {
-		this.rationPool[i] = 0;
-		this.birthAcc[i] = 0;
+		this.model.food[i] = 0;
 		this.revenueTick[i] = 0;
 		this.model.localWealth[i] = 0;
 	}
@@ -141,6 +132,20 @@ class TownRules {
 		return Math.min(0.76, Math.max(0.42, INPUT_SHARE * (1 + 0.16 * this.drive(i))));
 	}
 
+	foodTarget(i) { return Math.max(2, this.demandPop(i) * 0.5); }
+
+	foodFee(i) {
+		return Math.max(BASE_RATION_FEE, this.model.unitCostAt(ITEM_FOOD, i) * 1.15);
+	}
+
+	foodBid(i) {
+		const m = this.model;
+		const target = this.foodTarget(i);
+		const present = m.food[i] + m.goodsPool.buyerQueue[ITEM_FOOD][i];
+		const cool = m.money.townCool(i, target * BASE_RATION_FEE);
+		return optimalBid(BASE_RATION_FEE * 2, present, target, cool, m.suppression);
+	}
+
 	goodsBid(i) {
 		const m = this.model;
 		const tax = this.taxRate(i), sh = this.share(i);
@@ -157,19 +162,22 @@ class TownRules {
 		return m.settlements.bidFactor(i) * optimalBid((COAL_COMFORT / TOWN_COAL_NEED) * tax, present, this.coalTarget(i), cool, m.suppression, sh);
 	}
 
-	// Funded workers refill their food bag from the town's rationPool; broke workers or unsupplied towns cannot, triggering FORAGE.
+	// Funded workers refill their food bag from the town's food stock; broke workers or unsupplied towns cannot, triggering FORAGE.
 	buyRation(i, w) {
 		const m = this.model, { workers } = m;
-		const avail = this.rationPool[i];
+		const avail = this.model.food[i];
 		const want = FOOD_BAG - workers.food[w];
 		if (avail <= 1e-4 || want <= 1e-4 || workers.gold[w] <= 1e-5) return 0;
-		const unitFee = BASE_RATION_FEE * this.wealthRatio(i) * Math.max(0.6, m.taxMult[i] || 1) * m.settlements.taxFactor(i);
+		const unitFee = this.foodFee(i);
 		const maxBuy = unitFee > 1e-9 ? workers.gold[w] / unitFee : want;
 		const bought = Math.min(want, avail, maxBuy);
 		if (bought <= 1e-5) return 0;
 		const cost = Math.min(workers.gold[w], bought * unitFee);
+		const stockCost = m.goodsPool.stockCost[ITEM_FOOD];
+		stockCost[i] *= 1 - bought / avail;
+		m.consumedFood += bought;
 		workers.gold[w] -= cost;
-		this.rationPool[i] -= bought;
+		this.model.food[i] -= bought;
 		workers.food[w] = Math.min(FOOD_BAG, workers.food[w] + bought);
 		if (cost > 0) {
 			m.money.payTown(i, cost);
@@ -185,7 +193,7 @@ class TownRules {
 		}
 	}
 
-	// Consumes coal/goods, stocks rationPool and accumulates births when comfortable; unsupplied towns never cause deaths.
+	// Comfort inputs are consumed as services; food is bought and sold as food, never manufactured from goods.
 	stepTown(i) {
 		const m = this.model;
 		const usePop = Math.max(m.pop[i], m.rooms[i] * 0.35);
@@ -204,21 +212,9 @@ class TownRules {
 		m.burnedCoal += usedCoal;
 		m.consumedGoods += usedGoods;
 
-		const rationCap = Math.max(4, m.rooms[i] * 1.2);
-		this.rationPool[i] = Math.min(rationCap, this.rationPool[i] + usedGoods * FOOD_PER_GOODS);
-
 		m.satCoal[i] += this.satBlend * ((wantCoal > 0 ? usedCoal / wantCoal : 0) - m.satCoal[i]);
 		m.satGoods[i] += this.satBlend * ((wantGoods > 0 ? usedGoods / wantGoods : 0) - m.satGoods[i]);
-		const comfort = COAL_COMFORT * m.satCoal[i] + GOODS_COMFORT * m.satGoods[i];
-
-		if (comfort > BIRTH_COMFORT && m.pop[i] > 0 && m.pop[i] + 1 <= m.rooms[i]) {
-			this.birthAcc[i] += BIRTH_RATE * m.pop[i] * (comfort - BIRTH_COMFORT) * ECONOMY_DT;
-			if (this.birthAcc[i] >= WORKER_UNIT) {
-				const cx = (i % ECONOMY_WIDTH) + 0.5, cy = Math.floor(i / ECONOMY_WIDTH) + 0.5;
-				if (m.workers.spawn(cx, cy, WORKER_STILL, 0, 0, FOOD_BAG, false) >= 0) this.birthAcc[i] -= WORKER_UNIT;
-				else this.birthAcc[i] = WORKER_UNIT * 0.99;
-			}
-		}
+		m.goodsPool.cap[ITEM_FOOD][i] = Math.max(m.food[i], this.foodTarget(i));
 
 		const occ = m.rooms[i] > 1e-9 ? m.pop[i] / m.rooms[i] : 0;
 		if (occ < VACANT_OCC && this.revenueTick[i] <= 1e-9) m.vacantTicks[i] += ECONOMY_DT;

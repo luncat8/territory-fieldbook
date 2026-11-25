@@ -13,13 +13,12 @@ particles) under them. All numbers live in the owning source file; numbers below
   as `mape.moneyEngine === 'particle'` and made the default.
 - Goods particles: variable `amount` (spawn accumulator, spoilage). Worker particles: fixed headcount with a
   continuous `tired` portion, persistent `id`, `gold` wallet and personal `food` ration.
-- Town population = the worker objects inside it. A town is not a worker router: it never holds, releases or
-  rate-limits workers. It sells rest and rations for gold and buys goods and coal for comfort.
-- **No deaths in badly supplied towns:** an unsupplied town or an empty wallet never kills workers. Hungry workers
-  switch to a dedicated `FORAGE` mode that ignores all other tasks, follow a low-resolution food gradient toward
-  water shorelines, forests and **Monastery gardens** (farm-style plots that give free food), pick food until fed
-  and return to normal life.
-- Deferred (own drafts/plans): house owners, standalone commercial farms and bazaar pricing, free workers
+- Town population = the worker objects inside it. A town is not a worker manager: it never spawns, despawns, teleports or
+  routes workers. Workers own their movement, queues, check-in and departure. It sells rest and rations for gold and buys goods and coal for comfort.
+- Worker lifecycle belongs only to `worker-life.js`: prosperous, fed workers split into two, sharing existing
+  food and gold. A worker despawns only after prolonged personal food absence, never because a town is unhappy.
+  Hungry workers first switch to `FORAGE`, following shoreline/forest/Monastery food reach independently of jobs.
+- Deferred (own drafts/plans): house owners, a general wood market, advanced bazaar pricing, free workers
   gathering market wood, Transport Company staffing/depots, visible coin particles, roads/ships, town upkeep and
   depot wear, construction wood for new firms, several firms per cell.
 
@@ -32,7 +31,7 @@ Lab tick `ECONOMY_DT = 1/60 s` (B2); game tick `SIM_STEP_SEC` (`main.js`), speed
 
 ## Fields (not conserved — diffused + faded)
 
-- Buyer bids: `priceCoal`, `priceGoods` (later `priceIron`, `priceLogs`, `priceFood`). Firm wage bid: `priceLabor`.
+- Buyer bids: `priceCoal`, `priceGoods`, `priceFood` (later `priceIron`, `priceLogs`). Firm wage bid: `priceLabor`.
 - Home fields (B2 `workforce.js`): `priceRest` (rest quality: comfort, tier, free-space lift, land rest, crowding)
   and `priceHome` (rest per gold of actual tax: `shelter · refTax / goldTax`, no `popRoom`).
 - **Free-food gradient (`forage.field`):** half-resolution grid (`24×14` on `48×28`, `32×32` on `64×64`) updated
@@ -108,7 +107,7 @@ States: `WALK_JOB`, `FIRM_POOL`, `SHIFT`, `WALK_HOME`, `TOWN_WAIT`, `ROOM`, `STI
 6. **Rest.** A free room → `ROOM`: pays `fee = townRestTax · tired` into the town purse. A worker with less
    than the fee pays all he has and buys `paidRest` in proportion; any remaining `tired` recovers at the shelter
    rate after leaving. In the room `tired` falls at the town rest rate (comfort, tier, land, free-space lift) and
-   funded workers buy rations from the town's supplied `rationPool` to top up `food`.
+   funded workers buy rations from the town's purchased food stock to top up `food`.
 7. **Leave.** Once paid rest finishes (`tired = 0` on full payment) he leaves the room immediately. If tired
    remains he shelter-rests or walks; if fresh and `priceLabor` slope clears the dock gate he walks to the next
    job; otherwise he becomes `STILL` fresh — **free workforce** (counted for new firms, below).
@@ -141,17 +140,17 @@ the next job — same `id`, same `amount` throughout.
 ## Towns
 
 - **Rooms** = built size (bounded by tier pop cap × land quality). **Occupants** = `ROOM` + `TOWN_WAIT` workers.
-  Needs (coal, goods) are consumed per occupant-second; consumed goods also stock the town's `rationPool`;
-  satisfaction gives comfort.
+  Needs (coal, goods) are consumed for comfort. Food is a separate traded resource: the bazaar buys farm
+  harvests and sells rations into worker bags. Consumed goods never manufacture food.
 - **Tax and size by wealth class** (deterministic per cell, B2): **cheap** drops tax to fill vacant rooms, grows
   when the queue fills; **med** buys needs, then grows; **rich** keeps a cozy occupancy (queue ≈ 0, a few free
   rooms), raises tax rather than growing, cuts size first when needs are unmet. Cheap/med keep built size and
   shrink slowly only when long vacant or broke.
-- **Births only (no deaths):** headcount changes only by births, never by starvation or low comfort. Per-town
-  accumulator `births += BIRTH_RATE · occupants · max(0, comfort − BIRTH_COMFORT) · dt` while rooms are vacant;
-  at `≥ WORKER_UNIT` a newborn worker (`gold = 0, tired = 0, food = FOOD_BAG`) enters town. In badly supplied
-  towns births stop and hungry workers leave in `FORAGE` mode to gather food themselves.
-- Gold: towns and starter firms begin with seeded purses; worker wallets are seeded at spawn; the gold mine is the
+- Town rules never create or remove workers, change their wallets except through explicit purchases, or
+  relocate them. Empty rooms, comfort, taxes and town wealth affect services, not headcount.
+- Bazaar food target `max(2, demandPop · 0.5)`; bids cool with stock, incoming queues and available gold.
+  Rations cost `max(0.45, delivered food cost · 1.15)` per unit. Sales remove food cost basis proportionally.
+- Gold: towns and starter firms begin with seeded purses; only initial worker wallets are seeded; splitting shares wallets; the gold mine is the
   only source.
 
 ## Settlement founding (still depleted workers)
@@ -162,8 +161,8 @@ B2 `Settlements` / `Land`, per worker:
   `intent` toward 1 over `INTENT_SECONDS`, otherwise lowers it. At `intent = 1` he writes `amount` into the gather
   grid around him (radius `FOUND_RADIUS`), tracking the best `gather · land.site` at write time — no map rescans.
 - **Found.** When the best score clears `FOUND_SETTLERS` (cooldown `FOUND_COOLDOWN_TICKS`), a young town is
-  placed there with its cell's wealth class and town claim stamped. The gathered workers check into its rooms free
-  of tax, carrying their own gold; no gold is minted, the town starts broke and lives on tax.
+  placed there with its cell's wealth class and town claim stamped. Workers remain at their existing positions and states, walking in and buying rest normally; no free
+  check-in, teleportation, workers or gold are created. The town starts broke and lives on service sales.
 - **Young town** (tier below `WOOD_TIER_CAP`): its resting/still workers fell nearby forest into its first tier;
   bought comfort lifts the tier above that. Land sets the site: water edge and forest/meadow best, desert and
   wasteland worst; other towns' claims repel.
@@ -175,6 +174,40 @@ B2 `Settlements` / `Land`, per worker:
   walkable cell is chosen by value: output bid minus recipe input cost at that cell, gated by resources (a mine
   needs a deposit; a factory needs coal reach). Nearby idle founders build it into a working firm with an empty
   purse (`0` minted gold).
+
+## Commercial food farms (`farms.js`)
+
+- High food bid (`> 0.12`) plus at least three idle fresh workers in a radius-two area enables farm founding.
+  The same value scan compares food output value with mines/factories. No town initiates a worker spawn.
+- A site needs at least three legal cells, mean humidity quality ≥ 0.35, and either one unit of forest in
+  radius two or one unit of local wood. Wood is a local construction stock; a general wood market is deferred.
+- Construction and production use the same paid shift crews. Every 0.25 worker units spent permits a random
+  clearing visit in the 5×5 area (misses count). Cut all forest in that cell to zero, keep felled wood, and
+  establish exclusive farmland. Construction consumes one wood; it cannot finish without a field.
+- One worker per field cell; food price determines desired crew/field count (`ceil(priceFood / 0.45 · 12)`,
+  bounded 1…25). More crew allows more cells. Full output buffers do not stop production or harvests.
+- Harvest every seven simulation seconds, all fields together. Staffed share is accumulated crew-seconds /
+  season / plot count, capped at one. Each fully staffed cell yields six food times humidity quality
+  `max(0, 1 − ((moisture − 0.6) / 0.3)²) · (1 − waste)`, sampled only at harvest.
+- Wage bid uses food output value per worker unit, pool vacancy and owed-wage cooling. Wage cost accumulates
+  into the next harvest cost basis. Food batches use the standard particle transport, spoilage and payment split.
+- Each harvest sends `0.0004 · food` waste to one uniformly random in-map cell at Chebyshev distance three.
+  Neighboring farmland is not exempt. Farm waste persists across land refresh; clearing claims block forest
+  regrowth, other firms and garden plots. Erasing a farm releases its fields and flushes food buffers normally.
+
+## Worker-owned lifecycle (`worker-life.js`)
+
+- Each worker tracks comfort history (12-second smoothing), personal split cooldown and time without
+  food. History samples town coal/goods comfort and is retained while away; it belongs to the worker, not town.
+- A worker at least 45 seconds old (or 45 seconds since its last split) may split when needs ≥ 0.75,
+  bag ≥ 0.9, wallet ≥ 16 gold and tired portion ≤ 30%. The cooldown measures age, not uninterrupted
+  prosperity: otherwise ordinary eating/refill cycles prevent reproduction. No vacant room is required.
+- Parent keeps its identity. Child receives a new ID in `STILL` at the parent's location. Gold, food and tired
+  amount are divided equally, never minted. Both must qualify again. A full pool leaves the parent unchanged.
+- Foraging is the first response to hunger. Only 120 continuous seconds with an empty personal food bag
+  despawns a worker. Receiving food resets the grace period. Location, comfort, tax and wealth cannot kill.
+- Swap-remove all worker and lifecycle columns; watched IDs remain stable. The removed wallet enters the
+  Transport Company vault, preserving gold. Removed tired mass is explicitly booked for the labor ledger.
 
 ## Steering & movement (`steering.js`, shared by goods and workers)
 
@@ -188,9 +221,10 @@ B2 `Settlements` / `Land`, per worker:
 ## Conservation ledgers (checked every test tick)
 
 - Goods per kind: `produced − consumed − spoiled = stored + spawnBuffers + inParticles`.
-- Headcount: `Σ worker.amount = seeded + births` (no deaths; founding and foraging move workers, never change
-  headcount).
-- Labor: `Σ tired = seededTired + worked − rested`.
+  For commercial food, `consumedFood` is removal from the trade chain into personal bags at bazaar sale;
+  wild/garden food and personal digestion are a separate subsystem.
+- Headcount: `Σ worker.amount = seeded + splits − starved`; founding and foraging never change headcount.
+- Labor: `Σ tired = seededTired + worked − rested − removedTired`.
 - Gold: `purses + wallets + vault = seeded + mined` to `< 1e-7`.
 
 ## Rendering
@@ -217,14 +251,16 @@ Lab `prototype/particle-transfer-b2/` (each file < 500 lines, header per `AGENTS
 - `forage.js` — low-res food gradient (`24×14` / `32×32`, 4-tick stride), shoreline/forest wild food, Monastery
   garden farm plots and free rations.
 - `actors.js` — firm recipes, bids, pools, conversion and scale adaptation.
-- `towns.js` — rooms, occupants, rations, tax, wealth class, births (no deaths).
+- `towns.js` — room services, bazaar food purchases/sales, tax and wealth class; no lifecycle.
+- `worker-life.js` — personal split eligibility/history, starvation and dense-pool removal.
+- `farms.js` — commercial fields, wood construction, paid crews, batch harvests and outside waste.
 - `workforce.js`, `land.js`, `settlement.js` — pareto home policy, water/forest/desert land & claims, young-town
   founding and forest-felling tier build.
 - `founding.js` — idle grid and firm founding from free workforce.
 - `gold.js` — purses, wallets, Transport Company vault and town drip.
 - `fields.js`, `telemetry.js`, `app.js`, `index.html`, `styles.css`, `README.md` — particle & field render,
   ledgers, watched worker readout, Garden tool and UI.
-- `*.test.js` — node test suites (`conservation`, `workers`, `forage`, `founding`, `ui`).
+- `*.test.js` — node test suites (`conservation`, `workers`, `food-life`, `forage`, `founding`, `ui`).
 
 Game port: `map-money-particle.js` (+ split owner files as needed), dispatched by `mapeStepMoney` when
 `mape.moneyEngine === 'particle'`; new owners get AGENTS.md map entries.
@@ -238,7 +274,7 @@ Game port: `map-money-particle.js` (+ split owner files as needed), dispatched b
 2. **Worker particles & foraging:** worker SoA pool replacing cell labor/depleted flow and `pop[i]`, entry wage,
    wait pool, rooms, pareto steering, shelter rest, personal `food` bag, `FORAGE` mode over the low-res food
    gradient and Monastery gardens.
-3. **Towns and founding:** wealth class on rooms/occupants, births without deaths, settlement founding from still
+3. **Towns and founding:** wealth class on room services, worker-owned splitting/starvation, commercial food farms, founding from still
    depleted workers, young-town forest build, firm founding from free workforce, watched-worker UI.
 4. **Game port:** 64×64 sizing (`32×32` forage grid, 200–800 live particles), port to `mape.moneyEngine ===
    'particle'` and flip the default.
@@ -253,7 +289,7 @@ Game port: `map-money-particle.js` (+ split owner files as needed), dispatched b
     `amount` through job → walk → wait → room → leave → next job;
   - pool overflow drives the wage to 0 but an emptied pool still admits; town crowding raises tax;
   - broke worker picks the value town, funded worker the rest-quality town; dominated town does not catch;
-  - **no deaths in badly supplied towns:** an isolated unsupplied town loses zero headcount; hungry workers enter
+  - **self-foraging survival:** workers with reachable food survive an unsupplied town; hungry workers enter
     `FORAGE` mode, ignore strong nearby `priceLabor` and `priceHome` pulls until fed, follow the low-res `forage`
     gradient to water shorelines, forests or a Monastery garden, gather free food and return to normal states;
   - **Monastery garden:** clears/tends surrounding plots, harvests seasonal food into `gardenStock`, emits into the
@@ -263,7 +299,10 @@ Game port: `map-money-particle.js` (+ split owner files as needed), dispatched b
   - still depleted crowd beyond town reach founds a young town on good land (shoreline/meadow), not in desert or
     in a claim;
   - idle crowd near a deposit founds a mine; no gold minted by any founding;
-  - births keep headcount ledger exact (`seeded + births`).
+  - splits and starvation keep headcount ledger exact (`seeded + splits − starved`), preserve wallets/food on
+    split and worker identity across compaction; no food is manufactured by towns.
+  - commercial farm siting gates, full clearing, wood construction, staff-scaled seven-second harvest,
+    humidity-at-harvest yield, adjacent-farm waste and paid food delivery.
 - **L2:** after game port: `smoke` + `dom_smoke` + `mape_*` comparison and the manual list.
 
 ## Manual verification checklist
@@ -271,7 +310,7 @@ Game port: `map-money-particle.js` (+ split owner files as needed), dispatched b
 - Goods views: particles stream mine → factory → town, warming in colour as transport cost adds up.
 - Watch a worker: click a worker on the map; the reference cycle plays out with live `state`, `gold`, `tired`,
   `food` and event notes.
-- Starve a town (erase factories): zero deaths; as `food` bags run out, workers turn to `FORAGE`, ignore job bids,
+- Stop food deliveries: as `food` bags run out, workers turn to `FORAGE`, ignore job bids,
   walk to lakeshores, woods or the Monastery garden, refill `food`, and resume work/rest.
 - Place a Monastery garden near broke workers: plots till around it, seasonal harvests fill its free granary, the
   `Forage` map peaks over it, and penniless workers gather rations there for `0` gold.
@@ -281,3 +320,8 @@ Game port: `map-money-particle.js` (+ split owner files as needed), dispatched b
 - Remove all towns: tired workers shelter-rest on the spot, a young town founds on shoreline/meadow away from
   facilities and desert, fells forest into its first tier, production restarts.
 - Compare a cheap and a rich town: cheap drops tax to fill rooms and grows on queue, rich keeps free rooms.
+
+- Place a farm near food demand and fresh workers: forest clears fully, fields expand with crew, and Food view
+  shows seven-second food batches reaching bazaar stocks. Erase it and check released plots and live gold ledger.
+- Keep a worker fed, comfortable and prosperous: it splits without town involvement; watch the wallet/bag divide.
+  Isolate a worker from all food: it first forages, then despawns only after 120 empty-bag seconds.
