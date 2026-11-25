@@ -24,10 +24,9 @@ const INPUT_SHARE = 0.65;
 const BUFFER_SECONDS = 1.5;
 const SERVICE_SHARE = 1 - Math.exp(-ECONOMY_DT / 0.1);
 const START_POP = 10;
-const POP_BASE = 2;
 const POP_MAX = 24;
 const POP_HEADROOM = 2;
-const POP_RATE = 0.05;
+const RESIDENT_AVG_SECONDS = 6;
 const TOWN_COAL_NEED = 0.01;
 const TOWN_GOODS_NEED = 0.034;
 const NEED_RATE = START_POP * TOWN_GOODS_NEED;
@@ -136,7 +135,6 @@ class PriceEconomy {
 		this.scale = new Float64Array(ECONOMY_SIZE);
 		this.taxMult = new Float64Array(ECONOMY_SIZE);
 		this.wealthClass = new Uint8Array(ECONOMY_SIZE);
-		this.vacantTicks = new Float64Array(ECONOMY_SIZE);
 		this.satCoal = new Float64Array(ECONOMY_SIZE);
 		this.satGoods = new Float64Array(ECONOMY_SIZE);
 		this.workLoad = new Float64Array(ECONOMY_SIZE);
@@ -156,6 +154,7 @@ class PriceEconomy {
 		this.settlements = new Settlements(this);
 		this.tracker = new WorkerTracker(this);
 		this.workers.tracker = this.tracker;
+		this.residentBlend = 1 - Math.exp(-ECONOMY_DT / RESIDENT_AVG_SECONDS);
 		this.decay = true;
 		this.derived = true;
 		this.suppression = true;
@@ -207,26 +206,47 @@ class PriceEconomy {
 		for (const [x, y] of REFERENCE_GOLD) this.actors[economyIndex(x, y)] = ECONOMY_GOLD;
 		for (const field of [this.coal, this.goods, this.coalCost, this.goodsCost, this.labor, this.depleted, this.priceCoal, this.priceGoods, this.priceLabor, this.priceHome, this.priceRest, this.pop, this.scale, this.taxMult, this.satCoal, this.satGoods, this.workLoad, this.profit, this.earned]) field.fill(0);
 		this.wealthClass.fill(0);
-		this.vacantTicks.fill(0);
 		clearScratch(this.laborFlow);
 		clearScratch(this.depletedFlow);
 		this.particles.reset();
 		this.workers.reset();
+		this.ticks = this.producedCoal = this.burnedCoal = this.producedGoods = this.consumedGoods = 0;
+		this.suppliedLabor = this.workedLabor = this.emittedDepleted = this.restedDepleted = 0;
+		this.births = this.starved = this.starvedLabor = this.starvedTired = 0;
+		this.coalRate = this.goodsRate = this.uptakeRate = 0;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			if (!this.actors[i]) continue;
 			this.scale[i] = 1;
 			if (this.actors[i] === ECONOMY_TOWN) {
-				this.pop[i] = START_POP;
 				this.taxMult[i] = 1;
 				this.wealthClass[i] = wealthClassFor(i);
+				this.seedTown(i);
 			}
 		}
 		this.money.reset();
 		this.settlements.reset();
 		this.tracker.reset();
-		this.ticks = this.producedCoal = this.burnedCoal = this.producedGoods = this.consumedGoods = 0;
-		this.suppliedLabor = this.workedLabor = this.emittedDepleted = this.restedDepleted = 0;
-		this.coalRate = this.goodsRate = this.uptakeRate = 0;
+	}
+
+	// Setup endowment, not management: a map town starts with its founding residents docked fresh at home,
+	// ready to walk to work. Afterwards the town never adds, removes or sizes a single person — workers
+	// arrive, split, starve and leave on their own.
+	seedTown(i) {
+		const seed = START_POP * LABOR_PER_POP;
+		this.labor[i] += seed;
+		this.suppliedLabor += seed;
+		this.pop[i] = START_POP;
+	}
+
+	// The resident measure a town reads to size its own provisioning (needs, rest service, tax per capita,
+	// housing): a running average of who is docked at home right now. Nobody spawns or despawns from it.
+	updateResidents() {
+		const { actors, pop, labor, depleted } = this;
+		const blend = this.residentBlend;
+		for (let i = 0; i < ECONOMY_SIZE; i++) {
+			if (actors[i] !== ECONOMY_TOWN) continue;
+			pop[i] += blend * ((labor[i] + depleted[i]) / LABOR_PER_POP - pop[i]);
+		}
 	}
 
 	// Found a named, funded worker as a walking fresh particle at i; the purse is minted into seeded so the
@@ -257,7 +277,6 @@ class PriceEconomy {
 			this.money.release(i);
 			this.pop[i] = this.scale[i] = this.taxMult[i] = this.satCoal[i] = this.satGoods[i] = this.workLoad[i] = this.profit[i] = 0;
 			this.wealthClass[i] = 0;
-			this.vacantTicks[i] = 0;
 			this.coalCost[i] = this.goodsCost[i] = this.laborFlow.cost[i] = 0;
 			this.particles.clearSell(i);
 		}
@@ -268,10 +287,10 @@ class PriceEconomy {
 			this.workLoad[i] = 0;
 		}
 		if (kind === ECONOMY_TOWN) {
-			this.pop[i] = START_POP;
+			// A placed town opens empty: no seeding, no residents to spawn. Its purses are the setup
+			// endowment; workers move in on their own once its rest and price fields reach them.
 			this.taxMult[i] = 1;
 			this.wealthClass[i] = wealthClassFor(i);
-			this.vacantTicks[i] = 0;
 			this.money.seed(i);
 		}
 		return true;
@@ -302,6 +321,7 @@ class PriceEconomy {
 	step() {
 		this.earned.fill(0);
 		this.particles.prepareStep();
+		this.updateResidents();
 		this.laborFlow.cap.fill(1);
 		this.depletedFlow.cap.fill(1);
 		this.updatePrices();
