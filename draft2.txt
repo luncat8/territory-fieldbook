@@ -1,7 +1,8 @@
-This document summarises the design decisions so far for the prototype, covering Phase 1 (map and investigation) and Phase 2 (party, competition, and economy). This is not final rule, feel free to change if found good way.
+This document summarises the design decisions so far for the prototype, covering Phase 1 (map and investigation) and Phase 2 (party, competition, and economy). other specific topics possible to search by name in draft/
+This is not final rule, feel free to change if found good way.
 As for GUI - keep it gameplay oriented: useful sequence of typical action without jumping across panels, view modes, overlays and plots to show what happens and how it changes.
 
-read draft, make plans for minimal game prototype implementation that cover main features of each topic.
+read draft, make plans for minimal game prototype implementation that cover main features of selected topic.
 next steps: implements these plans to got minimal game.
 next improve draft based on result and make more detailed plans to whole implementation in best way.
 
@@ -18,15 +19,14 @@ The prototype uses **plain JavaScript with minimal HTML and CSS**, and renders w
 ### 2.1 Structure and Generation
 
 - The world is a **64 × 64 top-view cell grid**.
-- Generation is **deterministic from a seed**, so the same seed always produces the same map.
+- Generation is **deterministic from a seed**, same seed produces same map.
 - Territory is driven by a **2D noise heightmap**.
-- Terrain types are **forest, meadow, water, swamp, hills, and desert**.
+- Terrain types are **forest, meadow, water, swamp, hills, desert**. surface water also belongs to water.
 
 ### 2.2 Visibility
 
 - **Forest** reduces the party's observation radius.
 - **Hills** increase it.
-
 
 ---
 
@@ -35,6 +35,7 @@ The prototype uses **plain JavaScript with minimal HTML and CSS**, and renders w
 ### 3.1 Movement
 
 The party is a **single unit**. The player **clicks any cell to jump there directly**. Pathfinding is not part of the prototype.
+Workforce and other items usually moving by price gradient and described in corresponding topics.
 
 ### 3.2 Time Model
 
@@ -283,63 +284,12 @@ factories (fab, sawmill, mine, etc) constantly create demand on work force that 
 to more easy adjust probably better to introduce money and factories will place what they will to pay as demand. this will allow profitable factories hire more workers.
 
 
-### factory
-
-charcoal factory make coal from forest. charcoal surname for coal, not separate item.
-wood factory make goods from forest
-
-think how to better use workforces to achieve this
-
-we can pick random cell around sawmill to cut forest according to workforce in sawmill.
-place logs on map at cell where it was cut.
-then move by demand.
-to control how menu log really need - we can use same demand field: if gradient low - then no need to cut meany trees.
-
-#### sawmill-like factories that work with map cells around
-
-i suggest make it cut more forest in the selected cell in one tick. because we choose random cell, it is better to cut all available forest in SELECTED cell -> wood, and make in maybe not every tick to save performance. this is subject of balance industry. 
-
-##### deferred: sawmill cut not all (but almost all to faster regrowth) in random cell, replant random cell
-
-look how forest working and how it is regrowth itself.  think about speed of natural regrowth from zero,
-- special case with low speed of forest spawn in cells without forest vs growth from some low level of existing forest.
-we have fast forest growth because it is easy and fun to see and debug climate.
-
-
-#### build factory
-
-think good and make plan about how factories will be spawned, depends of supply , resources and demand and workforces. i suggest to not build all just at settlement but if factory use heavy resources and more lite product then it should be located average locations of few deposits (forest has area for example and sawmill is not point producer but produce over multiple cells) . 
-typically workforce build factory from wood, sawmill from forest. build time ~ workforce.
 
 
 #### settlements
 
-demands, effect, purpose:
-- wood. big amount need to growth and some constant use, this may push sawmill industry.
-- food, keep population, 
+draft/town-settlement.md
 
-settlement is a harvester
-
-without farm, sawmill, fishery, etc. settlement work as harvester: using workforce to pick random cell around and harvest small amount slowly.
-need to make list what possible to pick: food in forest, water, wood, all work same mechanics: harvested placed on map as amount.
-
-#### farm
-
-settlements demand food -> spawn farm
-
-farm construction site need forest OR wood
-at construction stage also work as sawmill but cut all forest to zero (same mechanics, random cells) and establish farmland in cells
-
-farm produce food and small waste outside of its range. what if farms tiled without gaps: nothing special, as always it push waste to random neighbour cell outside rang
-
-farm Harvest all at once: 8s looks ok freq.
-food amount in cell depends on optimal environment (humidity) (at harvest time, for optimize). 1 worker per cell looks good.
-
-- more workers -> more cells to use.
-- farm produce always. it demand workers max depends on food demand.
-
-- Settlements demand logs: x per person per simulation second, giving sawmills customers before processors exist.
-- Sawmills clear the selected cell: all its eligible forest becomes logs; other cells remain untouched.
 
 #### CO2
 
@@ -362,7 +312,6 @@ add special panel (left) with sliders to easy adjust and play with speed of
 - sites
 etc. . and button to copy result settings to clipboard so i can paste to chat to tell what is good working
 
-### waste view map
 
 ### co2 cycle and forest
 forest is not a special case but cell property: it grow best on not wet not dry: between meadows and hills. if a lot of CO2 - it grow on more areas, if less - grow only on optimal humidity.
@@ -409,38 +358,8 @@ workforce deplete over time to 'depleted workforce'. This is subject of balance.
 workforce consumed by demand (factories, mines)
 in exchange they return 'depleted workforce' to map.
 'depleted workforce' diffuse to settlements and if gradient is low (settlements are full, out of free space) then somehow big concentration of 'depleted workforce' will spawn new settlement. 
-to make this more interesting need a map that provide good settlement location values:
-from good value (big space for population) to bad (no space)
-- near water (edge cells) - best cells, except swamp edge
-- in the edge of forest and meadow
-- meadow
-- hills
-- forest
-- swamp edge cells
-- swamp
-
-### population - workforce
 
 
-previous task was
-
-both supply and demand should have both workforce fresh and depleted. and better rename 'supply' to amount or value. if i understand properly all these arrays belongs to 'supply' is factual amount of items in cells, but 'demand' is just gradients for movement. this will be clear and understandable.
-
-current visual observation at commit 33f2b2ac370c3103a41c2d41b7277075b829c594
-on amount tab:
-	fresh and depleted looks good
-	population - i expect population of settlement as color but map looks black or i dont see it good, probably settlement ico should not drawn on this view mode, but only population color.
-
-on demand  tab:
-fresh depleted - i am not sure it is proper work or proper colored. i expect big demand of fresh if factory and big demand of depleted in settlements. in case they are not full.
-
-i think demand of depleted workforce should be proportional to settlement free space that is depends to map landscape as we told near water and meadow give biggest room for settlement.
-improve this behavior.
-this is how population migrate and some settlement growth.
-think should we preserve population == workforce, or do some average. i think average is better so gradually if settlement dispatch more workforce then receive it loose population. less population - less send workforce on map.
-
-
-all companies (factories, mines, towns) has slots for workers and some pool queue to store workers who arrive after all places occupied. they wait to somebody left town to take a room. this make transportation work more smooth and prices more stable. because immediately fill gaps when workers depleted (tired) or become fresh and leave town
 
 #### price-model-b
 prototype/price-model-b
@@ -468,38 +387,12 @@ factories, mines and settlement place waste around it.
 waste dump CO2. so coal mining partially compensated of factory and statements dump waste. balance can be positive and negative this is important part of gameplay, because CO2 is limited and plants cant growth without it.
 factories, mines - cant be in town cell, no settlements in their cells.
 
+##### waste view map
+
+
 #### GUI
 
 above canvas caption like 'Amount · workforce depleted' with info
-
-### Town settlement
-
-for particle engine: depleted worker slow movement slowly rest anywhere - this emulate shelter. for cell engine - think what will work, because it is hard for me now.
-
-so if tired worker very slow move (low gradient of settlement with acceptable taxes) - in some engines it is possible to mark it as rest mode. we call it like 'shelter' - he pay nothing and slowly rest (storyline: help himself to find food and bed) . Deferred: rest may be depends on map conditions: i.e. in the desert no rest possible.
-every some time check areas in some radius or window and if there are meany shelters (slow moving tired workers) - found settlement (aka town) - it cut forest to get some initial construction, then try to up tax gradually if possible to buy resources for better rest workers and increase town size.
-
-(hamlet): "young town" flag — marks a town still in construction that can gather resources itself (e.g. fell forest) without buying. 
-
-#### town wealth class
-
-towns for rich workers - should be implemented in more natural way. we can set 3 random strategies:
-- cheap - if visitors pool is full - prefer grow size. if slots vacant - drop tax even if cant buy all resources
-- med - balanced. buy most all resources to fit needs then growth.
-- rich - if visitors pool is full - prefer rise tax without significant growth, fit all needs, if cant - firstly cut size.
-
-Deferred for future: to make this better work need some upkeep cost and wearing items inside town's depot so keep big town almost empty will cause loss.
-
-rich cuts . other keep built size and shrink slowly only if very low on money or vacant for a long time.
-
-better also add some increment to comfort in case of free space in town. is this case rich town want keep queue pool 0 and few free slots to fit comfort level.
-example (numbers are subject to balance, usually we operate with more workers to keep things smooth, float numbers also possible): 
-5/10 poor : cut tax until minimal level of comfort then slowly shrink
-5/10 rich : slowly shrink to 6/7, 
-2/5 rich : if minimal workers then decrease tax. till 4/5
-10/10 poor : ok, start to grow when pool queue increased, to get as most workers
-9/10..10/10 rich : increase tax, grow after all needs fit, keep vacant room.
-
 
 
 ### 4.2 Layers
