@@ -475,3 +475,15 @@ Traps from moving the particle draft's worker rules into `prototype/price-model-
   tiled the map with 8 hamlets. Count only depleted·still, and only where priceHome+priceRest is
   below a reach threshold.
 
+## particle transfer, multi-input pools and coarse forage fields
+
+- **Empty multi-input firms hoarding integer workers starve upstream extractors.** With small discrete
+  headcounts (`WORKER_UNIT = 1`), an unscaled standby pool at an empty factory locks 3–4 workers while
+  coal mines lack miners to supply it. Scale multi-input firm labor pool targets by material readiness
+  (`0.15 + 0.85 · matReady`) so empty factories hold ~1 standby worker until raw materials arrive.
+- **Weak background sources in a coarse gradient must never pull down diffused halos.** Relaxing every
+  `src > 0` cell toward `src` makes low-food meadow (`src = 0.08`) act as a sink on a nearby shoreline
+  or Monastery garden halo while zero-source desert conducts `ambient` untouched. Update coarse forage
+  cells with `target <= ambient ? ambient : max(ambient, relaxed)` so food sources only lift the field.
+
+

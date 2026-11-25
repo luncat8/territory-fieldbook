@@ -163,8 +163,9 @@ Before all topics has minimal implementation Do not try to implement 100% of som
 
 - plan-prototype.md, plan-map-economy.md and plan-particle-transfer.md are the standing designs;
   change their numbers with the owning file in the same edit. plan-particle-transfer.md is the design
-  for the default particle money engine (port target map-money-gold.js); its rules are lifted from
-  prototype/price-model-b2, only the transport substrate changes.
+  for the default particle money engine (`prototype/particle-transfer-b2/`, port target
+  map-money-particle.js); its rules lift from prototype/price-model-b2 plus zero-death worker
+  foraging over a coarse food gradient and Monastery gardens.
 - experiment files cover the loop: smoke (sim), dom_smoke (boot + UI), survey_spread. run
   smoke + dom_smoke after touching main.js, index.html or load order.
 - keep files under ~500 lines where practical; go beyond that only with a clear reason; a new feature gets a new file, header and map entry.
