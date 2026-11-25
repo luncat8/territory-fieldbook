@@ -47,15 +47,14 @@ class WorkerPolicy {
 	// Quality axis: how well a worker recovers here — comfort, tier and housing crowding, ignoring tax.
 	homeRestBid(i) {
 		const m = this.model;
-		if (m.pop[i] <= 0) return 0;
 		return START_PRICE * this.shelterAt(i) / m.optimizer.townCrowdMult(i);
 	}
 
 	// Value axis: recovery per gold of actual living tax, so crowding and inflated purses repel through price
-	// and an unsupplied town is no bargain at any tax.
+	// and an unsupplied town is no bargain at any tax. Both bids are standing offers of rest quality, so a
+	// newly placed town with nobody home is still reachable; workers move in on their own.
 	homeValueBid(i) {
 		const m = this.model;
-		if (m.pop[i] <= 0) return 0;
 		return START_PRICE * this.shelterAt(i) * START_TAX_PER_POP / Math.max(1e-6, m.optimizer.townRestTax(i));
 	}
 
@@ -79,16 +78,17 @@ class WorkerPolicy {
 		}
 	}
 
-	// Still workers rest slowly wherever they stand — the shelter floor, far slower than paid town rest — so a
-	// worker no town reaches never strands. The land sets the pace: meadow rests best, desert and wasteland worst.
+	// Recovery lives where shelter lives: only towns rest their guests. A tired worker must reach a town to
+	// recover and eat — recovery on the road or at a firm would close the home cycle before the town ever
+	// feeds anyone, and hunger would starve every worker regardless of full town stocks.
 	stepStill() {
 		for (let i = 0; i < ECONOMY_SIZE; i++) this.restStill(i);
 	}
 
-	// Funded town guests use paid service; broke guests and slow workers outside towns get the shelter floor.
+	// Funded town guests use paid service; broke guests get the shelter floor.
 	restStill(i) {
 		const m = this.model;
-		if (m.depleted[i] <= 1e-12) return;
+		if (m.actors[i] !== ECONOMY_TOWN || m.depleted[i] <= 1e-12) return;
 		const budget = Math.min((m.depleted[i] + m.labor[i]) * this.restShare * m.depletedFlow.still[i] * m.land.rest[i], 1 - m.labor[i]);
 		m.workers.restAt(i, budget, 0, true);
 	}
