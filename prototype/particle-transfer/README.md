@@ -13,3 +13,9 @@ The panel shows his purse, unpaid wages, dock, granted/earned/spent ledger and a
 the ledger check row stays `exact` while he walks, docks, works shifts and rests, so a funded worker is
 auditable across towns and factories. Spawned workers count their granted gold and labor unit in the
 conservation ledgers.
+The first worker born after boot or reset is watched automatically; the *Why* row says what holds him.
+
+## Economy inspector
+
+Shows map-wide workers, gold, wages and prices. Red rows and flags mark where the chain stalls.
+**Copy all stats** copies the full report, the watched workers, every actor and the 10-second history as plain text.

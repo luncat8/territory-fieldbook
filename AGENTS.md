@@ -48,6 +48,8 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 
 - keep this map updated when ownership changes:
 	prototype/particle-transfer/worker-lifecycle.js — persistent worker fatigue, recovery, wages and unemployed firm construction in the particle lab.
+	prototype/particle-transfer/diagnostics.js — lab economy inspector snapshot: worker states, gold partition, wages, price/ask gaps, stall flags, history, copy text.
+	prototype/particle-transfer/economy-panel.js — lab economy inspector panel and copy-all-stats button.
 	main.js — boot, shared clock, tick order, speeds.
 	random.js — seeded LCG streams for generation, sites, rivals.
 	tuning.js — live playtest multipliers: knob table, group × kind products, shareable `tune:` text.
