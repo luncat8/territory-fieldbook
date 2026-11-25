@@ -106,14 +106,6 @@ class WorkerLifecycle {
 		if (best >= 0) m.setActor(best, bestKind);
 	}
 
-	restWalking(p, i, still) {
-		const m = this.model;
-		const take = Math.min(this.tired[p], this.amount[p] * m.workforce.restShare * still * m.land.rest[i]);
-		this.tired[p] -= take;
-		if (this.tired[p] <= WORKER_DUST) this.state[p] = STATE_FRESH;
-		return take;
-	}
-
 }
 
 if (typeof module === 'object') module.exports = { WorkerLifecycle };
