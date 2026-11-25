@@ -185,9 +185,10 @@ class Settlements {
 		m.actors[c] = ECONOMY_TOWN;
 		m.scale[c] = m.taxMult[c] = 1;
 		m.wealthClass[c] = wealthClassFor(c);
-		m.vacantTicks[c] = 0;
 		this.tier[c] = 0;
-		m.pop[c] = Math.min(this.popCap(c), Math.max(POP_BASE, (settled + workers) * SETTLER_POP));
+		// Founding is a gather of existing people: the young town's residents are the workforce it
+		// collected, never a seeded headcount.
+		m.pop[c] = Math.min(this.popCap(c), (settled + workers) * SETTLER_POP);
 		m.satCoal[c] = m.satGoods[c] = m.workLoad[c] = m.profit[c] = 0;
 		m.money.workerPurse[c] += savings;
 		this.lastFound = this.ticks;
