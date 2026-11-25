@@ -475,6 +475,19 @@ Traps from moving the particle draft's worker rules into `prototype/price-model-
   tiled the map with 8 hamlets. Count only depleted·still, and only where priceHome+priceRest is
   below a reach threshold.
 
+## household harvest, build ladder and consumption litter in B2
+
+- **Household harvest is not paid work.** Booking a resident's harvest as tiring labor queues it for
+  paid rest at home: wait pools pass 4× occupancy, purses drain and the town starves. Spend the labor,
+  keep its gold in the resident purse and emit no depleted.
+- **Need pull fields carry no gold.** Wood/food pulls built from town need steer harvest home without a
+  router or a payer; keep them separate from price fields so ledgers stay untouched.
+- **Litter must heal faster than a busy town lays it.** Above ~0.05 litter per consumed unit with 0.05
+  recovery, litter around towns climbs without bound; logistic healing (slower on spoiled land) at 0.08
+  keeps it flat while fully spoiled land stays spoiled.
+- **Edge flags need their own name.** Reusing a `dry` flag for shore/marsh edges gave every non-dry
+  cell the edge bonus; test the build ladder order on the default map.
+
 ## particle transfer, multi-input pools and coarse forage fields
 
 - **Empty multi-input firms hoarding integer workers starve upstream extractors.** With small discrete
