@@ -7,7 +7,6 @@ const FOUND_REACH = 0.25;
 const FOUND_SETTLERS = 0.35;
 const INTENT_SECONDS = 3;
 const FOUND_COOLDOWN_TICKS = 300;
-const SETTLER_POP = 0.2 / LABOR_PER_POP;
 const WOOD_TIER_CAP = 0.5;
 const WOOD_PER_TIER = 6;
 const WOOD_PER_WORK = 1;
@@ -160,61 +159,48 @@ class Settlements {
 		}
 	}
 
-	// The gathered workers become residents and bring their savings; no vault gold is minted, so the young
-	// town starts broke and lives on tax from the wages its residents earn. It carries on with the wealth class
-	// of its founding cell.
+	// The gathered workers become the young town's first residents without ceasing to be workers: docked
+	// and bare stock moves to the founding cell, walking settlers land there, and wallets bank into the
+	// household purse. No resident count is written — the town's population is whoever lives there — and
+	// no vault gold is minted, so the young town starts broke and lives on tax from the wages its
+	// residents earn. It carries on with the wealth class of its founding cell.
 	foundTown(c) {
 		const m = this.model;
 		const cx = c % ECONOMY_WIDTH, cy = Math.floor(c / ECONOMY_WIDTH);
 		const x0 = Math.max(0, cx - FOUND_RADIUS), x1 = Math.min(ECONOMY_WIDTH - 1, cx + FOUND_RADIUS);
 		const y0 = Math.max(0, cy - FOUND_RADIUS), y1 = Math.min(ECONOMY_HEIGHT - 1, cy + FOUND_RADIUS);
-		let settled = 0, savings = 0, workers = 0;
-		// Summed before relocation: relocated parkers carry their tired stock into c, which a single pass
-		// would count twice or miss depending on whether c was already visited.
-		for (let y = y0; y <= y1; y++) {
-			for (let x = x0; x <= x1; x++) {
-				const n = economyIndex(x, y);
-				if (!m.actors[n]) settled += m.depleted[n];
-			}
-		}
 		for (let y = y0; y <= y1; y++) {
 			for (let x = x0; x <= x1; x++) {
 				const n = economyIndex(x, y);
 				if (m.actors[n]) continue;
-				workers += m.labor[n];
-				// Parked unemployed workers join the new town with their wallets, stock and shift-claim backing
-				// before the founding grant claims the leftover pool gold; those that do not fit stay parked.
+				// Parked workers join the new town with their wallets, stock and shift-claim backing;
+				// those that exceed the cell's room stay parked where they are.
 				m.workers.relocateDocked(n, c);
 				if (n !== c) this.gatherLabor(n, c);
-				savings += m.depletedFlow.gold[n];
-				m.depleted[n] = 0;
-				m.depletedFlow.gold[n] = 0;
-				m.depletedFlow.intent[n] = 0;
+				// Bare tired stock joins the young town's resting residents, pool gold proportional.
+				const bare = Math.max(0, m.depleted[n] - m.workers.dockedAmount(STATE_DEPLETED, n));
+				const move = Math.min(bare, Math.max(0, 1 - m.depleted[c]));
+				if (move <= 1e-12) continue;
+				const bareGold = Math.max(0, m.depletedFlow.gold[n] - m.workers.dockedGold(STATE_DEPLETED, n));
+				const goldMove = bareGold * (move / bare);
+				m.depleted[c] += move;
+				m.depletedFlow.gold[c] += goldMove;
+				m.depleted[n] -= move;
+				m.depletedFlow.gold[n] = Math.max(0, m.depletedFlow.gold[n] - goldMove);
+				if (m.depleted[n] <= 1e-12) {
+					m.depleted[n] = 0;
+					m.depletedFlow.gold[n] = 0;
+					m.depletedFlow.intent[n] = 0;
+				}
+				m.depletedFlow.intent[c] = 0;
 			}
 		}
-		settled += m.workers.absorbNear(cx, cy, FOUND_RADIUS);
-		savings += m.workers.absorbedGold;
-		// absorbNear only settles depleted-state workers; docked fresh parkers survive with their tired
-		// portions, which must stay backed by stock or their fatigue reappears from nothing when they leave.
-		for (let y = y0; y <= y1; y++) {
-			for (let x = x0; x <= x1; x++) {
-				const n = economyIndex(x, y);
-				if (m.actors[n]) continue;
-				const left = m.workers.dockedAmount(STATE_DEPLETED, n);
-				if (left <= 0) continue;
-				m.depleted[n] = left;
-				settled -= left;
-			}
-		}
-		m.restedDepleted += settled;
+		m.workers.absorbNear(cx, cy, FOUND_RADIUS);
 		m.actors[c] = ECONOMY_TOWN;
 		m.scale[c] = m.taxMult[c] = 1;
 		m.wealthClass[c] = wealthClassFor(c);
-		m.vacantTicks[c] = 0;
 		this.tier[c] = 0;
-		m.pop[c] = Math.min(this.popCap(c), Math.max(POP_BASE, (settled + workers) * SETTLER_POP));
 		m.satCoal[c] = m.satGoods[c] = m.workLoad[c] = m.profit[c] = 0;
-		m.money.workerPurse[c] += savings;
 		this.lastFound = this.ticks;
 		m.land.refresh();
 		this.founded++;
