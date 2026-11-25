@@ -10,6 +10,9 @@ const PARTICLE_SPEED = 6;
 const HAUL_COST_RATE = 0.024;
 const HAUL_PER_CELL = HAUL_COST_RATE / PARTICLE_SPEED;
 const DUST_FLOOR = 1e-12;
+// Aged unsellable stock marks its book cost down at this rate per second while no road pays its floor,
+// so inventory that outran its buyers cannot wedge a producer's sellRoom (and hiring) shut forever.
+const COST_RELAX = 0.06;
 
 class GoodsParticles {
 	constructor(model) {
@@ -188,7 +191,20 @@ class GoodsParticles {
 			const readyFlush = this.spawnIdle[idx] >= IDLE_FLUSH_SECONDS;
 			if (!readyBatch && !readyFlush) continue;
 			const minThere = Math.max(price[i], floor);
-			if (!this.steer.sampleGradient(price, null, 0, i, minThere + 1e-12)) continue;
+			if (!this.steer.sampleGradient(price, null, 0, i, minThere + 1e-12)) {
+				// No road pays this batch's floor: mark the book toward the best price the road can see, so
+				// inventory that outran its buyers cannot wedge the site's sellRoom (and hiring) shut forever.
+				// Accounting only — no gold moves, conservation is untouched.
+				let best = price[i];
+				const base = i * DEGREE;
+				for (let k = 0; k < DEGREE; k++) {
+					const to = NEIGHBORS[base + k];
+					if (to >= 0 && price[to] > best) best = price[to];
+				}
+				const over = unitCost - Math.min(unitCost, best);
+				if (over > 0) this.spawnCost[idx] -= Math.min(over, COST_RELAX * ECONOMY_DT) * amt;
+				continue;
+			}
 			if (this.count >= PARTICLE_CAP) return;
 
 			let emit, emitCost;
