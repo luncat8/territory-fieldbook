@@ -18,6 +18,12 @@ think should we preserve population == workforce, or do some average. i think av
 all companies (factories, mines, towns) has slots for workers and some pool queue to store fresh workers who arrive after all places (worker slots or rest rooms) occupied. they wait to somebody left town to take a room. this make job shifts without gaps, smooth prices and transportation. because immediately fill gaps when workers depleted (tired) or become fresh and leave town
 
 
+
+
+workers spawned by split into two when they have most needs met, enough food, and enough money.
+Workers despawn after a long period without food.
+
+
 # worker types possible to enable by checkboxes in game settings
 
 ## nomad default - both cells and particle engines

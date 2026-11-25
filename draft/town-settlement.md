@@ -1,8 +1,9 @@
 ## settlements
 
 demands, effect, purpose:
-- wood. big amount need to growth and some constant use, this may push sawmill industry.
+- wood. big amount need to growth and some constant use (x per person per simulation second), this may push sawmill industry before processors exist.
 - food, keep population, 
+
 
 settlement is a harvester
 
@@ -16,6 +17,10 @@ so if tired worker very slow move (low gradient of settlement with acceptable ta
 every some time check areas in some radius or window and if there are meany shelters (slow moving tired workers) - found settlement (aka town) - it cut forest to get some initial construction, then try to up tax gradually if possible to buy resources for better rest workers and increase town size.
 
 (hamlet): "young town" flag — marks a town still in construction that can gather resources itself (e.g. fell forest) without buying. 
+
+
+town is not a worker manager. 
+i told this 4 times. town cant spawn despawn or do anything strange else. fix and clean plans if need.
 
 ### size from construction difficulty
 
