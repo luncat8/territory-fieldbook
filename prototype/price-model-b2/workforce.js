@@ -48,7 +48,7 @@ class WorkerPolicy {
 	homeRestBid(i) {
 		const m = this.model;
 		if (m.pop[i] <= 0) return 0;
-		return START_PRICE * this.shelterAt(i) / m.optimizer.townCrowdMult(i);
+		return START_PRICE * this.shelterAt(i) / m.towns.townCrowdMult(i);
 	}
 
 	// Value axis: recovery per gold of actual living tax, so crowding and inflated purses repel through price
@@ -56,7 +56,7 @@ class WorkerPolicy {
 	homeValueBid(i) {
 		const m = this.model;
 		if (m.pop[i] <= 0) return 0;
-		return START_PRICE * this.shelterAt(i) * START_TAX_PER_POP / Math.max(1e-6, m.optimizer.townRestTax(i));
+		return START_PRICE * this.shelterAt(i) * START_TAX_PER_POP / Math.max(1e-6, m.towns.townRestTax(i));
 	}
 
 	homeScore(i, weight) {
