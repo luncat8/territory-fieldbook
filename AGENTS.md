@@ -91,7 +91,6 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	experiments/ — smoke (sim), dom_smoke + dom_fixture (boot/UI), map_views (display),
 	mape_compare (engines), mape_sites (site engine), mape_scenes (scenes), mape_population (settlements), mape_fluid (workforce), mape_fluid_migration (capacity and migration), mape_forestry (logs and forest production), mape_factory (placement scan), mape_farm (farms), mape_diffusion_speed (single-pass mix budget audit and reach), mape_co2 (CO2 sources, demand band, flow trails and ledger), mape_money (money ledger, minting, payment flows, purses); never loaded by the page.
 - new code goes to its owner, never appended "because the file is already there". no owner exists -> new file + header + map entry.
-- file > ~500 lines = defect. split by feature within the same plan.
 - moves are pure moves: contiguous ranges, snap to enclosing declarations, no behavior change.
 - refactor or dedup mixed into a move = defect. separate plan, record the idea as a finding.
 
@@ -99,11 +98,17 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 - units-and-scales.md — field units, rate budgets and the single-pass stability rule; read before touching diffusion rates or the tick.
 - archive/ — implemented plans, worklogs.
 
-## plans
+## drafts = human input
 
-- plan*.md is NOT the implementation log. final plan = standalone design artifact, written as if implemented today: no references to chat, to what was tried, or to what was done. usable for a fork or reimplementation.
+- drafts/ — source of truth, concise human's ideas about goals and design. user prompts and anvers may be stored as drafts to keep a reference of the approved global task. keep with minimal changes unless strong reason.
+
+draft -> ask if something not clear. update draft with user's answers -> plan
+
+## plans = LLM roadmap
+
+- *-plan.md is NOT the implementation log. final plan = standalone design artifact, written as if implemented today: no references to chat, to what was tried, or to what was done. usable for a fork or reimplementation.
 - plan numbers (0.1, gui.1) identify subjects, not version or execution order. ok to continue old numbers by subject and implement in any useful order.
-- drafts (0.1.x-draft.md) — concise human's ideas about goals and design. user prompts and anvers may be stored as drafts to keep a reference of the approved global task. keep with minimal changes unless strong reason.
+
 
 ## worklogs
 
@@ -169,7 +174,7 @@ Before all topics has minimal implementation Do not try to implement 100% of som
   Particle lab owners: worker-life.js (splits/starvation), farms.js (fields/harvest), towns.js (services/bazaar).
 - experiment files cover the loop: smoke (sim), dom_smoke (boot + UI), survey_spread. run
   smoke + dom_smoke after touching main.js, index.html or load order.
-- keep files under ~500 lines where practical; go beyond that only with a clear reason; a new feature gets a new file, header and map entry.
+- keep files under ~600 lines where practical; go beyond that only with a reason; a new feature gets a new file, header and map entry.
 - economy playtest: Diffusion owns demographic growth; A/B hold growth and
   satisfaction-led migration while shared job staffing remains active. Two
   selectable workforce models: Residents (default) and Fluid field (map-fluid.js
@@ -177,8 +182,7 @@ Before all topics has minimal implementation Do not try to implement 100% of som
   build/recipe runtime, sawmill → logs → charcoal/wood works supply and the
   generic factory placement scan + idle rule exist (Phase 3). Site engine
   (map-sites.js: orders, shipments, margin siting) runs as `SITES` and its HUD
-  switch is live (Phase 5); `+10%` player-influence growth boost and victory
-  stability checks (population steady, industry under control) are in.
+  switch is live (Phase 5); victory stability checks (population steady, industry under control) are in.
 
 ## housekeeping
 
