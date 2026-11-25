@@ -1,9 +1,5 @@
-// Owns: preallocated SoA worker particles — FRESH commuters and DEPLETED walkers with personal wallets and settle intent.
-// Workers are persistent objects: a docked worker is parked at its cell (not drawn) and keeps its wallet until it
-// rests, then leaves by gradient. Docked wallets live on the objects; the cell pool gold is the sum of member
-// wallets plus a residual for unmirrored stock, reconciled every tick, so a funded worker keeps his purse across
-// docking, shifts, rest and the walk. No gradient means the worker counts as unemployed — the signal to spawn a
-// facility. Edit for: worker batch size, walk pace, dock slope.
+// Owns: persistent worker objects, personal wallets, fatigue, commuting, queues and unemployed firm founding.
+// Docked stocks mirror fresh/tired portions; a state change never deletes a worker or transfers ownership of savings.
 'use strict';
 
 const WORKER_CAP = 2048;
@@ -12,15 +8,13 @@ const WORKER_SPEED = 12;
 const WORKER_DUST = 1e-12;
 const WORKER_DOCK_SLOPE = 0.1 * GRADIENT_KNEE;
 const FACILITY_UNEMPLOY_WORKERS = 4;
+const FOUND_FIRM_COOLDOWN_TICKS = 300;
 const STATE_FRESH = 0;
 const STATE_DEPLETED = 1;
 
-// Worker objects are the persistent reality. A worker is either walking (dockCell < 0, drawn) or docked (dockCell =
-// cell, parked, not drawn). Docked stocks (labor[i], depleted[i] + pool gold and intent) are the cell aggregate the
-// B2 rules read and write; syncFromCells reconciles the pools against the personal wallets instead of overwriting
-// them, so a worker keeps his money and identity across rest, work and the walk between them.
-class WorkerParticles {
+class WorkerParticles extends WorkerLifecycle {
 	constructor(model) {
+		super();
 		this.model = model;
 		this.steer = new ParticleSteering(model);
 		this.state = new Uint8Array(WORKER_CAP);
@@ -29,10 +23,11 @@ class WorkerParticles {
 		this.vx = new Float64Array(WORKER_CAP);
 		this.vy = new Float64Array(WORKER_CAP);
 		this.amount = new Float64Array(WORKER_CAP);
+		this.tired = new Float64Array(WORKER_CAP);
+		this.worked = new Float64Array(WORKER_CAP);
 		this.gold = new Float64Array(WORKER_CAP);
 		this.intent = new Float64Array(WORKER_CAP);
 		this.wid = new Int32Array(WORKER_CAP);
-		this.moved = new Float64Array(WORKER_CAP);
 		this.dockCell = new Int32Array(WORKER_CAP);
 		this.arriveCell = new Int32Array(WORKER_CAP);
 		this.dockHead = new Int32Array(ECONOMY_SIZE);
@@ -40,13 +35,6 @@ class WorkerParticles {
 		this.dockNext = new Int32Array(WORKER_CAP);
 		this.queue = new Float64Array(ECONOMY_SIZE);
 		this.unemployed = new Float64Array(ECONOMY_SIZE);
-		this.residualFresh = new Float64Array(ECONOMY_SIZE);
-		this.residualTired = new Float64Array(ECONOMY_SIZE);
-		this.pendingFresh = new Float64Array(ECONOMY_SIZE);
-		this.pendingTired = new Float64Array(ECONOMY_SIZE);
-		this.spawnTakeFresh = new Float64Array(ECONOMY_SIZE);
-		this.spawnTakeTired = new Float64Array(ECONOMY_SIZE);
-		this.shiftClaims = new Float64Array(ECONOMY_SIZE);
 		this.tracker = null;
 		this.nextId = 1;
 		this.reset();
@@ -57,17 +45,11 @@ class WorkerParticles {
 		this.dockHead.fill(-1);
 		this.queue.fill(0);
 		this.unemployed.fill(0);
-		this.residualFresh.fill(0);
-		this.residualTired.fill(0);
-		this.pendingFresh.fill(0);
-		this.pendingTired.fill(0);
-		this.spawnTakeFresh.fill(0);
-		this.spawnTakeTired.fill(0);
-		this.shiftClaims.fill(0);
 		this.nextId = 1;
 		this.emitted = this.arrivals = this.docked = 0;
 		this.absorbedGold = 0;
 		this.unemploymentTotal = 0;
+		this.lastFoundTick = 0;
 	}
 
 	flowOf(s) { return s === STATE_FRESH ? this.model.laborFlow : this.model.depletedFlow; }
@@ -90,13 +72,13 @@ class WorkerParticles {
 
 	inFlightTotal(s) {
 		let sum = 0;
-		for (let p = 0; p < this.count; p++) if (this.dockCell[p] < 0 && this.state[p] === s) sum += this.amount[p];
+		for (let p = 0; p < this.count; p++) if (this.dockCell[p] < 0) sum += this.portion(p, s);
 		return sum;
 	}
 
 	inFlightAt(s, i) {
 		let sum = 0;
-		for (let p = 0; p < this.count; p++) if (this.dockCell[p] < 0 && this.state[p] === s && this.cellOf(p) === i) sum += this.amount[p];
+		for (let p = 0; p < this.count; p++) if (this.dockCell[p] < 0 && this.cellOf(p) === i) sum += this.portion(p, s);
 		return sum;
 	}
 
@@ -142,15 +124,7 @@ class WorkerParticles {
 
 	dockedAmount(s, i) {
 		let sum = 0;
-		for (let p = this.dockHead[i]; p >= 0; p = this.dockNext[p]) if (this.state[p] === s) sum += this.amount[p];
-		return sum;
-	}
-
-	// Gold registered by docked fresh workers as shift claims; it sits in the tired pool until they flip tired
-	// and reclaim it, so pool moves and spawned workers must never take it.
-	claimedShiftGold(i) {
-		let sum = 0;
-		for (let p = this.dockHead[i]; p >= 0; p = this.dockNext[p]) if (this.state[p] === STATE_FRESH) sum += this.moved[p];
+		for (let p = this.dockHead[i]; p >= 0; p = this.dockNext[p]) sum += this.portion(p, s);
 		return sum;
 	}
 
@@ -197,10 +171,11 @@ class WorkerParticles {
 		this.compact();
 		this.sweepUnowned();
 		this.updateUnemployment();
+		this.maybeFoundFirm();
 	}
 
 	// Pool gold with neither docked members nor stock to mirror is unowned — the rounding remainder of departed
-	// wallets and abandoned shift claims. Orphaning it to the vault keeps later launches from minting it.
+	// wallets. Orphaning it to the vault keeps later launches from minting it.
 	sweepUnowned() {
 		const m = this.model;
 		const labor = m.labor, depleted = m.depleted;
@@ -218,135 +193,35 @@ class WorkerParticles {
 		flow.flowRate.fill(0);
 	}
 
-	// Re-apply the B2 cell-stock state to the parked objects: B2 flips state (rest, work) and moves pool gold.
-	// Pool gold is reconciled, never shared: spends are charged to the workers that paid them and income is
-	// credited to the workers that hold the pool now, while unmirrored stock keeps its share in a per-cell
-	// residual. Personal wallets therefore survive docking, shifts, rest and the walk between towns.
+	// Only births/resident output create new objects. Work and rest update existing objects explicitly.
 	syncFromCells() {
 		const m = this.model;
-		const labor = m.labor, depleted = m.depleted;
-		const lfGold = m.laborFlow.gold, dfGold = m.depletedFlow.gold, dfIntent = m.depletedFlow.intent;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			if (this.dockHead[i] < 0 && labor[i] <= WORKER_DUST && depleted[i] <= WORKER_DUST
-				&& Math.abs(this.residualFresh[i]) <= WORKER_DUST && Math.abs(this.residualTired[i]) <= WORKER_DUST) continue;
-			this.settlePool(i, STATE_FRESH, labor[i], false);
-			this.settlePool(i, STATE_DEPLETED, depleted[i], false);
-			let freshTarget = labor[i], depTarget = depleted[i];
-			for (let p = this.dockHead[i]; p >= 0; p = this.dockNext[p]) {
-				const was = this.state[p];
-				if (freshTarget > WORKER_DUST) {
-					this.state[p] = STATE_FRESH;
-					this.amount[p] = Math.min(this.amount[p], freshTarget);
-					freshTarget -= this.amount[p];
-				} else {
-					this.state[p] = STATE_DEPLETED;
-					this.amount[p] = Math.min(this.amount[p], depTarget);
-					depTarget -= this.amount[p];
-				}
-				if (was !== this.state[p]) this.crossDock(p, i, was);
-			}
-			this.rescueTracked(i);
-			this.spawnFromStock(STATE_FRESH, i, freshTarget, null);
-			this.spawnFromStock(STATE_DEPLETED, i, depTarget, dfIntent);
-			this.settlePool(i, STATE_FRESH, labor[i], true);
-			this.settlePool(i, STATE_DEPLETED, depleted[i], true);
-			this.residualFresh[i] = lfGold[i] - this.dockedGold(STATE_FRESH, i);
-			this.residualTired[i] = dfGold[i] - this.dockedGold(STATE_DEPLETED, i);
+			this.spawnFromStock(STATE_FRESH, i, Math.max(0, m.labor[i] - this.dockedAmount(STATE_FRESH, i)), null);
+			this.spawnFromStock(STATE_DEPLETED, i, Math.max(0, m.depleted[i] - this.dockedAmount(STATE_DEPLETED, i)), m.depletedFlow.intent);
 		}
 	}
 
-	// A watched member whose stock share ran out swaps amounts with an untracked member of the same state:
-	// the pool books and the mass ledger stay exact, and population pressure dissolves replaceable surplus
-	// instead of a watched worker with a purse.
-	rescueTracked(i) {
-		if (!this.tracker) return;
-		for (let p = this.dockHead[i]; p >= 0; p = this.dockNext[p]) {
-			if (!this.isTracked(p) || this.amount[p] > WORKER_DUST) continue;
-			for (let q = this.dockHead[i]; q >= 0; q = this.dockNext[q]) {
-				if (q === p || this.isTracked(q) || this.state[q] !== this.state[p] || this.amount[q] <= WORKER_DUST) continue;
-				this.amount[p] = this.amount[q];
-				this.amount[q] = 0;
-				break;
-			}
-		}
-	}
-
-	isTracked(p) {
-		return !!this.tracker && this.tracker.byId.has(this.wid[p]);
-	}
-
-
-	// One pool's gold reconciliation: delta = pool gold − (member wallets + residual). Spends (delta < 0) hit the
-	// members before the state flip — they are the workers that paid — while income (delta > 0) hits the members
-	// after the flip, where rest returns savings to the freshly rested. Charges clamp at zero and the residual
-	// absorbs every remainder, so member wallets plus residual always equal the pool gold exactly.
-	settlePool(i, s, stock, postFlip) {
-		const flow = this.flowOf(s);
-		const residual = s === STATE_FRESH ? this.residualFresh : this.residualTired;
-		const pending = s === STATE_FRESH ? this.pendingFresh : this.pendingTired;
-		let sum = 0, sumAmount = 0;
-		for (let p = this.dockHead[i]; p >= 0; p = this.dockNext[p]) {
-			if (this.state[p] !== s) continue;
-			sum += this.gold[p];
-			sumAmount += this.amount[p];
-		}
-		let share;
-		if (postFlip) {
-			const spawnTake = s === STATE_FRESH ? this.spawnTakeFresh[i] : this.spawnTakeTired[i];
-			share = Math.max(0, pending[i] - (s === STATE_DEPLETED ? this.shiftClaims[i] + spawnTake : spawnTake));
-			pending[i] = 0;
-			if (s === STATE_DEPLETED) this.shiftClaims[i] = 0;
-			if (s === STATE_FRESH) this.spawnTakeFresh[i] = 0;
-			else this.spawnTakeTired[i] = 0;
-		} else {
-			const delta = flow.gold[i] - (sum + residual[i]);
-			share = Math.min(0, delta);
-			pending[i] = Math.max(0, delta);
-		}
-		if (share === 0) return;
-		const denom = Math.max(stock, sumAmount, 1e-9);
-		for (let p = this.dockHead[i]; p >= 0; p = this.dockNext[p]) {
-			if (this.state[p] !== s || this.amount[p] <= WORKER_DUST) continue;
-			const part = share * (this.amount[p] / denom);
-			const applied = part < 0 ? Math.max(part, -this.gold[p]) : part;
-			if (applied === 0) continue;
-			this.gold[p] += applied;
-			this.noteWallet(p, applied, s, i);
-		}
-	}
-
-	// A state flip moves the worker's wallet backing between the fresh and tired pools, and a freshly tired
-	// worker reclaims the gold his shift moved ahead of him (it already sits in the tired pool).
+	// Backing follows the wallet; this is not income or expenditure.
 	crossDock(p, i, was) {
 		const lfGold = this.model.laborFlow.gold, dfGold = this.model.depletedFlow.gold;
 		if (was === STATE_FRESH) {
 			const g = this.gold[p];
-			lfGold[i] -= g;
+			lfGold[i] = Math.max(0, lfGold[i] - g);
 			dfGold[i] += g;
-			this.gold[p] += this.moved[p];
-			if (this.moved[p] > 0) this.noteWallet(p, this.moved[p], STATE_DEPLETED, i);
-			this.moved[p] = 0;
 		} else {
 			const g = this.gold[p];
-			dfGold[i] -= g;
+			dfGold[i] = Math.max(0, dfGold[i] - g);
 			lfGold[i] += g;
 		}
 	}
 
-	// Pending cell stock releases full worker units as docked objects; each spawns with its share of the pool's
-	// unclaimed residual gold — the wallet banked for the unmirrored stock it grew out of. The draw is priced from
-	// the live pool books (flow gold minus docked wallets), not the stored residual, so freshly flipped reclaims
-	// and registered shift claims stay reserved for their owners.
+	// Only unowned gold accompanies newly formed workers; existing wallets are never redistributed.
 	spawnFromStock(s, i, target, intent) {
 		while (target >= WORKER_UNIT) {
 			if (this.count >= WORKER_CAP) return;
-			let free = Math.max(0, this.flowOf(s).gold[i] - this.dockedGold(s, i));
-			if (s === STATE_DEPLETED) free = Math.max(0, free - this.claimedShiftGold(i));
+			const free = Math.max(0, this.flowOf(s).gold[i] - this.dockedGold(s, i));
 			const take = Math.max(0, free * (WORKER_UNIT / target));
-			if (take > 0) {
-				if (s === STATE_FRESH) this.spawnTakeFresh[i] += take;
-				else this.spawnTakeTired[i] += take;
-			}
 			this.spawnDocked(s, i, WORKER_UNIT, take, intent ? intent[i] : 0);
 			target -= WORKER_UNIT;
 		}
@@ -363,10 +238,11 @@ class WorkerParticles {
 		this.y[p] = Math.floor(i / ECONOMY_WIDTH);
 		this.vx[p] = this.vy[p] = 0;
 		this.amount[p] = amount;
+		this.tired[p] = s === STATE_DEPLETED ? amount : 0;
+		this.worked[p] = 0;
 		this.gold[p] = gold;
 		this.intent[p] = intent;
 		this.wid[p] = this.nextId++;
-		this.moved[p] = 0;
 		this.arriveCell[p] = -1;
 		this.dockCell[p] = i;
 		this.link(p, i);
@@ -381,10 +257,11 @@ class WorkerParticles {
 		this.y[p] = Math.floor(i / ECONOMY_WIDTH);
 		this.vx[p] = this.vy[p] = 0;
 		this.amount[p] = amount;
+		this.tired[p] = s === STATE_DEPLETED ? amount : 0;
+		this.worked[p] = 0;
 		this.gold[p] = gold;
 		this.intent[p] = 0;
 		this.wid[p] = this.nextId++;
-		this.moved[p] = 0;
 		this.dockCell[p] = -1;
 		this.arriveCell[p] = -1;
 		this.emitted++;
@@ -407,18 +284,10 @@ class WorkerParticles {
 	}
 
 	launch(p, i) {
-		const flow = this.flowOf(this.state[p]), stock = this.stockOf(this.state[p]);
-		const shift = this.moved[p];
-		if (shift > 0) {
-			// His shift gold sits in the opposite pool; he takes the claim along as a walker.
-			const other = this.flowOf(this.state[p] === STATE_FRESH ? STATE_DEPLETED : STATE_FRESH);
-			other.gold[i] = Math.max(0, other.gold[i] - shift);
-			this.gold[p] += shift;
-			this.noteWallet(p, shift, this.state[p], i);
-			this.moved[p] = 0;
-		}
+		const flow = this.flowOf(this.state[p]);
 		this.unlink(p);
-		stock[i] = Math.max(0, stock[i] - this.amount[p]);
+		this.model.labor[i] = Math.max(0, this.model.labor[i] - this.portion(p, STATE_FRESH));
+		this.model.depleted[i] = Math.max(0, this.model.depleted[i] - this.tired[p]);
 		flow.gold[i] = Math.max(0, flow.gold[i] - this.gold[p]);
 		this.dockCell[p] = -1;
 		this.vx[p] = WORKER_SPEED * this.steer.grad[3];
@@ -428,6 +297,7 @@ class WorkerParticles {
 
 	advanceAll() {
 		const m = this.model, steer = this.steer;
+		let recovered = 0;
 		this.queue.fill(0);
 		for (let p = 0; p < this.count; p++) {
 			if (this.dockCell[p] >= 0) continue;
@@ -438,11 +308,15 @@ class WorkerParticles {
 			const buyer = (flow.buyers & (1 << m.actors[ci])) !== 0;
 			const moving = steer.sampleGradient(price, alt, mix, ci, -Infinity) && steer.grad[2] >= WORKER_DOCK_SLOPE;
 			if (buyer && flow.cap[ci] - stock[ci] > WORKER_DUST && (s === STATE_FRESH || !moving)) {
+				if (!this.fits(p, ci)) recovered += this.restWalking(p, ci, 1);
+				if (this.state[p] !== s) continue;
 				this.arriveCell[p] = ci;
 				this.vx[p] = this.vy[p] = 0;
 				continue;
 			}
 			const still = GRADIENT_KNEE / (steer.grad[2] + GRADIENT_KNEE);
+			if (!buyer) recovered += this.restWalking(p, ci, still);
+			if (this.state[p] !== s) continue;
 			if (s === STATE_DEPLETED) this.intent[p] = m.settlements.nextIntent(this.intent[p], still, ci);
 			if (!moving || this.amount[p] <= WORKER_DUST) {
 				this.vx[p] = this.vy[p] = 0;
@@ -455,23 +329,29 @@ class WorkerParticles {
 			flow.flowY[ci] += this.vy[p] * this.amount[p];
 			flow.flowRate[ci] += this.amount[p];
 		}
+		m.restedDepleted += recovered;
+		m.suppliedLabor += recovered;
 	}
 
-	// Park a walking worker at a cell as a persistent object: his amount and wallet join the docked aggregate and
-	// the object stays alive (dockCell = cell), keeping his money and intent until the gradient sends him on.
+	fits(p, i) {
+		const m = this.model;
+		return m.labor[i] + this.portion(p, STATE_FRESH) <= m.laborFlow.cap[i] + WORKER_DUST
+			&& m.depleted[i] + this.tired[p] <= m.depletedFlow.cap[i] + WORKER_DUST;
+	}
+
 	parkHere(p, i) {
-		const flow = this.flowOf(this.state[p]), stock = this.stockOf(this.state[p]);
-		if (stock[i] + this.amount[p] > flow.cap[i] + WORKER_DUST) return false;
+		if (!this.fits(p, i)) return false;
 		this.park(p, i);
 		return true;
 	}
 
 	park(p, i) {
-		const s = this.state[p], flow = this.flowOf(s), stock = this.stockOf(s);
-		const before = stock[i];
-		stock[i] += this.amount[p];
+		const s = this.state[p], flow = this.flowOf(s);
+		const before = this.model.depleted[i];
+		this.model.labor[i] += this.portion(p, STATE_FRESH);
+		this.model.depleted[i] += this.tired[p];
 		flow.gold[i] += this.gold[p];
-		if (flow.intent) flow.intent[i] = (flow.intent[i] * before + this.intent[p] * this.amount[p]) / stock[i];
+		if (flow.intent) flow.intent[i] = (flow.intent[i] * before + this.intent[p] * this.tired[p]) / this.model.depleted[i];
 		this.dockCell[p] = i;
 		this.x[p] = i % ECONOMY_WIDTH;
 		this.y[p] = Math.floor(i / ECONOMY_WIDTH);
@@ -485,15 +365,14 @@ class WorkerParticles {
 	// waits in the queue. Sequential (not normalized) so a burst of arrivals still fills the pool instead of every
 	// worker seeing room < 1 and queuing. Fresh arrivals at a firm are paid the entry wage into their own wallet.
 	admit(s) {
-		const m = this.model, flow = this.flowOf(s), stock = this.stockOf(s);
+		const m = this.model, flow = this.flowOf(s);
 		for (let p = 0; p < this.count; p++) {
 			const b = this.arriveCell[p];
 			if (b < 0 || this.dockCell[p] >= 0 || this.state[p] !== s) continue;
-			const avail = flow.cap[b] - stock[b];
-			if (this.amount[p] <= avail) {
+			if (this.fits(p, b)) {
 				this.park(p, b);
 				if (s === STATE_FRESH) {
-					const paid = m.buyArrival(flow, b, this.amount[p] * m.priceLabor[b]);
+					const paid = m.buyArrival(flow, b, this.amount[p] * m.priceLabor[b], this.wid[p]);
 					if (paid > 0) {
 						this.gold[p] += paid;
 						if (this.tracker) this.tracker.hire(this.wid[p], paid, b);
@@ -516,54 +395,39 @@ class WorkerParticles {
 		for (let p = 0; p < this.count; p++) {
 			if (this.state[p] !== STATE_DEPLETED) continue;
 			if (Math.abs(this.x[p] - cx) > radius || Math.abs(this.y[p] - cy) > radius) continue;
+			if (this.dockCell[p] >= 0 && this.model.actors[this.dockCell[p]]) continue;
 			if (this.dockCell[p] < 0) {
-				settled += this.amount[p];
+				settled += this.tired[p];
+				this.model.workedLabor += this.portion(p, STATE_FRESH);
 				this.absorbedGold += this.gold[p];
 			}
 			if (this.tracker && this.gold[p] > 0) this.tracker.bank(this.wid[p], this.gold[p], home);
-			this.amount[p] = this.gold[p] = this.intent[p] = this.moved[p] = 0;
+			this.amount[p] = this.gold[p] = this.intent[p] = 0;
 		}
 		this.compact();
 		return settled;
 	}
 
-	// A cell about to lose its tired pool pays docked fresh workers their escrowed shift wages on the spot:
-	// the claim backing moves from the tired pool to the fresh pool so the wallets stay backed where they are.
-	cashClaims(i) {
-		const m = this.model;
-		let available = m.depletedFlow.gold[i] - this.dockedGold(STATE_DEPLETED, i);
-		for (let p = this.dockHead[i]; p >= 0; p = this.dockNext[p]) {
-			if (this.state[p] !== STATE_FRESH || this.moved[p] <= 0 || available <= 0) continue;
-			const pay = Math.min(this.moved[p], available);
-			this.moved[p] -= pay;
-			this.gold[p] += pay;
-			this.noteWallet(p, pay, STATE_FRESH, i);
-			m.laborFlow.gold[i] += pay;
-			m.depletedFlow.gold[i] -= pay;
-			available -= pay;
-		}
-	}
-
 	// Founding towns gather parked unemployed workers: docked fresh parkers bring their wallets and stock to
 	// the new cell so no wallet loses its pool backing; those that exceed the town's labor room stay parked.
-	relocateDocked(from, to) {		const m = this.model;
+	relocateDocked(from, to) {
+		const m = this.model;
 		let moved = 0;
 		let p = this.dockHead[from];
 		while (p >= 0) {
 			const nx = this.dockNext[p];
 			if (this.state[p] === STATE_FRESH && this.amount[p] > WORKER_DUST && m.labor[to] + this.amount[p] <= 1 + 1e-9) {
-				const g = this.gold[p], mv = this.moved[p];
+				const g = this.gold[p];
 				this.unlink(p);
 				this.link(p, to);
 				this.dockCell[p] = to;
 				m.laborFlow.gold[from] = Math.max(0, m.laborFlow.gold[from] - g);
 				m.laborFlow.gold[to] += g;
-				// Registered shift claims are the worker's own escrowed wages; their tired-pool backing travels
-				// with him, or the founding sweep would confiscate gold his flip will reclaim.
-				m.depletedFlow.gold[from] = Math.max(0, m.depletedFlow.gold[from] - mv);
-				m.depletedFlow.gold[to] += mv;
-				m.labor[from] = Math.max(0, m.labor[from] - this.amount[p]);
-				m.labor[to] = Math.min(1, m.labor[to] + this.amount[p]);
+				const fresh = this.portion(p, STATE_FRESH), tired = this.tired[p];
+				m.labor[from] -= fresh;
+				m.labor[to] += fresh;
+				m.depleted[from] = Math.max(0, m.depleted[from] - tired);
+				m.depleted[to] += tired;
 				if (this.tracker) this.tracker.visit(this.wid[p], to);
 				moved += this.amount[p];
 			}
@@ -572,14 +436,15 @@ class WorkerParticles {
 		return moved;
 	}
 
-	// A docked fresh worker with no firm to climb to is unemployed: no workforce gradient, so it stays parked.
+	// A fresh worker with no significant job gradient is free workforce, whether walking or parked.
 	updateUnemployment() {
 		let total = 0;
 		this.unemployed.fill(0);
 		for (let p = 0; p < this.count; p++) {
-			if (this.dockCell[p] < 0 || this.state[p] !== STATE_FRESH) continue;
-			const i = this.dockCell[p];
+			if (this.state[p] !== STATE_FRESH) continue;
+			const i = this.cellOf(p);
 			if (this.isFirm(i)) continue;
+			if (this.steer.sampleGradient(this.model.priceLabor, null, 0, i, -Infinity) && this.steer.grad[2] >= WORKER_DOCK_SLOPE) continue;
 			this.unemployed[i] += this.amount[p];
 			total += this.amount[p];
 		}
@@ -625,52 +490,14 @@ class WorkerParticles {
 		this.vx[p] = this.vx[last];
 		this.vy[p] = this.vy[last];
 		this.amount[p] = this.amount[last];
+		this.tired[p] = this.tired[last];
+		this.worked[p] = this.worked[last];
 		this.gold[p] = this.gold[last];
 		this.intent[p] = this.intent[last];
 		this.wid[p] = this.wid[last];
-		this.moved[p] = this.moved[last];
 		this.arriveCell[p] = this.arriveCell[last];
 		this.dockCell[p] = lastDock;
 		if (lastDock >= 0) this.link(p, lastDock);
-	}
-
-	// Worked shifts register their carried gold: each docked fresh member escrows his wallet-weighted share of the
-	// shift's wage pool and reclaims it when the sync flips him tired (or abandons it on death). The escrow is
-	// capped at the members' combined wallets so the pool books stay exact; the return value is the amount that
-	// actually moved and must be transferred from the fresh to the tired pool by the caller.
-	moveWorkGold(i, carriedGold) {
-		let sumG = 0;
-		for (let p = this.dockHead[i]; p >= 0; p = this.dockNext[p]) if (this.state[p] === STATE_FRESH) sumG += this.gold[p];
-		if (carriedGold <= 0 || sumG <= 1e-12) return 0;
-		const budget = Math.min(carriedGold, sumG);
-		let moved = 0;
-		for (let p = this.dockHead[i]; p >= 0; p = this.dockNext[p]) {
-			if (this.state[p] !== STATE_FRESH) continue;
-			const move = Math.min(budget * (this.gold[p] / sumG), this.gold[p]);
-			if (move <= 0) continue;
-			this.gold[p] -= move;
-			this.moved[p] += move;
-			this.shiftClaims[i] += move;
-			this.noteWallet(p, -move, STATE_FRESH, i);
-			moved += move;
-		}
-		return moved;
-	}
-
-	// Rest taxes charge personal wallets: each docked tired worker pays his wallet-weighted share of the pool's
-	// living tax; his savings never leave him, so funded commuters keep their purses while resting at towns.
-	chargeRestTax(i, restTax) {
-		if (restTax <= 0) return;
-		let sumG = 0;
-		for (let p = this.dockHead[i]; p >= 0; p = this.dockNext[p]) if (this.state[p] === STATE_DEPLETED) sumG += this.gold[p];
-		if (sumG <= 1e-12) return;
-		for (let p = this.dockHead[i]; p >= 0; p = this.dockNext[p]) {
-			if (this.state[p] !== STATE_DEPLETED) continue;
-			const pay = Math.min(restTax * (this.gold[p] / sumG), this.gold[p]);
-			if (pay <= 0) continue;
-			this.gold[p] -= pay;
-			this.noteWallet(p, -pay, STATE_DEPLETED, i);
-		}
 	}
 
 	// Emit a walking worker from a docked stock (tests and external spawning); takes the full requested amount.
@@ -689,10 +516,11 @@ class WorkerParticles {
 		this.y[p] = Math.floor(i / ECONOMY_WIDTH);
 		this.vx[p] = this.vy[p] = 0;
 		this.amount[p] = take;
+		this.tired[p] = s === STATE_DEPLETED ? take : 0;
+		this.worked[p] = 0;
 		this.gold[p] = gold;
 		this.intent[p] = flow.intent ? flow.intent[i] : 0;
 		this.wid[p] = this.nextId++;
-		this.moved[p] = 0;
 		this.dockCell[p] = -1;
 		this.arriveCell[p] = -1;
 		this.emitted++;

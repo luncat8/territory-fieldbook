@@ -307,6 +307,7 @@ class PriceEconomy {
 		this.depletedFlow.cap.fill(1);
 		this.updatePrices();
 		const coalBefore = this.producedCoal, goodsBefore = this.producedGoods, eatBefore = this.consumedGoods;
+		this.workers.beginWork();
 		this.optimizer.stepActors();
 		this.money.step();
 		this.particles.step();
@@ -360,9 +361,9 @@ class PriceEconomy {
 		this.depletedFlow.alt = this.priceRest;
 	}
 
-	buyArrival(scratch, i, bill) {
+	buyArrival(scratch, i, bill, workerId = 0) {
 		scratch.cost[i] += bill;
-		return this.money.payOnEntry(i, bill);
+		return this.money.payOnEntry(i, bill, workerId);
 	}
 }
 

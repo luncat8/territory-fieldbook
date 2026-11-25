@@ -40,7 +40,7 @@ class WorkerTracker {
 	track(p, name, opening) {
 		const workers = this.model.workers;
 		if (this.list.length >= TRACK_CAP || this.byId.has(workers.wid[p])) return null;
-		const entry = { id: workers.wid[p], name: name || this.autoName(), funded: opening, earned: 0, spent: 0, banked: 0, events: [], history: [], stops: {}, open: null, lastEvent: -TRACK_EVENT_TICKS, status: 'active', settledAt: -1 };
+		const entry = { id: workers.wid[p], name: name || this.autoName(), funded: opening, earned: 0, spent: 0, banked: 0, events: [], history: [], stops: {}, unreportedIncome: 0, unreportedTax: 0, lastEvent: -TRACK_EVENT_TICKS, status: 'active', settledAt: -1 };
 		this.list.push(entry);
 		this.byId.set(entry.id, entry);
 		this.note(entry, opening > 0 ? `tracked with ${opening.toFixed(2)} g` : 'tracked, purse empty');
@@ -67,41 +67,25 @@ class WorkerTracker {
 		this.note(entry, text);
 	}
 
-	// The ledger counts every delta mechanically; event text pairs opposite pool moves so a shift or a rest
-	// reads as one line instead of a transfer there and back.
 	walletDelta(id, amount, fresh, i) {
 		const entry = this.byId.get(id);
-		if (!entry) return;
-		if (amount >= 0) entry.earned += amount;
-		else entry.spent -= amount;
-		const open = entry.open;
-		if (open && open.fresh !== fresh && open.cell === i) {
-			const net = open.amount + amount;
-			entry.open = null;
-			if (Math.abs(net) < 1e-9) {
-				this.say(entry, `${open.fresh ? 'worked shift at' : 'rested at'} ${this.place(i)}`);
-			} else if (net < 0) {
-				this.taxAt(entry, i, -net);
-				this.say(entry, `rest tax ${(-net).toFixed(2)} g at ${this.place(i)}`);
-			} else {
-				this.say(entry, `+${net.toFixed(2)} g at ${this.place(i)}`);
-			}
-			return;
-		}
-		if (open) this.flushOpen(entry);
-		entry.open = { amount, fresh, cell: i };
-	}
-
-	// A pending half-pair reads as a plain move when its counterpart never arrives.
-	flushOpen(entry) {
-		const open = entry.open;
-		if (!open) return;
-		entry.open = null;
-		if (open.amount < 0) {
-			this.taxAt(entry, open.cell, -open.amount);
-			this.say(entry, `−${(-open.amount).toFixed(2)} g ${open.fresh ? 'shift' : 'rest tax'} at ${this.place(open.cell)}`);
+		if (!entry || amount === 0) return;
+		if (amount > 0) {
+			entry.earned += amount;
+			entry.unreportedIncome += amount;
 		} else {
-			this.say(entry, `+${open.amount.toFixed(2)} g ${open.fresh ? 'wages' : 'carried'} at ${this.place(open.cell)}`);
+			entry.spent -= amount;
+			entry.unreportedTax -= amount;
+			this.taxAt(entry, i, -amount);
+		}
+		if (this.model.ticks - entry.lastEvent < TRACK_EVENT_TICKS) return;
+		if (amount > 0 && entry.unreportedIncome >= 0.005) {
+			this.say(entry, `+${entry.unreportedIncome.toFixed(2)} g wages at ${this.place(i)}`);
+			entry.unreportedIncome = 0;
+		}
+		if (amount < 0 && entry.unreportedTax >= 0.005) {
+			this.say(entry, `−${entry.unreportedTax.toFixed(2)} g rest tax at ${this.place(i)}`);
+			entry.unreportedTax = 0;
 		}
 	}
 
@@ -111,7 +95,6 @@ class WorkerTracker {
 		for (let k = 0; k < this.list.length; k++) {
 			const entry = this.list[k];
 			if (entry.status !== 'active') continue;
-			this.flushOpen(entry);
 			const p = workers.byWid(entry.id);
 			entry.history.push(p >= 0 ? workers.gold[p] : 0);
 			if (entry.history.length > TRACK_HISTORY) entry.history.shift();
@@ -122,7 +105,7 @@ class WorkerTracker {
 		const entry = this.byId.get(id);
 		if (!entry) return;
 		entry.earned += pay;
-		this.note(entry, `hired at ${this.place(i)} · +${pay.toFixed(2)} g`);
+		if (pay >= 0.005) this.note(entry, `hired at ${this.place(i)} · +${pay.toFixed(2)} g`);
 	}
 
 	fund(id, amount) {

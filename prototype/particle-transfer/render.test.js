@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-for (const file of ['simulation.js', 'steering.js', 'particles.js', 'workers.js', 'track.js', 'actors.js', 'gold.js', 'workforce.js', 'land.js', 'settlement.js', 'fields.js']) {
+for (const file of ['simulation.js', 'steering.js', 'particles.js', 'worker-lifecycle.js', 'workers.js', 'track.js', 'actors.js', 'gold.js', 'workforce.js', 'land.js', 'settlement.js', 'fields.js']) {
 	vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 }
 

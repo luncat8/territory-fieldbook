@@ -47,6 +47,7 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 - every source file starts with a 1-2 line header (`// owns: ...` / `// edit for: ...`); `head -12` decides relevance — never read a full file just to learn what it is.
 
 - keep this map updated when ownership changes:
+	prototype/particle-transfer/worker-lifecycle.js — persistent worker fatigue, recovery, wages and unemployed firm construction in the particle lab.
 	main.js — boot, shared clock, tick order, speeds.
 	random.js — seeded LCG streams for generation, sites, rivals.
 	tuning.js — live playtest multipliers: knob table, group × kind products, shareable `tune:` text.

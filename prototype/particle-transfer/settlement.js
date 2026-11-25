@@ -133,19 +133,10 @@ class Settlements {
 		const wood = Math.min(idle * WOOD_PER_WORK, this.sumAround(this.forest, i));
 		if (wood <= 1e-12) return;
 		const used = wood / WOOD_PER_WORK;
-		const gold = m.laborFlow.gold[i] * (used / m.labor[i]);
 		this.fellAround(i, wood);
-		// The felling shift carries personal gold to the tired pool wallet-weighted, like any firm shift.
-		const movedGold = m.workers.moveWorkGold(i, gold);
+		m.workers.workAt(i, used);
 		m.labor[i] -= used;
-		m.laborFlow.gold[i] = Math.max(0, m.laborFlow.gold[i] - movedGold);
-		if (m.labor[i] <= 1e-12) {
-			const free = Math.max(0, m.laborFlow.gold[i] - m.workers.dockedGold(STATE_FRESH, i));
-			m.depletedFlow.gold[i] += free;
-			m.laborFlow.gold[i] -= free;
-		}
 		m.depleted[i] += used;
-		m.depletedFlow.gold[i] += movedGold;
 		m.workedLabor += used;
 		m.emittedDepleted += used;
 		this.tier[i] = Math.min(WOOD_TIER_CAP, this.tier[i] + wood / WOOD_PER_TIER);
@@ -185,8 +176,6 @@ class Settlements {
 				// before the founding grant claims the leftover pool gold; those that do not fit stay parked.
 				m.workers.relocateDocked(n, c);
 				if (n !== c) this.gatherLabor(n, c);
-				// Whoever stayed parked cashes his shift claims now, so the grant never confiscates their backing.
-				m.workers.cashClaims(n);
 			settled += m.depleted[n];
 			savings += m.depletedFlow.gold[n];
 			m.depleted[n] = 0;

@@ -73,10 +73,6 @@ class TrackedPanel {
 		return p >= 0 ? this.model.workers.gold[p] : 0;
 	}
 
-	escrow(entry) {
-		const p = this.model.workers.byWid(entry.id);
-		return p >= 0 ? this.model.workers.moved[p] : 0;
-	}
 
 	where(entry) {
 		const workers = this.model.workers;
@@ -104,12 +100,12 @@ class TrackedPanel {
 		}
 		this.select.value = String(this.choice >= 0 ? this.choice : list.length - 1);
 		const wallet = this.wallet(entry);
-		const escrow = this.escrow(entry);
+		const unpaid = this.model.money.unpaidWages(entry.id);
 		const balance = entry.funded + entry.earned - entry.spent - wallet;
 		const exact = Math.abs(balance) < 1e-6;
 		this.props.innerHTML =
 			`<div><span>Purse</span><strong>${wallet.toFixed(3)} g</strong></div>` +
-			`<div><span>Shift escrow</span><strong>${escrow.toFixed(3)} g</strong></div>` +
+			`<div><span>Unpaid wages</span><strong>${unpaid.toFixed(3)} g</strong></div>` +
 			`<div><span>Where</span><strong>${this.where(entry)}</strong></div>` +
 			`<div><span>Granted</span><strong>${entry.funded.toFixed(2)} g</strong></div>` +
 			`<div><span>Earned</span><strong>${entry.earned.toFixed(3)} g</strong></div>` +

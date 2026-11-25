@@ -28,6 +28,7 @@ class GoldMoney {
 		this.payOwnerIdx = new Int32Array(PAYABLE_CAP);
 		this.payAmount = new Float64Array(PAYABLE_CAP);
 		this.payCount = 0;
+		this.wageClaims = [];
 		this.transportVault = 0;
 		this.transportEarned = 0;
 		this.transportDrip = true;
@@ -43,6 +44,7 @@ class GoldMoney {
 		this.owedTransport.fill(0);
 		this.owedGoods.fill(0);
 		this.payCount = 0;
+		this.wageClaims.length = 0;
 		this.transportVault = 0;
 		this.transportEarned = 0;
 		this.seeded = this.mined = this.settled = this.wages = this.taxes = 0;
@@ -66,6 +68,7 @@ class GoldMoney {
 		this.purse[i] = 0;
 		this.workerPurse[i] = 0;
 		this.owedWage[i] = this.owedTransport[i] = this.owedGoods[i] = 0;
+		for (let k = this.wageClaims.length - 1; k >= 0; k--) if (this.wageClaims[k].firm === i) this.wageClaims.splice(k, 1);
 		let k = 0;
 		while (k < this.payCount) {
 			if (this.payBuyer[k] === i) this.removePayable(k);
@@ -171,26 +174,66 @@ class GoldMoney {
 		this.taxes += restTax;
 	}
 
-	payOnEntry(i, amount) {
+	payOnEntry(i, amount, workerId = 0) {
 		const pay = Math.min(amount, this.purse[i]);
 		this.purse[i] -= pay;
 		this.model.laborFlow.gold[i] += pay;
 		this.wages += pay;
-		this.owedWage[i] += amount - pay;
+		const owed = amount - pay;
+		this.owedWage[i] += owed;
+		if (workerId && owed > 0) this.addWageClaim(i, workerId, owed);
 		return pay;
+	}
+
+	addWageClaim(firm, worker, amount) {
+		for (let k = 0; k < this.wageClaims.length; k++) {
+			const claim = this.wageClaims[k];
+			if (claim.firm !== firm || claim.worker !== worker) continue;
+			claim.amount += amount;
+			return;
+		}
+		this.wageClaims.push({ firm, worker, amount });
+	}
+
+	unpaidWages(worker) {
+		let total = 0;
+		for (let k = 0; k < this.wageClaims.length; k++) if (this.wageClaims[k].worker === worker) total += this.wageClaims[k].amount;
+		return total;
+	}
+
+	// Wage debt belongs to the original hire, even after he has walked to a different cell.
+	payWageClaims(i, budget) {
+		const workers = this.model.workers;
+		let left = budget;
+		for (let k = 0; k < this.wageClaims.length && left > 0;) {
+			const claim = this.wageClaims[k];
+			if (claim.firm !== i) { k++; continue; }
+			const pay = Math.min(left, claim.amount);
+			const p = workers.byWid(claim.worker);
+			if (p >= 0) {
+				workers.creditWallet(p, pay);
+				workers.noteWallet(p, pay, STATE_FRESH, i);
+			} else this.orphan(i, pay);
+			claim.amount -= pay;
+			left -= pay;
+			if (claim.amount <= 0) this.wageClaims.splice(k, 1);
+			else k++;
+		}
+		this.wages += budget - left;
+		if (left > 0) this.payWorkers(i, left);
 	}
 
 	payWorkers(i, amount) {
 		if (amount <= 0) return;
 		const m = this.model;
+		const paid = m.workers.payIncome(i, amount);
+		const left = amount - paid;
 		const onSite = m.labor[i] + m.depleted[i];
 		if (onSite > 1e-12) {
-			const toDepleted = amount * (m.depleted[i] / onSite);
+			const toDepleted = left * (m.depleted[i] / onSite);
 			m.depletedFlow.gold[i] += toDepleted;
-			m.laborFlow.gold[i] += amount - toDepleted;
-		} else {
-			this.transportVault += amount;
-		}
+			m.laborFlow.gold[i] += left - toDepleted;
+		} else this.transportVault += left;
 		this.wages += amount;
 	}
 
@@ -261,7 +304,7 @@ class GoldMoney {
 				this.purse[i] -= pay;
 				this.owedWage[i] = Math.max(0, this.owedWage[i] - pay);
 				this.settled += pay;
-				this.payWorkers(i, pay);
+				this.payWageClaims(i, pay);
 			}
 			if (this.owedTransport[i] > 0 && this.purse[i] > 0) {
 				const pay = Math.min(this.purse[i], share >= 1 ? this.owedTransport[i] : this.owedTransport[i] * share);

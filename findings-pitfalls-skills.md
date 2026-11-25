@@ -509,3 +509,15 @@ From adding land rest and settle intent to `prototype/price-model-b2/` (`land.js
   Call `firmBids(i, recipe, false)` for the cap decision.
 - **Partial admission hides a queue.** Walkers admitted at a tiny normalized share each tick never "hover", so a
   queue counted only from hovering walkers stayed zero. Count the post-admission remainder too.
+
+## Persistent worker fatigue and wallet ownership (particle-transfer lab)
+
+- Continuous labor/rest recipes must change a worker's fresh/tired portions, not clamp his physical amount to
+  aggregate stocks. Clamping silently dissolves identities; flipping whole units against fractional stock targets
+  can immediately flip them back. Store fixed `amount` plus `tired` and reconcile births only from unowned stock.
+- A wallet's pool backing changing state is not income/expenditure. Never redistribute savings as a wage pool,
+  bank a commuter during rest, or pay an employer's old wage debt to its current replacement workers.
+- Accumulate walking recovery once per tick before updating global conservation counters: thousands of tiny
+  per-worker additions to large totals can drift beyond the mass tolerance despite locally conservative moves.
+- Tests of aggregate profit at a single timestamp or town growth can accidentally require confiscated commuter
+  savings. Keep conservation strict; assert actual persistent lifecycles and real cash transactions independently.

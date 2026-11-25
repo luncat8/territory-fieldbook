@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-for (const file of ['simulation.js', 'steering.js', 'particles.js', 'workers.js', 'track.js', 'actors.js', 'gold.js', 'workforce.js', 'land.js', 'settlement.js']) {
+for (const file of ['simulation.js', 'steering.js', 'particles.js', 'worker-lifecycle.js', 'workers.js', 'track.js', 'actors.js', 'gold.js', 'workforce.js', 'land.js', 'settlement.js']) {
 	vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 }
 
@@ -128,7 +128,7 @@ test('wallets pick the home: broke walkers follow living value, funded walkers f
 	assert.ok(walk(5) > 1, 'funded walker heads for rest quality');
 });
 
-test('a dominated town releases its wait pool toward a neighbor with higher home appeal', () => {
+test('workers in a dominated town follow higher home appeal, recovering a little while walking', () => {
 	const model = clearedMap();
 	const weak = economyIndex(20, 14), strong = economyIndex(23, 14);
 	model.setActor(weak, ECONOMY_TOWN);
@@ -144,7 +144,8 @@ test('a dominated town releases its wait pool toward a neighbor with higher home
 	model.emittedDepleted = 3 * WORKER_UNIT;
 	stepWorkers(model, 120);
 	assert.equal(model.depleted[weak], 0);
-	closeTo(model.depleted[strong], 3 * WORKER_UNIT, 1e-14);
+	closeTo(model.depleted[strong] + model.labor[strong], 3 * WORKER_UNIT, 1e-14);
+	assert.ok(model.restedDepleted > 0, 'slow walking permits partial recovery');
 	closeTo(model.depletedFlow.gold[strong], 0.3, 1e-14);
 	checkWorkerLedger(model);
 });
@@ -244,12 +245,221 @@ test('a rich tracked worker saves his gold over time and rests only at towns', (
 	const town = model.actors.indexOf(ECONOMY_TOWN);
 	const entry = model.spawnTrackedWorker(town, 'Rich', 500);
 	run(model, 120);
-	// The commute can end two ways, both money-preserving: still active with his purse, or settled into a
-	// town whose worker purse banked his savings when the wait pool absorbed him.
 	const p = model.workers.byWid(entry.id);
-	const kept = entry.status === 'active' ? (p >= 0 ? model.workers.gold[p] + model.workers.moved[p] : 0) : entry.banked;
-	assert.ok(entry.earned > 0.02, 'wages grew the purse on top of the grant');
-	assert.ok(kept >= 250, 'most of the grant survives the commute cycle');
+	assert.ok(p >= 0, 'rest never dissolves a worker');
+	assert.equal(entry.status, 'active');
+	assert.equal(entry.banked, 0);
+	assert.ok(entry.earned > 0, 'real wages grew the purse on top of the grant');
+	assert.ok(model.workers.gold[p] >= 250, 'most of the grant survives the commute cycle');
 	assert.ok(Object.keys(entry.stops).some(cell => model.actors[Number(cell)] === ECONOMY_TOWN), 'he rested at a town');
+	checkWorkerLedger(model);
+});
+
+function consumeWork(model, i, amount) {
+	model.labor[i] -= amount;
+	model.depleted[i] += amount;
+	model.workedLabor += amount;
+	model.emittedDepleted += amount;
+	model.workers.workAt(i, amount);
+}
+
+function untilDocked(model, id, cell) {
+	for (let n = 0; n < 600; n++) {
+		stepWorkers(model, 1);
+		const p = model.workers.byWid(id);
+		assert.ok(p >= 0, 'worker object survives');
+		if (model.workers.dockCell[p] === cell) return p;
+	}
+	assert.fail(`worker ${id} did not arrive at ${cell}`);
+}
+
+test('50-credit worker commutes, keeps prepaid shift wages, waits for room, pays only his rest fee and commutes again', () => {
+	const model = clearedMap();
+	const town = economyIndex(10, 14), firm = economyIndex(16, 14);
+	model.setActor(town, ECONOMY_TOWN);
+	model.setActor(firm, ECONOMY_MINE);
+	model.money.purse[firm] = 10;
+	model.money.seeded += 10;
+	model.laborFlow.cap[firm] = model.depletedFlow.cap[town] = 0.5;
+	rampRow(model.priceLabor, 14, 10, 16, 0, (5 / WORKER_UNIT) / 6);
+	rampRow(model.priceHome, 14, 10, 16, 7, -1);
+	rampRow(model.priceRest, 14, 10, 16, 7, -1);
+	const entry = model.spawnTrackedWorker(town, 'Worker1', 50);
+	const w = model.workers;
+	let p = untilDocked(model, entry.id, firm);
+	closeTo(w.gold[p], 55);
+	for (let k = 0; k < 6; k++) {
+		consumeWork(model, firm, WORKER_UNIT / 6);
+		w.syncFromCells();
+		assert.equal(w.wid[p], entry.id);
+		closeTo(w.amount[p], WORKER_UNIT);
+		closeTo(w.gold[p], 55);
+	}
+	assert.equal(w.state[p], STATE_DEPLETED);
+	p = untilDocked(model, entry.id, town);
+	model.priceLabor.fill(0);
+	const before = w.tired[p];
+	assert.equal(model.optimizer.restWorkers(town, 1, model.labor[town]), 0, 'full rooms do not rest or charge the wait pool');
+	closeTo(w.gold[p], 55);
+	closeTo(w.tired[p], before);
+	model.optimizer.townRestTax = () => 6 * WORKER_UNIT / (before * REST_TAX_SHARE);
+	for (let k = 0; k < 120 && w.state[p] === STATE_DEPLETED; k++) model.optimizer.restWorkers(town, 1, 1);
+	assert.equal(w.state[p], STATE_FRESH);
+	closeTo(w.gold[p], 49);
+	assert.equal(entry.status, 'active');
+	assert.equal(entry.banked, 0);
+	stepWorkers(model, 1);
+	assert.equal(w.dockCell[p], town, 'flat job field leaves the worker independently idle');
+	rampRow(model.priceLabor, 14, 10, 16, 0, (5 / WORKER_UNIT) / 6);
+	p = untilDocked(model, entry.id, firm);
+	closeTo(w.gold[p], 54);
+	closeTo(entry.earned, 10);
+	closeTo(entry.spent, 6);
+	checkWorkerLedger(model);
+});
+
+test('untracked workers also keep identity, amount and savings while exhausting and recovering', () => {
+	const model = clearedMap();
+	const spot = economyIndex(25, 14);
+	const w = model.workers;
+	const p = w.spawnWalker(STATE_FRESH, spot, WORKER_UNIT, 50);
+	const id = w.wid[p];
+	model.money.seeded = 50;
+	model.suppliedLabor = WORKER_UNIT;
+	w.park(p, spot);
+	consumeWork(model, spot, WORKER_UNIT);
+	w.syncFromCells();
+	assert.equal(w.wid[p], id);
+	assert.equal(w.state[p], STATE_DEPLETED);
+	w.restAt(spot, WORKER_UNIT, 0);
+	assert.equal(w.state[p], STATE_FRESH);
+	assert.equal(w.wid[p], id);
+	closeTo(w.amount[p], WORKER_UNIT);
+	closeTo(w.gold[p], 50);
+	checkWorkerLedger(model);
+});
+
+test('wage debt follows its worker rather than paying a replacement at the firm', () => {
+	const model = clearedMap();
+	const firm = economyIndex(20, 14);
+	model.setActor(firm, ECONOMY_MINE);
+	const first = model.spawnTrackedWorker(firm, 'Creditor', 50);
+	const next = model.spawnTrackedWorker(firm, 'Replacement', 0);
+	const w = model.workers;
+	w.park(w.byWid(next.id), firm);
+	assert.equal(model.money.payOnEntry(firm, 5, first.id), 0);
+	closeTo(model.money.unpaidWages(first.id), 5);
+	model.money.purse[firm] = 5;
+	model.money.seeded += 5;
+	model.money.settle(firm, ECONOMY_MINE);
+	closeTo(w.gold[w.byWid(first.id)], 55);
+	closeTo(w.gold[w.byWid(next.id)], 0);
+	closeTo(first.earned, 5);
+	closeTo(model.money.unpaidWages(first.id), 0);
+	checkWorkerLedger(model);
+});
+
+test('slow fresh workers recover partial fatigue without losing money or becoming replacement particles', () => {
+	const model = clearedMap();
+	const spot = economyIndex(25, 14);
+	const entry = model.spawnTrackedWorker(spot, 'Slow', 50);
+	const w = model.workers, p = w.byWid(entry.id);
+	w.park(p, spot);
+	consumeWork(model, spot, WORKER_UNIT / 2);
+	assert.equal(w.state[p], STATE_FRESH);
+	model.workforce.weighWallets();
+	model.workforce.stepStill();
+	assert.ok(w.tired[p] < WORKER_UNIT / 2);
+	for (let n = 0; n < 2200; n++) model.workforce.stepStill();
+	assert.ok(w.tired[p] < WORKER_DUST, 'shelter rest actually completes');
+	closeTo(w.gold[p], 50);
+	closeTo(w.amount[p], WORKER_UNIT);
+	assert.equal(w.wid[p], entry.id);
+	checkWorkerLedger(model);
+});
+
+test('unemployed workers found useful firms only when the selected recipe has resources', () => {
+	for (const coal of [0, 0.5]) {
+		const model = clearedMap();
+		const spot = economyIndex(25, 14), w = model.workers;
+		for (let k = 0; k < FACILITY_UNEMPLOY_WORKERS; k++) {
+			const p = w.spawnWalker(STATE_FRESH, spot, WORKER_UNIT, 0);
+			w.park(p, spot);
+			model.suppliedLabor += WORKER_UNIT;
+		}
+		model.priceCoal.fill(1);
+		model.priceGoods.fill(10);
+		model.coal[spot] = coal;
+		model.producedCoal = coal;
+		w.updateUnemployment();
+		assert.ok(w.facilityDemand());
+		model.ticks = FOUND_FIRM_COOLDOWN_TICKS;
+		w.maybeFoundFirm();
+		assert.ok(model.actors.includes(coal ? ECONOMY_FACTORY : ECONOMY_MINE));
+		checkWorkerLedger(model);
+	}
+});
+
+test('default 50-credit worker remains alive through repeated real simulation shifts with an exact personal ledger', () => {
+	const model = new PriceEconomy();
+	const entry = model.spawnTrackedWorker(model.actors.indexOf(ECONOMY_TOWN), 'Worker1', 50);
+	let tired = false, rested = false, jobs = 0, lastDock = -1;
+	for (let n = 0; n < 90 / ECONOMY_DT; n++) {
+		model.step();
+		const w = model.workers, p = w.byWid(entry.id);
+		assert.ok(p >= 0);
+		closeTo(w.amount[p], WORKER_UNIT);
+		closeTo(entry.funded + entry.earned - entry.spent, w.gold[p]);
+		if (w.state[p] === STATE_DEPLETED) tired = true;
+		if (tired && w.state[p] === STATE_FRESH) rested = true;
+		if (w.dockCell[p] !== lastDock && w.dockCell[p] >= 0 && w.isFirm(w.dockCell[p])) jobs++;
+		lastDock = w.dockCell[p];
+	}
+	assert.ok(tired && rested && jobs >= 2);
+	assert.ok(entry.earned > 0);
+	assert.ok(entry.spent > 0);
+	assert.equal(entry.status, 'active');
+	assert.equal(entry.banked, 0);
+	assert.ok(Object.values(entry.stops).some(stop => stop.tax > 0));
+	checkWorkerLedger(model);
+});
+
+test('broke workers can finish shelter recovery at a town without inventing wages, tax or a bank deposit', () => {
+	const model = clearedMap();
+	const town = economyIndex(20, 14);
+	model.setActor(town, ECONOMY_TOWN);
+	const w = model.workers;
+	const p = w.spawnWalker(STATE_DEPLETED, town, WORKER_UNIT, 0);
+	model.emittedDepleted = WORKER_UNIT;
+	w.park(p, town);
+	model.workforce.weighWallets();
+	for (let n = 0; n < 2200; n++) model.workforce.stepStill();
+	assert.equal(w.state[p], STATE_FRESH);
+	assert.equal(w.gold[p], 0);
+	assert.equal(model.money.taxes, 0);
+	checkWorkerLedger(model);
+});
+
+test('a town pool admits an entire worker only when it has space, without charging the outside queue', () => {
+	const model = clearedMap();
+	const town = economyIndex(20, 14);
+	model.setActor(town, ECONOMY_TOWN);
+	model.priceHome.fill(1);
+	model.priceRest.fill(1);
+	model.depletedFlow.cap[town] = WORKER_UNIT / 2;
+	const w = model.workers, p = w.spawnWalker(STATE_DEPLETED, town, WORKER_UNIT, 50);
+	const id = w.wid[p];
+	model.emittedDepleted = WORKER_UNIT;
+	model.money.seeded += 50;
+	stepWorkers(model, 1);
+	assert.equal(w.dockCell[p], -1);
+	assert.ok(w.queuedAt(town) > 0);
+	closeTo(w.gold[p], 50);
+	assert.equal(model.money.taxes, 0);
+	model.depletedFlow.cap[town] = 2 * WORKER_UNIT;
+	stepWorkers(model, 1);
+	assert.equal(w.dockCell[p], town);
+	assert.equal(w.wid[p], id);
+	closeTo(w.gold[p], 50);
 	checkWorkerLedger(model);
 });

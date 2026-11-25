@@ -49,7 +49,7 @@ buffers are full, profit smoothed through `tanh(profit / ref)` to drive scale an
 ## Particles (conserved mass & gold — preallocated TypedArray SoA pools)
 
 - **Goods particles:** `{ kind, x, y, vx, vy, amount, factoryCost, transportCost, owner }`
-- **Worker particles:** `{ state (FRESH | DEPLETED), x, y, vx, vy, amount, gold, intent }` — `intent` is the
+- **Worker particles:** `{ state (FRESH | DEPLETED), x, y, vx, vy, amount, tired, gold, intent }` — `amount` is fixed for a worker; `tired` is its depleted portion in `[0, amount]`. `intent` is the
   worker's settle decision in `[0, 1]` (see settlement founding); docking and arrival average it by `amount`.
 - **Docked worker stocks:** `labor[i]` / `depleted[i]` with their cell gold and intent are the worker pools and
   the worker spawn accumulators: a firm's fresh pool, a town's rest pool, and still workers resting where they
@@ -115,13 +115,16 @@ If local price drops mid-flight (a nearer supplier filled the town first):
   `WORKER_DOCK_SLOPE = 0.1 · GRADIENT_KNEE` it launches as a walker. A town never holds or releases a worker
   stock and is not a worker router or workforce manager; it only provides rest and collects tax. `FRESH` workers
   climb `priceLabor` and join a firm pool on entering its cell while it has room; the entry wage
-  (`amount · priceLabor[firm]`) is paid from the firm `purse` into the pool's gold (shortfall booked as owed
-  wages). Settled wages and surplus payouts split proportionally across the docked on-site workers so every shift
-  departs at full wage; used labor turns `DEPLETED` at the firm and leaves as walkers carrying that gold.
+  (`amount · priceLabor[firm]`) prepays the contracted labor unit from the firm `purse` into that worker's wallet.
+  Any shortfall is a claim keyed by worker ID and employer, paid oldest-first to the original worker even after
+  departure. Firm surplus is credited to the workers doing the current work, never redistributed from savings.
+  Recipes increase `tired` by actual labor used; exhaustion changes travel state to `DEPLETED`, not identity or amount.
+  Docked and walking workers each contribute `amount − tired` fresh units and `tired` depleted units to conservation.
+  Docked gold mirrors the wallet in its travel-state pool; moving its backing between pools is neither income nor spending.
   `DEPLETED` walkers climb the wallet-weighted home score `priceHome + w · (priceRest − priceHome)` (`w` =
   `walletWeight(gold, amount)`: broke walkers chase rest per gold, funded walkers chase rest quality) toward the
   best rest the gradient reaches. Where no workforce gradient is significant a worker stays docked and counts as
-  unemployed — the signal to spawn a facility (settlement founding).
+  unemployed — the signal to construct a useful firm.
 - **Queues:** walkers waiting at a full pool (fresh at a firm, depleted at a town) count toward its occupancy,
   so the posted wage cools to zero and the town crowd tax rises while they wait. The queue cools only the posted
   bid, never the pool's admission cap — otherwise the queue would lock itself out of an emptied pool.
@@ -130,23 +133,26 @@ If local price drops mid-flight (a nearer supplier filled the town first):
   cell already holding a full worker cell keeps the walker hovering instead.
 - **No town release:** a town is not a worker router and does not hold, flush or rate-limit a worker stock.
   Workers move only by the `priceLabor` / home-rest gradient; a town's role is rest and tax. A docked worker with
-  no significant gradient ahead is unemployed — it stays parked, keeps counting, and accumulates the still-worker
-  signal that triggers settlement founding.
-- **Paid rest & tax:** on arrival the worker pays the town's gold living/rest tax out of `particle.gold` into
-  municipal `purse[town]`, banks leftover wages into `workerPurse[town]`, and rests back into town workforce.
-  High-tax towns price out broke workers, pushing them toward cheaper towns.
-- **Grace and shelter rest prevent stranding:** low-tax towns (`mult ≤ 1.15`) grant a small free rest share;
-  towns with near-zero comfort still accept funded workers via shelter rest (banking savings, no tax). Settled
-  residents pay ongoing living tax in proportion to supplied comfort and wait-pool crowding; surplus above the
-  municipal reserve circulates back to residents only in healthy, uncrowded towns.
+  no significant job gradient ahead counts as unemployed. At most once per 300 ticks, four worker units within
+  radius 2 can trigger a firm on an empty nearby cell. Selection maximizes output value minus recipe input costs:
+  mines need fresh labor; factories also require local coal or a nearby supplied mine. Construction does not mint gold.
+- **Paid rest & tax:** a tired worker joins the town wait pool when it has capacity. Recovery is bounded by
+  the town's service rate and free fresh-stock capacity; only the worker actually recovering pays the per-unit fee
+  from his own wallet to `purse[town]`. Waiting is not taxed. Recovery decreases `tired`; on completion he is
+  `FRESH` and independently follows the job gradient. Savings never bank into `workerPurse[town]` during ordinary rest.
+- **Shelter rest:** slow walkers and parked workers recover partial fatigue for free even before exhaustion.
+  Active fresh workers in firm pools do not simultaneously recover while working. Funded town guests use paid
+  service; penniless guests can use the slow shelter floor. Settled residents' ongoing taxes and civic payouts
+  remain separate from commuters' wallets. Only explicit settlement founding converts settlers into residents.
 - **Town wealth class:** every town gets a deterministic strategy — **cheap** drops living tax
   to fill vacant slots and keeps its built size; **med** buys needs then grows; **rich** holds a cozy occupancy
   (queue ≈ 0) and cuts size first when it cannot meet resident needs.
 - **Resident target shrink guards:** cheap/med never shed residents just for being poor (tax is
   the lever that keeps them full); they shrink slowly only when long-vacant or broke. Full housing still offers
   a rest floor; an uncrowded town rests workers better (free-space comfort lift).
-- **Still-particle measure:** a worker's stillness derives from the local price slope (`still`
-  field). Still `DEPLETED` particles rest slowly for free (shelter floor) so nobody strands.
+- **Still-particle measure:** the local price slope supplies both fresh/depleted `still` fields and walking
+  recovery. Partial fatigue is recoverable without replacing a particle; the shelter rate is linear in worker amount
+  so recovery completes. Walking recovery counters accumulate once per tick to avoid repeated tiny ledger additions.
 
 ## Land rest and town site quality (B2 `land.js`)
 
@@ -283,3 +289,8 @@ is written by the workers themselves into a gather grid, so founding never resca
 - Clear towns and verify a young town founds from gathered settlers on meadow away from mines, factories and the
   desert, builds its first tier from forest, and restarts production.
 - On **Land**, hover a still crowd beyond town reach and watch `Settle intent` climb to 1 and `Gathered` appear.
+
+- Spawn a watched worker with 50 gold: verify the same name/ID survives job → exhausted walk → town wait/rest →
+  fresh departure → another job. Purse equals Granted + Earned − Spent each tick; ordinary rest never says “settled”.
+- Check **Unpaid wages** separately from cash: a broke employer cannot invent gold, and later repayment reaches
+  the original worker rather than a replacement hire. The event feed must not spam rounded `+0.00 g` pool transfers.

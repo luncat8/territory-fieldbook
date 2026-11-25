@@ -64,11 +64,18 @@ class WorkerPolicy {
 	}
 
 	weighWallets() {
-		const { depleted, depletedFlow, priceHome, priceRest } = this.model;
+		const m = this.model;
+		const { depleted, depletedFlow, laborFlow, priceHome, priceRest, priceLabor } = m;
 		const { mix, gold } = depletedFlow;
+		const steer = m.workers.steer;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			mix[i] = walletWeight(gold[i], depleted[i], this.refFee);
 			this.view[i] = 0.5 * (priceHome[i] + priceRest[i]);
+			// Stillness from the local uphill slope: flat fields rest in place, steep fields walk.
+			depletedFlow.still[i] = steer.sampleGradient(priceHome, priceRest, mix[i], i, -Infinity)
+				? GRADIENT_KNEE / (steer.grad[2] + GRADIENT_KNEE) : 1;
+			laborFlow.still[i] = steer.sampleGradient(priceLabor, null, 0, i, -Infinity)
+				? GRADIENT_KNEE / (steer.grad[2] + GRADIENT_KNEE) : 1;
 		}
 	}
 
@@ -78,28 +85,14 @@ class WorkerPolicy {
 		for (let i = 0; i < ECONOMY_SIZE; i++) this.restStill(i);
 	}
 
-	// Rest at a firm re-enters its pool, so the entry wage is paid like any arrival.
+	// Funded town guests use paid service; broke guests and slow workers outside towns get the shelter floor.
 	restStill(i) {
 		const m = this.model;
-		const { depleted, labor, depletedFlow, laborFlow, actors } = m;
-		const dep = depleted[i];
-		if (dep <= 1e-12) return;
-		const rested = Math.min(dep * this.restShare * depletedFlow.still[i] * m.land.rest[i], 1 - labor[i]);
-		if (rested <= 1e-12) return;
-		const all = rested >= dep - 1e-12;
-		// Docked walkers carry their own gold across the state flip; only the unclaimed share moves here —
-		// registered shift claims stay reserved for their owners in the tired pool.
-		const unclaimed = Math.max(0, depletedFlow.gold[i] - m.workers.dockedGold(STATE_DEPLETED, i) - m.workers.claimedShiftGold(i));
-		const share = depletedFlow.gold[i] * (rested / dep) * Math.max(0, 1 - m.workers.dockedAmount(STATE_DEPLETED, i) / dep);
-		const pool = Math.min(share, unclaimed);
-		depleted[i] = all ? 0 : dep - rested;
-		depletedFlow.gold[i] = Math.max(0, depletedFlow.gold[i] - pool);
-		laborFlow.gold[i] += pool;
-		labor[i] += rested;
-		m.restedDepleted += rested;
-		m.suppliedLabor += rested;
-		if (laborFlow.buyers & (1 << actors[i])) m.buyArrival(laborFlow, i, rested * m.priceLabor[i]);
+		if (m.depleted[i] <= 1e-12) return;
+		const budget = Math.min((m.depleted[i] + m.labor[i]) * this.restShare * m.depletedFlow.still[i] * m.land.rest[i], 1 - m.labor[i]);
+		m.workers.restAt(i, budget, 0, true);
 	}
+
 }
 
 if (typeof module === 'object') module.exports = { WorkerPolicy, walletWeight };
