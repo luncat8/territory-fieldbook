@@ -3,9 +3,10 @@
 'use strict';
 
 class TrackedPanel {
-	constructor(model, cellOf) {
+	constructor(model, cellOf, diagnostics) {
 		this.model = model;
 		this.cellOf = cellOf || (() => -1);
+		this.diagnostics = diagnostics;
 		this.choice = -1;
 		this.w = 0;
 		this.h = 0;
@@ -25,6 +26,7 @@ class TrackedPanel {
 	}
 
 	tick() {
+		this.model.tracker.watchFirst();
 		this.model.tracker.sampleAll();
 	}
 
@@ -103,10 +105,13 @@ class TrackedPanel {
 		const unpaid = this.model.money.unpaidWages(entry.id);
 		const balance = entry.funded + entry.earned - entry.spent - wallet;
 		const exact = Math.abs(balance) < 1e-6;
+		const p = this.model.workers.byWid(entry.id);
+		const why = p >= 0 ? this.diagnostics.workerReason(p) : entry.status;
 		this.props.innerHTML =
 			`<div><span>Purse</span><strong>${wallet.toFixed(3)} g</strong></div>` +
 			`<div><span>Unpaid wages</span><strong>${unpaid.toFixed(3)} g</strong></div>` +
 			`<div><span>Where</span><strong>${this.where(entry)}</strong></div>` +
+			`<div class="wide"><span>Why</span><strong title="${why}">${why}</strong></div>` +
 			`<div><span>Granted</span><strong>${entry.funded.toFixed(2)} g</strong></div>` +
 			`<div><span>Earned</span><strong>${entry.earned.toFixed(3)} g</strong></div>` +
 			`<div><span>Spent</span><strong>${entry.spent.toFixed(3)} g</strong></div>` +
