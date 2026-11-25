@@ -24,10 +24,13 @@ const INPUT_SHARE = 0.65;
 const BUFFER_SECONDS = 1.5;
 const SERVICE_SHARE = 1 - Math.exp(-ECONOMY_DT / 0.1);
 const START_POP = 10;
-const POP_BASE = 2;
 const POP_MAX = 24;
-const POP_HEADROOM = 2;
 const POP_RATE = 0.05;
+// Worker-owned demography: fed and solvent people split, famine thins a town only after
+// hunger has persisted, and no town ever steers a headcount target.
+const BIRTH_COMFORT = 0.82;
+const FAMINE_COMFORT = 0.15;
+const FAMINE_SECONDS = 30;
 const TOWN_COAL_NEED = 0.01;
 const TOWN_GOODS_NEED = 0.034;
 const NEED_RATE = START_POP * TOWN_GOODS_NEED;
@@ -123,6 +126,7 @@ class PriceEconomy {
 		this.satGoods = new Float64Array(ECONOMY_SIZE);
 		this.profit = new Float64Array(ECONOMY_SIZE);
 		this.earned = new Float64Array(ECONOMY_SIZE);
+		this.famineSeconds = new Float64Array(ECONOMY_SIZE);
 		this.coalFlow = makeScratch((1 << ECONOMY_FACTORY) | (1 << ECONOMY_TOWN), 1, FLOW_RATE, PAY_COAL, ECONOMY_MINE);
 		this.goodsFlow = makeScratch(1 << ECONOMY_TOWN, 1, FLOW_RATE, PAY_GOODS, ECONOMY_FACTORY);
 		this.laborFlow = makeScratch((1 << ECONOMY_MINE) | (1 << ECONOMY_FACTORY) | (1 << ECONOMY_GOLD), 1, LABOR_FLOW_RATE, PAY_WAGE);
@@ -152,7 +156,7 @@ class PriceEconomy {
 		for (const [x, y] of REFERENCE_FACTORIES) this.actors[economyIndex(x, y)] = ECONOMY_FACTORY;
 		for (const [x, y] of REFERENCE_TOWNS) this.actors[economyIndex(x, y)] = ECONOMY_TOWN;
 		for (const [x, y] of REFERENCE_GOLD) this.actors[economyIndex(x, y)] = ECONOMY_GOLD;
-		for (const field of [this.coal, this.goods, this.labor, this.depleted, this.priceCoal, this.priceGoods, this.priceLabor, this.priceHome, this.pop, this.scale, this.taxMult, this.satCoal, this.satGoods, this.profit, this.earned]) field.fill(0);
+		for (const field of [this.coal, this.goods, this.labor, this.depleted, this.priceCoal, this.priceGoods, this.priceLabor, this.priceHome, this.pop, this.scale, this.taxMult, this.satCoal, this.satGoods, this.profit, this.earned, this.famineSeconds]) field.fill(0);
 		for (const flow of this.flows) clearScratch(flow);
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			if (!this.actors[i]) continue;
@@ -165,6 +169,7 @@ class PriceEconomy {
 		this.money.reset();
 		this.ticks = this.producedCoal = this.burnedCoal = this.producedGoods = this.consumedGoods = 0;
 		this.suppliedLabor = this.workedLabor = this.emittedDepleted = this.restedDepleted = 0;
+		this.starvedLabor = this.starvedTired = this.births = this.starved = 0;
 		this.coalRate = this.goodsRate = this.uptakeRate = 0;
 	}
 
