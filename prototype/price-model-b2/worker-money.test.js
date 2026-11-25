@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-for (const file of ['simulation.js', 'actors.js', 'gold.js', 'workforce.js', 'land.js', 'settlement.js']) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
+for (const file of ['simulation.js', 'actors.js', 'towns.js', 'gold.js', 'workforce.js', 'land.js', 'settlement.js', 'harvest.js']) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 
 const sum = (values) => values.reduce((total, value) => total + value, 0);
 const closeTo = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-8, `${actual} ≠ ${expected}`);
@@ -81,8 +81,8 @@ test('workers carry earned wages in depletedGold to the cheaper town and pay res
 		model.satCoal[cheap] = model.satCoal[dear] = 1;
 		model.satGoods[cheap] = model.satGoods[dear] = 1;
 		model.updatePrices();
-		model.optimizer.restWorkers(cheap, 1, 1);
-		model.optimizer.restWorkers(dear, 1, 1);
+		model.towns.restWorkers(cheap, 1, 1);
+		model.towns.restWorkers(dear, 1, 1);
 		model.transport(model.depletedFlow, model.depleted, model.priceHome);
 	}
 	assert.ok(model.money.held(cheap) > cheapBefore + 7);
@@ -106,8 +106,8 @@ test('high-tax towns require cash to rest: funded workers pay and rest while pen
 	funded.depletedFlow.gold[town] = 6;
 	funded.money.seeded += 6;
 
-	const restedFunded = funded.optimizer.restWorkers(town, 1, 1);
-	const restedBroke = broke.optimizer.restWorkers(town, 1, 1);
+	const restedFunded = funded.towns.restWorkers(town, 1, 1);
+	const restedBroke = broke.towns.restWorkers(town, 1, 1);
 	assert.ok(restedFunded > 0.008);
 	assert.equal(restedBroke, 0);
 	assert.ok(funded.money.taxes > 0);
@@ -202,7 +202,7 @@ test('supplied towns temporarily in negative profit do not deadlock funded worke
 	model.emittedDepleted = 0.3;
 	model.money.seeded += 5;
 
-	const rested = model.optimizer.restWorkers(town, 1, 1);
+	const rested = model.towns.restWorkers(town, 1, 1);
 	assert.ok(rested > 0.008);
 	assert.ok(model.money.taxes > 0);
 	checkLedger(model);
@@ -319,9 +319,10 @@ test('full healthy towns keep positive home appeal via rent pressure while shrin
 	model.setActor(fullHealthy, ECONOMY_TOWN);
 	model.setActor(roomyHealthy, ECONOMY_TOWN);
 	model.setActor(dying, ECONOMY_TOWN);
-	model.pop[fullHealthy] = POP_MAX;
-	model.money.seeded += model.money.workerPurse[fullHealthy] * (POP_MAX / START_POP - 1);
-	model.money.workerPurse[fullHealthy] *= POP_MAX / START_POP;
+	const full = model.settlements.popCap(fullHealthy);
+	model.pop[fullHealthy] = full;
+	model.money.seeded += model.money.workerPurse[fullHealthy] * (full / START_POP - 1);
+	model.money.workerPurse[fullHealthy] *= full / START_POP;
 	model.satCoal[fullHealthy] = model.satGoods[fullHealthy] = 1;
 	model.satCoal[roomyHealthy] = model.satGoods[roomyHealthy] = 1;
 	model.pop[dying] = 2.5;
