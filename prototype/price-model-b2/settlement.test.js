@@ -57,8 +57,8 @@ function strand(model, cx, cy, amount, gold, stream = 'depleted') {
 
 function goldBalanced(model) {
 	closeTo(model.money.total(), model.money.seeded + model.money.mined);
-	closeTo(sum(model.depleted), model.emittedDepleted - model.restedDepleted);
-	closeTo(sum(model.labor), model.suppliedLabor - model.workedLabor);
+	closeTo(sum(model.depleted), model.emittedDepleted - model.restedDepleted - model.starvedTired);
+	closeTo(sum(model.labor), model.suppliedLabor - model.workedLabor - model.starvedLabor);
 }
 
 test('gathered tired workers beyond town reach found a young town with their own savings', () => {
