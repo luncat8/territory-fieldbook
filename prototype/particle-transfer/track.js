@@ -19,12 +19,24 @@ class WorkerTracker {
 		this.list = [];
 		this.byId = new Map();
 		this.nameAt = 0;
+		this.autoWatch = true;
 	}
 
 	reset() {
 		this.list.length = 0;
 		this.byId.clear();
 		this.nameAt = 0;
+		this.autoWatch = true;
+	}
+
+	// The first worker born after a reset is watched automatically, so every run carries one full life story.
+	watchFirst() {
+		const workers = this.model.workers;
+		if (!this.autoWatch || !workers.count) return null;
+		this.autoWatch = false;
+		const entry = this.track(0, null, workers.gold[0]);
+		if (entry) this.note(entry, `watched from start · born at ${this.place(workers.cellOf(0))}`);
+		return entry;
 	}
 
 	autoName() {
