@@ -47,14 +47,6 @@ const GRADIENT_KNEE = 0.006;
 const STEERING_BLEND = ECONOMY_DT / (0.18 + ECONOMY_DT);
 const economyIndex = (x, y) => y * ECONOMY_WIDTH + x;
 
-// Deterministic, reproducible wealth-class assignment (cheap / med / rich) per cell index.
-// Same variety as a random draw but identical across resets and tests (no RNG state to drift).
-function wealthClassFor(i) {
-	let h = (Math.imul(i + 1, 2654435761) >>> 0);
-	h = (Math.imul(h ^ (h >>> 15), 2246822519) >>> 0);
-	return h % 3;
-}
-
 const DIRECTIONS = [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [-1, -1], [1, -1]]
 	.map(([x, y]) => {
 		const inv = x && y ? Math.SQRT1_2 : 1;
@@ -171,10 +163,12 @@ class PriceEconomy {
 		this.stocks = [this.coal, this.goods, this.labor, this.depleted];
 		this.flows = [this.coalFlow, this.goodsFlow, this.laborFlow, this.depletedFlow];
 		this.optimizer = new ActorOptimizer(this);
+		this.towns = new TownPolicy(this);
 		this.money = new GoldMoney(this);
 		this.workforce = new WorkerPolicy(this);
 		this.land = new Land(this);
 		this.settlements = new Settlements(this);
+		this.harvest = new Harvest(this);
 		this.decay = true;
 		this.derived = true;
 		this.suppression = true;
@@ -214,14 +208,16 @@ class PriceEconomy {
 			}
 		}
 		this.money.reset();
+		this.land.reset();
 		this.settlements.reset();
+		this.harvest.reset();
 		this.ticks = this.producedCoal = this.burnedCoal = this.producedGoods = this.consumedGoods = 0;
 		this.suppliedLabor = this.workedLabor = this.emittedDepleted = this.restedDepleted = 0;
 		this.coalRate = this.goodsRate = this.uptakeRate = 0;
 	}
 
 	setActor(i, kind) {
-		if (kind && this.actors[i]) return false;
+		if (kind && (this.actors[i] || this.land.terrain[i] === TERRAIN_WATER)) return false;
 		if (!kind && this.actors[i]) {
 			this.money.release(i);
 			this.pop[i] = this.scale[i] = this.taxMult[i] = this.satCoal[i] = this.satGoods[i] = this.workLoad[i] = this.profit[i] = 0;
@@ -234,6 +230,7 @@ class PriceEconomy {
 		}
 		this.actors[i] = kind;
 		this.settlements.placed(i, kind);
+		this.harvest.placed(i, kind);
 		if (kind) {
 			this.scale[i] = 1;
 			this.workLoad[i] = 0;
@@ -258,17 +255,15 @@ class PriceEconomy {
 	poolTarget(i) { return this.optimizer.poolTarget(i); }
 	poolOccupancy(i) { return this.optimizer.poolOccupancy(i); }
 	firmLaborPool(i) { return this.optimizer.firmLaborPool(i, this.optimizer.recipes[this.actors[i]]); }
-	townWaitPool(i) { return this.optimizer.townWaitPool(i); }
-	townGoodsTarget(i) { return this.optimizer.townGoodsTarget(i); }
-	townCoalTarget(i) { return this.optimizer.townCoalTarget(i); }
-	townTaxRate(i) { return this.optimizer.townTaxRate(i); }
-	townRestTax(i) { return this.optimizer.townRestTax(i); }
-	townGoodsBid(i) { return this.optimizer.townGoodsBid(i); }
-	townCoalBid(i) { return this.optimizer.townCoalBid(i); }
-	townBid(i) { return this.optimizer.townGoodsBid(i); }
+	townWaitPool(i) { return this.towns.townWaitPool(i); }
+	townGoodsTarget(i) { return this.towns.townGoodsTarget(i); }
+	townCoalTarget(i) { return this.towns.townCoalTarget(i); }
+	townTaxRate(i) { return this.towns.townTaxRate(i); }
+	townRestTax(i) { return this.towns.townRestTax(i); }
+	townGoodsBid(i) { return this.towns.townGoodsBid(i); }
+	townCoalBid(i) { return this.towns.townCoalBid(i); }
 	factoryCoalBid(i) { return this.optimizer.factoryCoalBid(i); }
 	factoryLaborBid(i) { return this.optimizer.factoryLaborBid(i); }
-	factoryBid(i) { return this.optimizer.factoryCoalBid(i); }
 	mineLaborBid(i) { return this.optimizer.mineLaborBid(i); }
 	goldLaborBid(i) { return this.optimizer.goldLaborBid(i); }
 
@@ -277,10 +272,13 @@ class PriceEconomy {
 		for (const flow of this.flows) {
 			flow.cap.fill(1);
 			flow.sell.fill(0);
+			this.land.blockWater(flow.cap);
 		}
 		this.updatePrices();
+		this.harvest.updatePrices();
 		const coalBefore = this.producedCoal, goodsBefore = this.producedGoods, eatBefore = this.consumedGoods;
 		this.optimizer.stepActors();
+		this.harvest.step();
 		this.money.step();
 		this.transport(this.coalFlow, this.coal, this.priceCoal);
 		this.transport(this.goodsFlow, this.goods, this.priceGoods);
@@ -288,7 +286,9 @@ class PriceEconomy {
 		this.workforce.weighWallets();
 		this.transport(this.depletedFlow, this.depleted, this.priceHome, this.priceRest);
 		this.workforce.stepStill();
+		this.harvest.transport();
 		this.settlements.step();
+		this.land.step();
 		this.optimizer.adaptActors();
 		this.coalRate = (this.producedCoal - coalBefore) / ECONOMY_DT;
 		this.goodsRate = (this.producedGoods - goodsBefore) / ECONOMY_DT;
@@ -297,14 +297,14 @@ class PriceEconomy {
 	}
 
 	updatePrices() {
-		const { actors, optimizer, workforce, priceCoal, priceGoods, priceLabor, priceHome, priceRest, nextPriceCoal, nextPriceGoods, nextPriceLabor, nextPriceHome, nextPriceRest } = this;
+		const { actors, optimizer, towns, workforce, priceCoal, priceGoods, priceLabor, priceHome, priceRest, nextPriceCoal, nextPriceGoods, nextPriceLabor, nextPriceHome, nextPriceRest } = this;
 		const decay = this.decay ? PRICE_DECAY : 0;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			const a = actors[i];
 			let bCoal = -1, bGoods = -1, bLabor = -1, bHome = -1, bRest = -1;
 			if (a === ECONOMY_TOWN) {
-				bCoal = optimizer.townCoalBid(i);
-				bGoods = optimizer.townGoodsBid(i);
+				bCoal = towns.townCoalBid(i);
+				bGoods = towns.townGoodsBid(i);
 				bHome = workforce.homeValueBid(i);
 				bRest = workforce.homeRestBid(i);
 			} else if (a) {
