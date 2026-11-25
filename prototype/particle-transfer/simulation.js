@@ -285,7 +285,6 @@ class PriceEconomy {
 	poolTarget(i) { return this.optimizer.poolTarget(i); }
 	poolOccupancy(i) { return this.optimizer.poolOccupancy(i); }
 	firmLaborPool(i) { return this.optimizer.firmLaborPool(i, this.optimizer.recipes[this.actors[i]]); }
-	townWaitPool(i) { return this.optimizer.townWaitPool(i); }
 	townGoodsTarget(i) { return this.optimizer.townGoodsTarget(i); }
 	townCoalTarget(i) { return this.optimizer.townCoalTarget(i); }
 	townTaxRate(i) { return this.optimizer.townTaxRate(i); }

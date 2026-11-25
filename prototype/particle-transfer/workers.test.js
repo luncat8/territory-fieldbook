@@ -299,7 +299,7 @@ test('50-credit worker commutes, keeps prepaid shift wages, waits for room, pays
 	p = untilDocked(model, entry.id, town);
 	model.priceLabor.fill(0);
 	const before = w.tired[p];
-	assert.equal(model.optimizer.restWorkers(town, 1, model.labor[town]), 0, 'full rooms do not rest or charge the wait pool');
+	assert.equal(model.optimizer.restWorkers(town, 1, model.labor[town]), 0, 'a full fresh dock neither rests nor charges');
 	closeTo(w.gold[p], 55);
 	closeTo(w.tired[p], before);
 	model.optimizer.townRestTax = () => 6 * WORKER_UNIT / (before * REST_TAX_SHARE);
@@ -440,13 +440,13 @@ test('broke workers can finish shelter recovery at a town without inventing wage
 	checkWorkerLedger(model);
 });
 
-test('a town pool admits an entire worker only when it has space, without charging the outside queue', () => {
+test('a tired worker docks at a town only while its rest cell has room, without charging the outside queue', () => {
 	const model = clearedMap();
 	const town = economyIndex(20, 14);
 	model.setActor(town, ECONOMY_TOWN);
 	model.priceHome.fill(1);
 	model.priceRest.fill(1);
-	model.depletedFlow.cap[town] = WORKER_UNIT / 2;
+	model.depleted[town] = model.depletedFlow.cap[town] - WORKER_UNIT / 2;
 	const w = model.workers, p = w.spawnWalker(STATE_DEPLETED, town, WORKER_UNIT, 50);
 	const id = w.wid[p];
 	model.emittedDepleted = WORKER_UNIT;
@@ -456,7 +456,7 @@ test('a town pool admits an entire worker only when it has space, without chargi
 	assert.ok(w.queuedAt(town) > 0);
 	closeTo(w.gold[p], 50);
 	assert.equal(model.money.taxes, 0);
-	model.depletedFlow.cap[town] = 2 * WORKER_UNIT;
+	model.depleted[town] = 0;
 	stepWorkers(model, 1);
 	assert.equal(w.dockCell[p], town);
 	assert.equal(w.wid[p], id);

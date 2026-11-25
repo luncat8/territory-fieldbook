@@ -82,8 +82,8 @@ class WorkerParticles extends WorkerLifecycle {
 		return sum;
 	}
 
-	// Walkers waiting at a full buyer (fresh at a firm, depleted at a town) count toward its pool occupancy,
-	// so hire bids and town crowd tax react to the queue instead of drawing more walkers.
+	// Walkers waiting at a full firm count toward its pool occupancy, so hire bids react to the queue
+	// instead of drawing more walkers. Towns keep no pool, so their occupancy stays zero.
 	queuedAt(i) {
 		return this.queue[i];
 	}
@@ -269,8 +269,8 @@ class WorkerParticles extends WorkerLifecycle {
 
 	// A docked worker leaves purely by gradient. A tired worker who has rested partway (fresh units recovered)
 	// goes to a job without waiting for full recovery, so his fresh units free the town labor cap that paid rest
-	// needs; a fresh worker never turns home. Firm workers stay to work until exhausted or the full depleted pool
-// blocks their shift. No town holds or releases.
+	// needs; a fresh worker never turns home. Firm workers stay to work until exhausted, then head home.
+	// No town holds or releases.
 	release() {
 		const m = this.model, steer = this.steer;
 		for (let p = 0; p < this.count; p++) {
@@ -279,9 +279,9 @@ class WorkerParticles extends WorkerLifecycle {
 			const fresh = this.portion(p, STATE_FRESH), tired = this.portion(p, STATE_DEPLETED);
 			const homeMix = walletWeight(this.gold[p], this.amount[p], m.workforce.refFee);
 			if (this.isFirm(i)) {
-				// A full depleted pool caps the recipe, so the worker's leftover fresh can never be worked and
-				// the shift could never complete; the mostly-tired ones end it and free the room for the rest.
-				const stuck = m.depleted[i] + WORKER_DUST >= m.depletedFlow.cap[i] && tired >= fresh;
+				// A mostly-tired worker ends its shift and frees the room for the rest; its leftover fresh
+				// portion is too small to matter. No pool-cap condition — towns and firms manage no wait pool.
+				const stuck = tired >= fresh;
 				if (this.state[p] === STATE_FRESH && !stuck) continue;
 				if (!steer.sampleGradient(m.priceHome, m.priceRest, homeMix, i, -Infinity)) continue;
 				if (steer.grad[2] < WORKER_DOCK_SLOPE) continue;
@@ -366,6 +366,9 @@ class WorkerParticles extends WorkerLifecycle {
 	}
 
 	fits(p, i) {
+		// Whole-worker admission against the plain physical cell bounds: the fresh portion needs labor
+		// room at the host, the tired portion needs depleted room in the cell. No pool machinery shrinks
+		// these caps any more — they stay at the uniform cell bound, so queuing means a genuinely full cell.
 		const m = this.model;
 		return m.labor[i] + this.portion(p, STATE_FRESH) <= m.laborFlow.cap[i] + WORKER_DUST
 			&& m.depleted[i] + this.tired[p] <= m.depletedFlow.cap[i] + WORKER_DUST;

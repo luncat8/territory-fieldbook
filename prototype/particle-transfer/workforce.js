@@ -44,7 +44,7 @@ class WorkerPolicy {
 		return (BASE_SHELTER + (1 - BASE_SHELTER) * comfort) * m.settlements.restFactor(i);
 	}
 
-	// Quality axis: how well a worker recovers here — comfort, tier and wait-pool crowding, ignoring tax.
+	// Quality axis: how well a worker recovers here — comfort, tier and housing crowding, ignoring tax.
 	homeRestBid(i) {
 		const m = this.model;
 		if (m.pop[i] <= 0) return 0;

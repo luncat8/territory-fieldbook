@@ -154,6 +154,9 @@ test('a supplied town between mine and factory grows and passes coal bids across
 	model.setActor(betweenTown, ECONOMY_TOWN);
 	model.setActor(factory, ECONOMY_FACTORY);
 	model.setActor(idleTown, ECONOMY_TOWN);
+	// Firm founding is covered by its own test; freezing it here keeps the idle town idle so the
+	// passthrough-transport comparison measures coal bids and rest, not each town's founding lottery.
+	model.workers.lastFoundTick = Number.MAX_SAFE_INTEGER;
 	run(model, 45);
 	assert.ok(model.producedGoods > 4);
 	assert.ok(model.pop[betweenTown] > START_POP && model.pop[betweenTown] > model.pop[idleTown]);

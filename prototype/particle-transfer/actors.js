@@ -1,4 +1,4 @@
-// Owns: universal actor recipes, buy/sell pricing, worker/living wait pools, tier-scaled town taxes and paid rest.
+// Owns: universal actor recipes, buy/sell pricing, the firm fresh-worker pool, tier-scaled town taxes and paid rest.
 // Edit for: firm recipes, particle accumulator output, pool-occupancy hire demand and town wealth-class taxes.
 'use strict';
 
@@ -11,12 +11,6 @@ const SCALE_DOWN = 0.36;
 const OCCUPANCY_RATE = 0.35;
 const WORK_POOL_BASE = 1.8;
 const WORK_POOL_TRANSIT = 2.2;
-const TOWN_POOL_BASE = 0.35;
-const TOWN_POOL_TRANSIT = 0.55;
-const WAIT_POOL_FREE = 0.25;
-const WAIT_POOL_OVERFLOW = 1.6;
-const WAIT_SPOT_TAX = 0.55;
-const WAIT_TAX_ADAPT = 0.95;
 const POP_FULL_TAX = 0.65;
 const REST_TAX_SHARE = 0.35;
 const TAX_MIN = 0.55;
@@ -31,7 +25,6 @@ const RICH_OCC = 0.85;
 const SPACE_COMFORT = 0.25;
 const VACANT_OCC = 0.3;
 const VACANT_SECONDS = 25;
-const NEED_FLOOR = 0.25;
 
 function optimalBid(value, stock, target, cool, suppress, share = INPUT_SHARE) {
 	if (value <= 0 || target <= 0 || !Number.isFinite(cool)) return 0;
@@ -82,17 +75,12 @@ class ActorOptimizer {
 		return Math.min(0.9, Math.max(nominal * 0.8, nominal * poolSeconds));
 	}
 
-	townWaitPool(i) {
-		const m = this.model;
-		const pop = m.pop[i];
-		if (pop <= 0) return 0;
-		return Math.min(0.85, Math.max(0.08, pop * LABOR_PER_POP * TOWN_POOL_BASE + m.workLoad[i] * TOWN_POOL_TRANSIT));
-	}
-
 	poolTarget(i) {
 		const actor = this.model.actors[i];
-		if (actor === ECONOMY_TOWN) return this.townWaitPool(i);
-		return actor ? this.firmLaborPool(i, this.recipes[actor]) : 0;
+		// Only firms size a pool: the fresh-worker input pool that keeps job shifts gapless and wages smooth.
+		// Towns rest and tax only — they hold no managed wait pool of their own.
+		if (actor && actor !== ECONOMY_TOWN) return this.firmLaborPool(i, this.recipes[actor]);
+		return 0;
 	}
 
 	poolOccupancy(i) {
@@ -130,9 +118,10 @@ class ActorOptimizer {
 	townCrowdMult(i) {
 		const m = this.model;
 		if (!m.derived || m.pop[i] <= 0) return 1;
-		const waitExcess = Math.max(0, this.poolOccupancy(i) - WAIT_POOL_FREE);
+		// Housing crowding only: full housing raises the living tax. There is no wait-pool crowding —
+		// towns manage no pool, so a pile of resting or queued workers never taxes the residents.
 		const popFull = Math.max(0, m.pop[i] / m.settlements.popCap(i) - 0.8) / 0.2;
-		return 1 + WAIT_SPOT_TAX * waitExcess + 0.35 * popFull * popFull;
+		return 1 + 0.35 * popFull * popFull;
 	}
 
 	townEffectiveMult(i) {
@@ -328,6 +317,8 @@ class ActorOptimizer {
 		const m = this.model;
 		if (m.depleted[i] <= 1e-12 || hasBetterNeighbor(m.depletedFlow, m.priceHome, i)) return 0;
 		const restRate = (m.pop[i] * LABOR_PER_POP * (0.25 + 0.95 * comfort) + 0.12) * m.settlements.restFactor(i);
+		// Plan rest bound: the service rate and the free fresh-stock capacity. Recovery stalls only while
+		// the fresh dock is full, which is harmless now that a waiting pile no longer raises the town tax.
 		const budget = Math.min(m.depleted[i], restRate * ECONOMY_DT, Math.max(0, workCap - m.labor[i]));
 		const fee = (this.townRestTax(i) / LABOR_PER_POP) * REST_TAX_SHARE * comfort;
 		return m.workers.restAt(i, budget, fee);
@@ -393,10 +384,10 @@ class ActorOptimizer {
 		const ceiling = m.settlements.bidFactor(i) * 0.96;
 		const maxCoal = m.derived ? (COAL_COMFORT / TOWN_COAL_NEED) * tax * ceiling : Infinity;
 		const maxGoods = m.derived ? (GOODS_COMFORT / TOWN_GOODS_NEED) * tax * ceiling : Infinity;
-		const waitPool = this.townWaitPool(i);
 		m.particles.setCap(ITEM_COAL, i, this.townCoalBid(i) > 0 && m.priceCoal[i] <= maxCoal ? Math.max(m.coal[i], this.townCoalTarget(i)) : m.coal[i]);
 		m.particles.setCap(ITEM_GOODS, i, this.townGoodsBid(i) > 0 && m.priceGoods[i] <= maxGoods ? Math.max(m.goods[i], this.townGoodsTarget(i)) : m.goods[i]);
-		m.depletedFlow.cap[i] = m.pop[i] > 0 ? Math.min(0.95, Math.max(m.depleted[i], waitPool * WAIT_POOL_OVERFLOW)) : 0;
+		// Towns manage no wait pool: the depleted cell cap stays at the plain cell bound (simulation fill),
+		// so a tired worker docks while the cell has room and queues only when it is genuinely full.
 	}
 
 	townResidentTarget(i) {
@@ -412,7 +403,6 @@ class ActorOptimizer {
 		const cls = m.wealthClass[i];
 		if (cls === WEALTH_RICH) {
 			target *= RICH_OCC;
-			if (this.poolOccupancy(i) > 1 && comfort < NEED_FLOOR) target = Math.min(target, pop * 0.6);
 		} else {
 			target = Math.max(target, pop);
 		}
@@ -431,8 +421,6 @@ class ActorOptimizer {
 		const comfort = COAL_COMFORT * m.satCoal[i] + GOODS_COMFORT * m.satGoods[i];
 		const drive = this.townDrive(i);
 		const cls = m.wealthClass[i];
-		const poolOcc = this.poolOccupancy(i);
-		const queue = Math.max(0, poolOcc - 1);
 		const occ = cap > 1e-9 ? pop / cap : 0;
 		const housingFree = Math.max(0, 1 - occ);
 		const cCoal = m.coal[i] > 1e-6 ? m.unitCostAt(ITEM_COAL, i) : m.priceCoal[i];
@@ -441,18 +429,15 @@ class ActorOptimizer {
 		const workerGold = m.money.workerPurse[i] + m.workerGoldAt(i);
 		const baseTax = (workerGold / WORKER_SECONDS) / pop;
 		const minProfitTax = baseTax > 1e-9 && comfort > 0.05 ? (rationCost * 1.12) / (baseTax * Math.max(0.25, comfort)) : TAX_MIN;
-		const waitExcess = Math.max(0, poolOcc - WAIT_POOL_FREE);
 		const popFull = Math.max(0, occ - 0.8) / 0.2;
-		const crowdPush = WAIT_TAX_ADAPT * waitExcess + POP_FULL_TAX * popFull * popFull;
+		const crowdPush = POP_FULL_TAX * popFull * popFull;
 
 		let target;
 		if (cls === WEALTH_CHEAP) {
 			if (housingFree > 0.01) target = Math.max(TAX_MIN, minProfitTax * 0.6, 1 - 0.5 * housingFree) + crowdPush * 0.3;
-			else if (queue > 0) target = Math.max(TAX_MIN, minProfitTax, 1 + 0.1 * queue) + crowdPush * 0.5;
 			else target = Math.max(TAX_MIN, minProfitTax, 1) + crowdPush * 0.5;
 		} else if (cls === WEALTH_RICH) {
-			if (queue > 0) target = Math.max(TAX_MIN, minProfitTax, 1 + 0.4 * queue + 0.15 * comfort) + crowdPush;
-			else if (occ < RICH_OCC) target = Math.max(TAX_MIN, minProfitTax * 0.7, 1 - 1.2 * (RICH_OCC - occ)) + crowdPush * 0.3;
+			if (occ < RICH_OCC) target = Math.max(TAX_MIN, minProfitTax * 0.7, 1 - 1.2 * (RICH_OCC - occ)) + crowdPush * 0.3;
 			else target = Math.max(TAX_MIN, minProfitTax, 1.1) + crowdPush * 0.5;
 		} else if (drive > 0.02 && comfort > 0.55) {
 			target = Math.max(TAX_MIN, minProfitTax, 1 - 0.42 * drive * comfort) + crowdPush;

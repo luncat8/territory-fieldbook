@@ -24,7 +24,7 @@ const RESOURCE_TITLES = {
 	coal:['Coal particles & storage','Site buffers plus live shipments colored by delivered price','Coal price','Diffused buyer bid per cell'],
 	goods:['Goods particles & storage','Site buffers plus live shipments colored by delivered price','Goods price','Diffused buyer bid per cell'],
 	labor:['Labor pools & commuters','Docked fresh pools plus walkers climbing the wage bid, colored by carried wallet','Wage','Diffused firm wage bid per cell'],
-	depleted:['Depleted pools & walkers','Town wait pools and still workers plus tired walkers carrying earned gold home','Living value','Diffused comfort per gold tax (fades with distance)'],
+	depleted:['Depleted walkers & rest','Resting and still workers plus tired walkers carrying earned gold home','Living value','Diffused comfort per gold tax (fades with distance)'],
 	gold:['Gold held','Municipal vaults, resident purses and worker wallets','Payment & home pull','Where bids and home appeal draw value'],
 	land:['Land rest','Terrain rest pace less wasteland around facilities','Town site','Where settlers prefer to found: land rest less other towns\' claim']
 };
