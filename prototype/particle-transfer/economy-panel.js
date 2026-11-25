@@ -11,7 +11,7 @@ const ECONOMY_PANEL_ROWS = [
 		['Stopped walkers', s => `${s.stopped}`, s => s.walking > 20 && s.stopped / s.walking > 0.6],
 		['Queued at firms', s => `${s.queuedFirm}`, s => s.queuedFirm > 20],
 		['Unemployed', s => s.unemployed.toFixed(1)],
-		['Town supply', s => `${s.laborSupplyRate.toFixed(2)} /s`]
+		['Births · starved', s => `${s.births} · ${s.starved}`]
 	]],
 	['Gold', [
 		['Gold total', s => `${s.goldTotal.toFixed(2)} g`],
@@ -29,7 +29,7 @@ const ECONOMY_PANEL_ROWS = [
 		['Pay per labor unit', s => `${s.payPerLabor.toFixed(3)} g`],
 		['Wages · taxes rate', s => `${s.wageRate.toFixed(3)} · ${s.taxRate.toFixed(3)} g/s`],
 		['Rest tax · tax mult', s => `${s.restTax.toFixed(3)} · ${s.taxMult.toFixed(2)}`],
-		['Pop · comfort', s => `${s.pop.toFixed(1)} · ${s.comfort.toFixed(2)}`]
+		['Residents · comfort', s => `${s.pop.toFixed(1)} · ${s.comfort.toFixed(2)}`]
 	]],
 	['Prices', [
 		['Coal best buyer', s => `${s.coalBestBuyer.toFixed(3)} g/u`],
