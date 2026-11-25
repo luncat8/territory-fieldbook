@@ -24,8 +24,8 @@ function checkLedger(model) {
 	}
 	closeTo(sum(model.coal), model.producedCoal - model.burnedCoal);
 	closeTo(sum(model.goods), model.producedGoods - model.consumedGoods);
-	closeTo(sum(model.labor), model.suppliedLabor - model.workedLabor);
-	closeTo(sum(model.depleted), model.emittedDepleted - model.restedDepleted);
+	closeTo(sum(model.labor), model.suppliedLabor - model.workedLabor - model.starvedLabor);
+	closeTo(sum(model.depleted), model.emittedDepleted - model.restedDepleted - model.starvedTired);
 	assert.ok(Math.abs(model.money.total() - model.money.seeded - model.money.mined) < 1e-7);
 }
 
@@ -143,18 +143,17 @@ test('living appeal trades off gold tax against distance fade and does not favor
 	checkLedger(taxModel);
 });
 
-test('long-vacant or broke towns shed residents carrying proportional savings', () => {
-	// Draft revision: cheap/med towns keep their built size and only shed residents when long-vacant or broke
-	// (tax is the lever that keeps them full). The departing residents still carry their wallet gold proportionally.
+test('a starving town is thinned only by its own famine clock, its mass and purse booked exactly', () => {
+	// No town sheds residents by formula and none carries savings out: a town that cannot feed its
+	// people thins through famine (their mass books as starved, their pool gold banks at the town),
+	// while the household purse stays where it belongs.
 	const model = clearedMap();
 	const town = economyIndex(24, 14);
 	model.setActor(town, ECONOMY_TOWN);
-	model.vacantTicks[town] = VACANT_SECONDS + 10; // simulate a town that has stood empty for a long time
-	const startWorkerGold = model.money.workerPurse[town];
-	model.step();
-	assert.ok(model.depleted[town] > 0);
-	assert.ok(model.depletedFlow.gold[town] > 0);
-	closeTo(model.money.workerPurse[town] + model.laborFlow.gold[town] + model.depletedFlow.gold[town], startWorkerGold);
+	for (let n = 0; n < Math.round((FAMINE_SECONDS + 20) / ECONOMY_DT); n++) model.step();
+	assert.ok(model.pop[town] < START_POP, 'famine thinned the starving town');
+	assert.ok(model.starved > 0);
+	assert.ok(model.starvedLabor + model.starvedTired > 0);
 	checkLedger(model);
 });
 
@@ -250,12 +249,15 @@ test('factories emit workforce demand inversely with fresh-worker pool occupancy
 	assert.ok(overflow.priceLabor[gOverflow] < scarce.priceLabor[gScarce] * 0.25);
 });
 
-test('towns increase living taxes and cool home appeal when their wait pool to live is crowded', () => {
+test('towns increase living taxes and cool home appeal when their housing is crowded', () => {
+	// Crowding is housing occupancy: full rooms raise the living tax and cool the appeal, no wait
+	// pool involved. A supplied town with free housing keeps the living tax low.
 	const model = clearedMap();
 	const calm = economyIndex(10, 14);
 	const crowded = economyIndex(34, 14);
 	model.setActor(calm, ECONOMY_TOWN);
 	model.setActor(crowded, ECONOMY_TOWN);
+	model.pop[crowded] = model.settlements.popCap(crowded);
 	for (let n = 0; n < 8 * 60; n++) {
 		for (const t of [calm, crowded]) {
 			model.coal[t] = 0.4;
@@ -263,23 +265,15 @@ test('towns increase living taxes and cool home appeal when their wait pool to l
 		}
 		model.producedCoal = model.burnedCoal + 0.8;
 		model.producedGoods = model.consumedGoods + 1.4;
-		if (model.depleted[crowded] < 0.45) {
-			const add = 0.45 - model.depleted[crowded];
-			model.depleted[crowded] += add;
-			model.emittedDepleted += add;
-			model.depletedFlow.gold[crowded] += add * 4;
-			model.money.seeded += add * 4;
-		}
 		model.step();
 	}
-	assert.ok(model.poolOccupancy(crowded) > model.poolOccupancy(calm) + 0.35);
-	assert.ok(model.taxMult[crowded] > model.taxMult[calm] + 0.25);
+	assert.ok(model.pop[crowded] / model.settlements.popCap(crowded) > model.pop[calm] / model.settlements.popCap(calm) + 0.35);
 	assert.ok(model.townRestTax(crowded) > model.townRestTax(calm) * 1.5);
 	assert.ok(model.workforce.homeValueBid(crowded) < model.workforce.homeValueBid(calm) * 0.7);
 	checkLedger(model);
 });
 
-test('worker and town wait pools balance to real occupancy and smooth shifts across commute travel', () => {
+test('firm hire pools balance to real occupancy and smooth shifts across commute travel; towns hold no pool', () => {
 	const model = clearedMap();
 	const mine = economyIndex(10, 10);
 	const activeFactory = economyIndex(14, 10);
@@ -299,7 +293,9 @@ test('worker and town wait pools balance to real occupancy and smooth shifts acr
 	assert.ok(model.workLoad[activeFactory] > 0.05);
 	assert.equal(model.workLoad[idleFactory], 0);
 	assert.ok(model.poolTarget(activeFactory) > model.poolTarget(idleFactory) * 2);
-	assert.ok(model.poolTarget(activeTown) > model.poolTarget(quietTown) * 1.8);
+	// Towns manage no wait pool: their pool target is zero however busy or quiet they are.
+	assert.equal(model.poolTarget(activeTown), 0);
+	assert.equal(model.poolTarget(quietTown), 0);
 
 	let stalledTicks = 0;
 	for (let n = 0; n < 300; n++) {
@@ -370,9 +366,9 @@ test('cheap towns drop living tax to fill vacant slots, unlike balanced towns', 
 	checkLedger(model);
 });
 
-test('rich towns keep a cozy occupancy with a few free slots rather than filling to capacity', () => {
-	// Draft "town wealth class": a Rich town holds a comfortable occupancy (queue ≈ 0, few free slots) while a
-	// balanced town fills closer to capacity.
+test('births pace on savings so towns keep a cozy occupancy rather than filling to capacity', () => {
+	// Population is not a managed fill target: a household splits only while its savings still back a
+	// starter purse per person, so even a wealthy, well-fed town rests well under its housing cap.
 	const model = clearedMap();
 	const rich = economyIndex(10, 14);
 	const med = economyIndex(34, 14);
@@ -387,7 +383,8 @@ test('rich towns keep a cozy occupancy with a few free slots rather than filling
 		model.step();
 	}
 	const occ = (t) => model.pop[t] / model.settlements.popCap(t);
-	assert.ok(occ(rich) > 0 && occ(rich) < 0.95, 'rich town keeps a few free slots');
-	assert.ok(occ(med) > occ(rich), 'balanced town fills closer to capacity');
+	assert.ok(model.pop[rich] > START_POP, 'the town did grow through births');
+	assert.ok(occ(rich) > 0 && occ(rich) < 0.8, 'rich town keeps a few free slots');
+	assert.ok(occ(med) > 0 && occ(med) < 0.8, 'balanced town stays cozy too');
 	checkLedger(model);
 });
