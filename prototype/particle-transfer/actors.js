@@ -23,8 +23,6 @@ const WEALTH_RICH = 2;
 const WEALTH_NAMES = ['Cheap', 'Med', 'Rich'];
 const RICH_OCC = 0.85;
 const SPACE_COMFORT = 0.25;
-const VACANT_OCC = 0.3;
-const VACANT_SECONDS = 25;
 
 function optimalBid(value, stock, target, cool, suppress, share = INPUT_SHARE) {
 	if (value <= 0 || target <= 0 || !Number.isFinite(cool)) return 0;
@@ -98,9 +96,11 @@ class ActorOptimizer {
 		return Math.tanh(m.profit[i] / ref);
 	}
 
+	// Storage is sized for the town's rooms (housing cap), not for whoever is home right now: the people
+	// cycle between home and work, so present-resident sizing would collapse buffers below one particle
+	// batch and the town could never stock. Consumption still follows who is present.
 	townPopPlan(i) {
-		const boost = Math.max(0, this.townDrive(i));
-		return Math.min(this.model.settlements.popCap(i), this.model.pop[i] + POP_HEADROOM * (1 + boost));
+		return this.model.settlements.popCap(i);
 	}
 
 	townCoalTarget(i) {
@@ -316,7 +316,9 @@ class ActorOptimizer {
 	restWorkers(i, comfort, workCap) {
 		const m = this.model;
 		if (m.depleted[i] <= 1e-12 || hasBetterNeighbor(m.depletedFlow, m.priceHome, i)) return 0;
-		const restRate = (m.pop[i] * LABOR_PER_POP * (0.25 + 0.95 * comfort) + 0.12) * m.settlements.restFactor(i);
+		// Service throughput is sized for the town's rooms (housing cap), not for who is home: residents
+		// cycle between home and work, so present-pop sizing would shut rest exactly while everyone commutes.
+		const restRate = (m.settlements.popCap(i) * LABOR_PER_POP * (0.25 + 0.95 * comfort) + 0.12) * m.settlements.restFactor(i);
 		// Plan rest bound: the service rate and the free fresh-stock capacity. Recovery stalls only while
 		// the fresh dock is full, which is harmless now that a waiting pile no longer raises the town tax.
 		const budget = Math.min(m.depleted[i], restRate * ECONOMY_DT, Math.max(0, workCap - m.labor[i]));
@@ -346,39 +348,14 @@ class ActorOptimizer {
 		m.satCoal[i] += this.satBlend * ((wantCoal > 0 ? usedCoal / wantCoal : 0) - m.satCoal[i]);
 		m.satGoods[i] += this.satBlend * ((wantGoods > 0 ? usedGoods / wantGoods : 0) - m.satGoods[i]);
 		const comfort = COAL_COMFORT * m.satCoal[i] + GOODS_COMFORT * m.satGoods[i];
-		const workCap = Math.min(1, pop * LABOR_PER_POP * BUFFER_SECONDS);
+		const workCap = Math.min(1, m.settlements.popCap(i) * LABOR_PER_POP * BUFFER_SECONDS);
 
 		const taxesBefore = m.money.taxes;
 		const restedWork = this.restWorkers(i, comfort, workCap);
 		m.workLoad[i] += this.occBlend * (restedWork / ECONOMY_DT - m.workLoad[i]);
-		const supplied = Math.min(Math.max(0, workCap - m.labor[i]), Math.max(0, pop * LABOR_PER_POP * ECONOMY_DT - restedWork));
-		if (supplied > 0) {
-			m.labor[i] += supplied;
-			m.suppliedLabor += supplied;
-		}
-
 		m.money.collectTax(i, comfort);
 		const taxIncome = (m.money.taxes - taxesBefore) / ECONOMY_DT;
 		m.earned[i] += taxIncome - (coalCost + goodsCost) / ECONOMY_DT;
-
-		const target = this.townResidentTarget(i);
-		const deltaPop = ECONOMY_DT * POP_RATE * (target - pop);
-		m.pop[i] = Math.min(POP_MAX, Math.max(0, pop + deltaPop));
-		const cap = m.settlements.popCap(i);
-		const occ = cap > 1e-9 ? m.pop[i] / cap : 0;
-		if (occ < VACANT_OCC && restedWork <= 1e-12) m.vacantTicks[i] += ECONOMY_DT;
-		else m.vacantTicks[i] = Math.max(0, m.vacantTicks[i] - ECONOMY_DT * 2);
-		if (deltaPop < 0 && pop > 1e-9) {
-			const shed = Math.min(1 - m.depleted[i], -deltaPop * LABOR_PER_POP);
-			if (shed > 0) {
-				const leaveShare = Math.min(1, (shed / LABOR_PER_POP) / pop);
-				const migrantGold = m.money.workerPurse[i] * leaveShare;
-				m.money.workerPurse[i] = Math.max(0, m.money.workerPurse[i] - migrantGold);
-				m.depleted[i] += shed;
-				m.depletedFlow.gold[i] += migrantGold;
-				m.emittedDepleted += shed;
-			}
-		}
 
 		const tax = this.townTaxRate(i);
 		const ceiling = m.settlements.bidFactor(i) * 0.96;
@@ -390,44 +367,22 @@ class ActorOptimizer {
 		// so a tired worker docks while the cell has room and queues only when it is genuinely full.
 	}
 
-	townResidentTarget(i) {
-		const m = this.model;
-		const pop = m.pop[i];
-		const comfort = COAL_COMFORT * m.satCoal[i] + GOODS_COMFORT * m.satGoods[i];
-		const mult = m.derived ? (m.taxMult[i] || 1) : 1;
-		const workerGold = m.money.workerPurse[i] + m.workerGoldAt(i);
-		const afford = workerGold / (workerGold + pop * 0.25 * mult);
-		const taxDrag = mult > 1 ? 1 / (1 + 0.5 * (mult - 1)) : 1 + 0.18 * (1 - mult);
-		const popCap = m.settlements.popCap(i);
-		let target = Math.min(popCap, POP_BASE + (popCap - POP_BASE) * comfort * afford * taxDrag);
-		const cls = m.wealthClass[i];
-		if (cls === WEALTH_RICH) {
-			target *= RICH_OCC;
-		} else {
-			target = Math.max(target, pop);
-		}
-		if (m.vacantTicks[i] > VACANT_SECONDS || workerGold < 1e-6) target = Math.min(target, pop * 0.985);
-		return Math.min(popCap, Math.max(POP_BASE, Math.max(0, target)));
-	}
-
 	adaptTownTax(i) {
 		const m = this.model;
 		if (!m.derived) {
 			m.taxMult[i] = 1;
 			return;
 		}
-		const pop = Math.max(1, m.pop[i]);
 		const cap = m.settlements.popCap(i);
 		const comfort = COAL_COMFORT * m.satCoal[i] + GOODS_COMFORT * m.satGoods[i];
 		const drive = this.townDrive(i);
 		const cls = m.wealthClass[i];
-		const occ = cap > 1e-9 ? pop / cap : 0;
+		const occ = cap > 1e-9 ? m.pop[i] / cap : 0;
 		const housingFree = Math.max(0, 1 - occ);
 		const cCoal = m.coal[i] > 1e-6 ? m.unitCostAt(ITEM_COAL, i) : m.priceCoal[i];
 		const cGoods = m.goods[i] > 1e-6 ? m.unitCostAt(ITEM_GOODS, i) : m.priceGoods[i];
 		const rationCost = TOWN_COAL_NEED * m.satCoal[i] * cCoal + TOWN_GOODS_NEED * m.satGoods[i] * cGoods;
-		const workerGold = m.money.workerPurse[i] + m.workerGoldAt(i);
-		const baseTax = (workerGold / WORKER_SECONDS) / pop;
+		const baseTax = m.money.taxPerPop(i) / (m.derived ? (m.taxMult[i] || 1) : 1);
 		const minProfitTax = baseTax > 1e-9 && comfort > 0.05 ? (rationCost * 1.12) / (baseTax * Math.max(0.25, comfort)) : TAX_MIN;
 		const popFull = Math.max(0, occ - 0.8) / 0.2;
 		const crowdPush = POP_FULL_TAX * popFull * popFull;
