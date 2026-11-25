@@ -25,6 +25,13 @@ function clearedMap() {
 	model.scale.fill(0);
 	model.taxMult.fill(0);
 	model.workLoad.fill(0);
+	// The honest boot seeds resident stock at the reference town; a blank map clears the pools along
+	// with the workers, and the granted-supply counters with them, or the stale seed would break the
+	// mass ledgers from tick one (seedTown books emittedDepleted/suppliedLabor for the residents).
+	model.labor.fill(0);
+	model.depleted.fill(0);
+	model.suppliedLabor = model.workedLabor = model.emittedDepleted = model.restedDepleted = 0;
+	model.starvedLabor = model.starvedTired = model.births = model.starved = 0;
 	model.laborFlow.gold.fill(0);
 	model.depletedFlow.gold.fill(0);
 	model.particles.reset();
@@ -55,8 +62,8 @@ function checkWorkerLedger(model) {
 		assert.ok(workers.amount[p] > 0 && workers.gold[p] >= 0);
 		assert.ok(workers.intent[p] >= 0 && workers.intent[p] <= 1);
 	}
-	closeTo(model.totalItem(ITEM_LABOR), model.suppliedLabor - model.workedLabor, 1e-11, model.suppliedLabor);
-	closeTo(model.totalItem(ITEM_DEPLETED), model.emittedDepleted - model.restedDepleted, 1e-11, model.emittedDepleted);
+	closeTo(model.totalItem(ITEM_LABOR), model.suppliedLabor - model.workedLabor - model.starvedLabor, 1e-11, model.suppliedLabor);
+	closeTo(model.totalItem(ITEM_DEPLETED), model.emittedDepleted - model.restedDepleted - model.starvedTired, 1e-11, model.emittedDepleted);
 	closeTo(money.total(), money.seeded + money.mined, 1e-12, money.seeded + money.mined);
 }
 
@@ -68,12 +75,14 @@ test('reference chain commutes by worker particles: walkers launch, arrive, carr
 		peak = Math.max(peak, model.workers.count);
 		if (n % 60 === 0) wallets = Math.max(wallets, model.workers.goldTotal());
 	}
-	assert.ok(model.workers.emitted > 200);
-	assert.ok(model.workers.arrivals > 100);
-	assert.ok(peak > 20 && peak < WORKER_CAP);
+	// Honest-boot magnitudes: the 10 seeded workers churn without any town mint (peak stays at the seeded
+	// count until births grow it), 40 s measured: 137 launches, 120 dockings, 1.19 worked, 1.09 rested.
+	assert.ok(model.workers.emitted > 80);
+	assert.ok(model.workers.arrivals > 80);
+	assert.ok(peak >= 10 && peak < WORKER_CAP);
 	assert.ok(wallets > 0.05, 'tired walkers carry wages home');
-	assert.ok(model.workedLabor > 3);
-	assert.ok(model.restedDepleted > 2);
+	assert.ok(model.workedLabor > 0.8);
+	assert.ok(model.restedDepleted > 0.7);
 	checkWorkerLedger(model);
 });
 
@@ -128,7 +137,7 @@ test('wallets pick the home: broke walkers follow living value, funded walkers f
 	assert.ok(walk(5) > 1, 'funded walker heads for rest quality');
 });
 
-test('workers in a dominated town follow higher home appeal, recovering a little while walking', () => {
+test('workers in a dominated town follow higher home appeal, resting only once they dock there', () => {
 	const model = clearedMap();
 	const weak = economyIndex(20, 14), strong = economyIndex(23, 14);
 	model.setActor(weak, ECONOMY_TOWN);
@@ -145,7 +154,8 @@ test('workers in a dominated town follow higher home appeal, recovering a little
 	stepWorkers(model, 120);
 	assert.equal(model.depleted[weak], 0);
 	closeTo(model.depleted[strong] + model.labor[strong], 3 * WORKER_UNIT, 1e-14);
-	assert.ok(model.restedDepleted > 0, 'slow walking permits partial recovery');
+	// Recovery lives at towns: the road restores nothing, so the tired mass arrives unrested.
+	assert.equal(model.restedDepleted, 0);
 	closeTo(model.depletedFlow.gold[strong], 0.3, 1e-14);
 	checkWorkerLedger(model);
 });
@@ -203,17 +213,24 @@ test('still walkers dock where they stand with intent·amount conserved, and fou
 
 	const founding = clearedMap();
 	const c = economyIndex(30, 14);
+	// Bare tired stock sits at a neighbor cell; the walker carries 0.6 tired from the founding cell.
+	// Founding gathers both: the bare 0.3 transfers to the new town and the 0.6 walker is absorbed
+	// into room the cell cap (1.0) allows.
+	founding.depleted[economyIndex(31, 14)] = 0.3;
 	founding.depleted[c] = 0.6;
 	founding.workers.emitFrom(STATE_DEPLETED, c, 0.6);
 	founding.workers.x[0] = 31.4;
 	founding.workers.gold[0] = 0.7;
 	founding.money.seeded = 0.7;
-	founding.emittedDepleted = 0.6;
+	founding.emittedDepleted = 0.9;
 	founding.settlements.foundTown(c);
 	assert.equal(founding.actors[c], ECONOMY_TOWN);
-	assert.equal(founding.workers.count, 0);
+	// The walker docks as the young town's first resting resident (no despawn — founding gathers people,
+	// it never dissolves them); his wallet banks into the household purse.
+	assert.equal(founding.workers.count, 1);
+	assert.equal(founding.workers.dockCell[0], c);
+	closeTo(founding.depleted[c], 0.9, 1e-14);
 	closeTo(founding.money.workerPurse[c], 0.7, 1e-14);
-	closeTo(founding.restedDepleted, 0.6, 1e-14);
 	checkWorkerLedger(founding);
 });
 
@@ -359,23 +376,64 @@ test('wage debt follows its worker rather than paying a replacement at the firm'
 	checkWorkerLedger(model);
 });
 
-test('slow fresh workers recover partial fatigue without losing money or becoming replacement particles', () => {
+test('a worker unfed past the starvation budget dies where he stands, leaving his purse and mass exactly', () => {
+	const model = clearedMap();
+	const town = economyIndex(20, 14);
+	model.setActor(town, ECONOMY_TOWN);
+	// The town is unsupplied: comfort 0 never clears hunger, so every unfed tick counts toward starvation.
+	const w = model.workers;
+	const p = w.spawnWalker(STATE_FRESH, town, WORKER_UNIT, 3);
+	const id = w.wid[p];
+	model.money.seeded += 3;
+	model.suppliedLabor = WORKER_UNIT;
+	w.park(p, town);
+	consumeWork(model, town, WORKER_UNIT / 2);
+	w.syncFromCells();
+	const tiredBefore = w.tired[p], freshBefore = w.portion(p, STATE_FRESH);
+	w.hunger[p] = STARVE_SECONDS;
+	const purseBefore = model.money.workerPurse[town];
+	model.step();
+	assert.equal(w.count, 0, 'the starved worker leaves the world');
+	assert.ok(w.byWid(id) < 0);
+	assert.equal(model.starved, 1);
+	// Shelter rest may shift the split while hunger runs out, but the booked mass equals his whole body.
+	closeTo(model.starvedLabor + model.starvedTired, freshBefore + tiredBefore, 1e-12);
+	// His purse orphans where he fell and the town inherits it through the household purse.
+	assert.ok(model.money.workerPurse[town] > purseBefore);
+	checkWorkerLedger(model);
+});
+
+test('recovery lives at towns: a funded guest pays the rest fee, a broke guest rests slowly on the shelter floor, both keep their identity', () => {
 	const model = clearedMap();
 	const spot = economyIndex(25, 14);
+	model.setActor(spot, ECONOMY_TOWN);
 	const entry = model.spawnTrackedWorker(spot, 'Slow', 50);
 	const w = model.workers, p = w.byWid(entry.id);
 	w.park(p, spot);
 	consumeWork(model, spot, WORKER_UNIT / 2);
 	assert.equal(w.state[p], STATE_FRESH);
-	model.workforce.weighWallets();
-	model.workforce.stepStill();
+	// Paid service: the fee comes out of the guest's own purse, the object is never replaced.
+	const rested = w.restAt(spot, WORKER_UNIT, 1);
+	assert.ok(rested > 0 && rested <= WORKER_UNIT / 2 + 1e-12);
 	assert.ok(w.tired[p] < WORKER_UNIT / 2);
-	for (let n = 0; n < 2200; n++) model.workforce.stepStill();
-	assert.ok(w.tired[p] < WORKER_DUST, 'shelter rest actually completes');
-	closeTo(w.gold[p], 50);
+	assert.ok(w.gold[p] > 50 - WORKER_UNIT && w.gold[p] < 50, 'the guest paid exactly rested * fee');
 	closeTo(w.amount[p], WORKER_UNIT);
 	assert.equal(w.wid[p], entry.id);
 	checkWorkerLedger(model);
+
+	const broke = clearedMap();
+	const home = economyIndex(25, 14);
+	broke.setActor(home, ECONOMY_TOWN);
+	const poor = broke.spawnTrackedWorker(home, 'Broke', 0);
+	const w2 = broke.workers, q = w2.byWid(poor.id);
+	w2.park(q, home);
+	consumeWork(broke, home, WORKER_UNIT);
+	broke.workforce.weighWallets();
+	for (let n = 0; n < 2200; n++) broke.workforce.stepStill();
+	assert.ok(w2.tired[q] < WORKER_DUST, 'shelter rest completes for broke guests');
+	assert.equal(w2.wid[q], poor.id);
+	closeTo(w2.gold[q], 0);
+	checkWorkerLedger(broke);
 });
 
 test('unemployed workers found useful firms only when the selected recipe has resources', () => {
