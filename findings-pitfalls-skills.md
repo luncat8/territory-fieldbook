@@ -521,3 +521,16 @@ From adding land rest and settle intent to `prototype/price-model-b2/` (`land.js
   per-worker additions to large totals can drift beyond the mass tolerance despite locally conservative moves.
 - Tests of aggregate profit at a single timestamp or town growth can accidentally require confiscated commuter
   savings. Keep conservation strict; assert actual persistent lifecycles and real cash transactions independently.
+
+## reference-chain collapse after ~4 min (particle-transfer lab, measured with the economy inspector)
+
+- **Persistent workers need a sink.** Town labor supply (`pop · LABOR_PER_POP` per second) mints new worker objects
+  whenever the fresh dock has room, and no rule ever retires one. An 18-pop town fills `WORKER_CAP` 2048 at t≈210 s.
+- **Queued walkers zero the wage.** 1810 walkers queue on full firm cells; the queue counts as held labor, so firm
+  wage bids drop to ~0.003 and the wage field flattens below `WORKER_DOCK_SLOPE`. Every walker stops.
+- **Wages drain towns into wallets.** 99% of gold ends in worker wallets (median 0.004 g each). Rest tax is the only
+  way back, and the town's fresh dock is full of jobless workers, so rest is blocked (`workCap − labor = 0`).
+  Broke towns stop bidding for coal and goods.
+- **Haulage inflates stranded coal asks.** 2184 coal particles keep wobbling near flat price peaks and accrue haul
+  cost: the ask reaches 1.02 g/u (96% haulage) against a best buyer price of 0.08. The "mean coal price" card
+  averages the bid field over every cell (0.01), so it shows 0.00 while particle asks climb.
