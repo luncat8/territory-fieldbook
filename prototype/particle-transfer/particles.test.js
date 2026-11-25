@@ -57,8 +57,8 @@ function checkMachineConservation(model) {
 	}
 	closeMachine(model.totalItem(ITEM_COAL), model.producedCoal - model.burnedCoal - particles.spoiled[ITEM_COAL], 1e-12, model.producedCoal);
 	closeMachine(model.totalItem(ITEM_GOODS), model.producedGoods - model.consumedGoods - particles.spoiled[ITEM_GOODS], 1e-12, model.producedGoods);
-	closeMachine(model.totalItem(ITEM_LABOR), model.suppliedLabor - model.workedLabor, 1e-11, model.suppliedLabor);
-	closeMachine(model.totalItem(ITEM_DEPLETED), model.emittedDepleted - model.restedDepleted, 1e-11, model.emittedDepleted);
+	closeMachine(model.totalItem(ITEM_LABOR), model.suppliedLabor - model.workedLabor - model.starvedLabor, 1e-11, model.suppliedLabor);
+	closeMachine(model.totalItem(ITEM_DEPLETED), model.emittedDepleted - model.restedDepleted - model.starvedTired, 1e-11, model.emittedDepleted);
 	closeMachine(money.total(), money.seeded + money.mined, 1e-12, money.seeded + money.mined);
 }
 
@@ -76,15 +76,18 @@ test('Phase 1 reference chain (one mine -> one factory -> one town) runs smoothl
 		peakProfit[1] = Math.max(peakProfit[1], model.profit[factory]);
 		peakProfit[2] = Math.max(peakProfit[2], model.profit[town]);
 	}
-	assert.ok(model.producedCoal > 15);
-	assert.ok(model.burnedCoal > 12);
-	assert.ok(model.producedGoods > 10);
-	assert.ok(model.consumedGoods > 10);
-	assert.ok(model.particles.deliveries > 200);
-	assert.ok(model.money.transportEarned > 0.5);
-	assert.ok(peakProfit[0] > 0.005);
-	assert.ok(peakProfit[1] > 0.05);
-	assert.ok(peakProfit[2] > 0.1);
+	// Honest-boot magnitudes: the chain runs on the 10 seeded workers alone (no town mint), so throughput
+	// is a fraction of the old mint-carried numbers; the deterministic boot measured coal 5.4, goods 2.8,
+	// deliveries 109, transport 0.12 over 60 s. Thresholds hold at roughly half of measured.
+	assert.ok(model.producedCoal > 3);
+	assert.ok(model.burnedCoal > 1.5);
+	assert.ok(model.producedGoods > 1.4);
+	assert.ok(model.consumedGoods > 0.02);
+	assert.ok(model.particles.deliveries > 60);
+	assert.ok(model.money.transportEarned > 0.05);
+	assert.ok(peakProfit[0] > 0.1);
+	assert.ok(peakProfit[1] > 0.2);
+	assert.ok(peakProfit[2] > 0.3);
 	assert.ok(model.pop[town] > 0, 'residents survive without confiscating commuter savings');
 	checkMachineConservation(model);
 });
@@ -106,7 +109,8 @@ test('machine-precision conservation holds across 180 s with gold mining, mid-fl
 
 	model.clearTowns();
 	run(model, 60);
-	assert.ok(model.money.mined > 5);
+	// Honest boot: the gold mine digs ~4.6 g over the 180 s on the seeded workforce alone.
+	assert.ok(model.money.mined > 3);
 	checkMachineConservation(model);
 });
 
@@ -390,7 +394,9 @@ test('UI boots cleanly in a stub DOM, renders particle overlays across views and
 
 test('watched-worker panel spawns a named worker, funds him and renders purse, ledger and events', () => {
 	const { byId, toolBtns } = bootLab();
-	assert.equal(byId.get('tracked-panel').hidden, true, 'the panel hides until a worker is watched');
+	// The honest boot seeds a live workforce, so the 16 s warm-start auto-watches worker 0 from the first tick.
+	assert.equal(byId.get('tracked-panel').hidden, false, 'the boot auto-watches the seeded workforce');
+	assert.ok(byId.get('tracked-events').innerHTML.includes('watched from start'), 'the auto-watch note names itself');
 
 	byId.get('tracked-gold').value = '40';
 	byId.get('tracked-spawn').trigger('click');
@@ -413,5 +419,7 @@ test('watched-worker panel spawns a named worker, funds him and renders purse, l
 	byId.get('resource-map').trigger('click', { clientX: 200, clientY: 100 });
 	assert.ok(byId.get('tracked-select').innerHTML.split('<option').length >= 3, 'the worker tool adds a second watched worker');
 	assert.ok(byId.get('edit-message').textContent.includes('Watching'), 'the message names the watched worker');
-	assert.ok(byId.get('tracked-count').textContent.includes('2/12'), 'the roster counter tracks the cap');
+	// The boot auto-watches worker 0, so the picker holds one extra entry; the counter mirrors the roster.
+	const watched = byId.get('tracked-select').innerHTML.split('<option').length - 1;
+	assert.ok(byId.get('tracked-count').textContent.includes(`${watched}/12`), 'the roster counter tracks the cap');
 });
