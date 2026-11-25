@@ -104,7 +104,7 @@ class EconomyDiagnostics {
 	// Same bound as restWorkers in actors.js: rest stops once the fresh dock reaches the town's work cap.
 	restBlocked(i) {
 		const m = this.model;
-		const workCap = Math.min(1, m.pop[i] * LABOR_PER_POP * BUFFER_SECONDS);
+		const workCap = Math.min(1, m.settlements.popCap(i) * LABOR_PER_POP * BUFFER_SECONDS);
 		return m.depleted[i] > 0.5 && m.labor[i] >= workCap - 1e-9;
 	}
 
@@ -133,7 +133,8 @@ class EconomyDiagnostics {
 		s.unemployed = w.unemploymentTotal / WORKER_UNIT;
 		s.supplied = m.suppliedLabor;
 		s.worked = m.workedLabor;
-		s.laborSupplyRate = s.pop * LABOR_PER_POP / WORKER_UNIT;
+		s.births = m.births;
+		s.starved = m.starved;
 	}
 
 	// The buckets partition money.total() exactly: municipal + resident + firm purses, docked pool gold,
@@ -228,7 +229,8 @@ class EconomyDiagnostics {
 	flags(s) {
 		const out = [];
 		const pct = v => `${Math.round(v * 100)}%`;
-		if (s.workers >= s.workerCap) out.push(`worker pool at cap ${s.workers}/${s.workerCap}: towns keep turning labor supply (${s.laborSupplyRate.toFixed(1)} workers/s from pop ${s.pop.toFixed(1)}) into persistent workers that never retire`);
+		if (s.towns && !s.workers) out.push('no workers are alive: everyone starved or settled, so towns have nobody to feed, rest or tax');
+		if (s.workers >= s.workerCap) out.push(`worker pool at cap ${s.workers}/${s.workerCap}: births pause until workers leave, settle or starve`);
 		if (s.walking > 20 && s.stopped / s.walking > 0.6) out.push(`${pct(s.stopped / s.walking)} of walkers are stopped (${s.stopped}/${s.walking}); wage slope below dock gate ${WORKER_DOCK_SLOPE.toExponential(1)}`);
 		if (s.queuedFirm > 20) out.push(`${s.queuedFirm} walkers queued on full firm cells; the queue counts as held labor, so firm wage bids fall to ${s.wageBid.toFixed(3)} and the wage field flattens`);
 		if (s.walletShare > 0.5) out.push(`${pct(s.walletShare)} of all gold sits in worker wallets (mean ${s.walletMean.toFixed(3)} g); it returns only through paid town rest`);
@@ -334,7 +336,7 @@ class EconomyDiagnostics {
 			`mines=${s.mines} factories=${s.factories} towns=${s.towns} young=${s.young} gold_mines=${s.goldMines} pop=${f(s.pop, 2)}/${f(s.popCap, 1)} comfort=${f(s.comfort)} tax_mult=${f(s.taxMult)} rest_tax=${f(s.restTax)}`,
 			'## workers',
 			`count=${s.workers}/${s.workerCap} fresh=${s.fresh} tired=${s.tired} docked_firm=${s.dockFirm} docked_town=${s.dockTown} parked=${s.parked} walking=${s.walking} moving=${s.moving} stopped=${s.stopped} queued_firm=${s.queuedFirm} queued_town=${s.queuedTown} unemployed=${f(s.unemployed, 1)}`,
-			`labor_supplied=${f(s.supplied, 2)} labor_worked=${f(s.worked, 2)} town_supply_rate=${f(s.laborSupplyRate, 2)} workers/s`,
+			`labor_supplied=${f(s.supplied, 2)} labor_worked=${f(s.worked, 2)} births=${s.births} starved=${s.starved}`,
 			'## gold',
 			`total=${f(s.goldTotal)} seeded=${f(s.seeded)} mined=${f(s.mined)} town_purse=${f(s.townPurse)} resident_purse=${f(s.residentPurse)} firm_purse=${f(s.firmPurse)} docked_wallets=${f(s.dockedWallets)} walking_wallets=${f(s.walkingWallets)} haul_vault=${f(s.vault)}`,
 			`wallet_share=${f(s.walletShare * 100, 1)}% wallet_mean=${f(s.walletMean, 4)} wallet_median=${f(s.walletMedian, 4)} wallet_max=${f(s.walletMax)} broke_workers=${s.walletBroke} firm_owed=${f(s.firmOwed)} unpaid_wage_claims=${f(s.unpaidWages)}`,
