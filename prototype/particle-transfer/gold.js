@@ -162,11 +162,18 @@ class GoldMoney {
 		return (spend >= budget ? 1 : budget / spend) * this.creditCool(i, budget);
 	}
 
+	// Households the resident purse backs: the purse relative to a per-person starter purse. Unlike the
+	// docked-resident measure, this is stable while everyone commutes — the tax draw is spread over the
+	// households that own the purse, not over whoever happens to be home.
+	households(i) {
+		return this.workerPurse[i] / (START_TAX_PER_POP * WORKER_SECONDS);
+	}
+
 	taxPerPop(i) {
 		const m = this.model;
 		const mult = m.derived ? (m.taxMult[i] || 1) : 1;
 		const workerGold = this.workerPurse[i] + m.workerGoldAt(i);
-		return (workerGold / WORKER_SECONDS) * mult / Math.max(1, m.pop[i]);
+		return (workerGold / WORKER_SECONDS) * mult / Math.max(1, this.households(i));
 	}
 
 	payRestTax(i, restTax) {
