@@ -137,6 +137,28 @@ class WorkerTracker {
 		this.note(entry, `settled at ${this.place(i)} · banked ${amount.toFixed(2)} g`);
 	}
 
+	// The watched story ends: the worker starved and his purse orphaned where he fell.
+	starved(id, amount, i) {
+		const entry = this.byId.get(id);
+		if (!entry || entry.status !== 'active') return;
+		entry.spent += amount;
+		entry.status = 'starved';
+		this.note(entry, amount > 0 ? `starved at ${this.place(i)} · left ${amount.toFixed(2)} g` : `starved at ${this.place(i)}`);
+	}
+
+	// A fed, funded worker split in two; the child of a watched worker carries the story on.
+	born(parentId, childId, i) {
+		const parent = this.byId.get(parentId);
+		if (parent && parent.status === 'active') this.note(parent, `split in two at ${this.place(i)}`);
+		const childEntry = this.byId.get(childId);
+		if (childEntry || !parent || parent.status !== 'active' || this.list.length >= TRACK_CAP) return;
+		const workers = this.model.workers;
+		const p = workers.byWid(childId);
+		if (p < 0) return;
+		const entry = this.track(p, null, workers.gold[p]);
+		if (entry) this.note(entry, `born of ${parent.name} (#${parent.id}) at ${this.place(i)}`);
+	}
+
 	leftBehind(id, amount, i) {
 		const entry = this.byId.get(id);
 		if (!entry) return;
