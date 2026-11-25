@@ -449,7 +449,7 @@ class FieldPlot {
 		const carried = model.workerGoldAt(i);
 		const occPct = actor ? Math.round(model.poolOccupancy(i) * 100) : 0;
 		const detail = actor === ECONOMY_TOWN
-			? ` · ${WEALTH_NAMES[model.wealthClass[i]]} · Tier ${Math.round(settlements.tier[i] * 100)}% · Pop ${model.pop[i].toFixed(1)} · Wait ${occPct}% · Tax ${model.townRestTax(i).toFixed(2)}g (${Math.round((model.taxMult[i] || 1) * 100)}%)`
+			? ` · ${WEALTH_NAMES[model.wealthClass[i]]} · Tier ${Math.round(settlements.tier[i] * 100)}% · Residents ${model.pop[i].toFixed(1)} · Wait ${occPct}% · Tax ${model.townRestTax(i).toFixed(2)}g (${Math.round((model.taxMult[i] || 1) * 100)}%)`
 			: actor ? ` · Scale ${(model.scale[i] || 1).toFixed(2)}× · Pool ${occPct}%${actor === ECONOMY_GOLD ? '' : ` · Ask ${model.sellPrice(i).toFixed(2)}`}` : '';
 		const head = `${pinned ? 'Pinned · ' : ''}${settlements.isYoungTown(i) ? 'Young town' : ACTOR_NAMES[actor]} ${cellName(i)}${detail}`;
 		const flightCoal = particles.inFlightAt(ITEM_COAL, i), flightGoods = particles.inFlightAt(ITEM_GOODS, i);
