@@ -213,7 +213,7 @@ class TownPolicy {
 		const occ = cap > 1e-9 ? m.pop[i] / cap : 0;
 		if (occ < VACANT_OCC && restedWork <= 1e-12) m.vacantTicks[i] += ECONOMY_DT;
 		else m.vacantTicks[i] = Math.max(0, m.vacantTicks[i] - ECONOMY_DT * 2);
-		if (deltaRooms < 0) this.evictSurplus(i, -deltaRooms);
+		if (deltaRooms < 0) this.evictSurplus(i);
 
 		const tax = this.townTaxRate(i);
 		const ceiling = m.settlements.bidFactor(i) * 0.96;
