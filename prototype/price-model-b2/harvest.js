@@ -1,5 +1,5 @@
-// Owns: settlement harvesting — idle residents pick random nearby cells for wild food and wood, harvested stock on the map,
-// the town wood/food pull fields, food and wood upkeep, growth wood and hunger. Edit for: harvest pace, needs and buffers.
+// Owns: settlement harvesting & stores — idle residents forage wild food/wood, while towns also buy from farms and sawmills.
+// Edit for: household forage pace, town food/wood targets, consumption and hunger threshold.
 'use strict';
 
 const HARVEST_RADIUS = 3;
@@ -14,25 +14,27 @@ const WOOD_BUFFER = 6;
 const WOOD_PER_POP = 0.2;
 const WILD_REGROW = 0.05;
 const HUNGRY_SAT = 0.35;
+const FOOD_BID_VALUE = 0.32;
+const WOOD_BID_VALUE = 0.14;
+const YOUNG_PULL = 0.05;
 
 class Harvest {
 	constructor(model) {
 		this.model = model;
-		this.wood = new Float64Array(ECONOMY_SIZE);
-		this.food = new Float64Array(ECONOMY_SIZE);
+		this.wood = model.wood;
+		this.food = model.food;
+		this.woodFlow = model.woodFlow;
+		this.foodFlow = model.foodFlow;
 		this.wild = new Float64Array(ECONOMY_SIZE);
-		this.priceWood = new Float64Array(ECONOMY_SIZE);
-		this.priceFood = new Float64Array(ECONOMY_SIZE);
-		this.nextPriceWood = new Float64Array(ECONOMY_SIZE);
-		this.nextPriceFood = new Float64Array(ECONOMY_SIZE);
 		this.satFood = new Float64Array(ECONOMY_SIZE);
 		this.satWood = new Float64Array(ECONOMY_SIZE);
-		this.woodFlow = makeScratch(1 << ECONOMY_TOWN, 1, FLOW_RATE);
-		this.foodFlow = makeScratch(1 << ECONOMY_TOWN, 1, FLOW_RATE);
 		this.satBlend = 1 - Math.exp(-ECONOMY_DT * SAT_RATE);
 		this.workShare = 1 - Math.exp(-ECONOMY_DT * HARVEST_STRIDE * HARVEST_RATE);
 		this.regrowShare = 1 - Math.exp(-ECONOMY_DT * HARVEST_STRIDE * WILD_REGROW);
 	}
+
+	get priceWood() { return this.model.priceWood; }
+	get priceFood() { return this.model.priceFood; }
 
 	reset() {
 		for (const field of [this.wood, this.food, this.priceWood, this.priceFood, this.satFood, this.satWood]) field.fill(0);
@@ -64,15 +66,18 @@ class Harvest {
 	}
 
 	foodTarget(i) {
-		return Math.min(1, this.model.pop[i] * FOOD_NEED * FOOD_BUFFER);
+		const m = this.model;
+		const pop = Math.max(m.pop[i], m.settlements.isYoungTown(i) ? m.rooms[i] : 0);
+		return Math.min(1, pop * FOOD_NEED * FOOD_BUFFER);
 	}
 
 	// A young town wants a full cell of wood for its first build; a built one keeps upkeep plus one growth step.
 	woodTarget(i) {
 		const m = this.model;
 		if (m.settlements.isYoungTown(i)) return 1;
-		const grow = m.pop[i] < m.settlements.popCap(i) - 0.5 ? WOOD_PER_POP * POP_HEADROOM : 0;
-		return Math.min(1, m.pop[i] * WOOD_USE * WOOD_BUFFER + grow);
+		const pop = Math.max(m.pop[i], m.rooms[i]);
+		const grow = m.rooms[i] < m.settlements.popCap(i) - 0.5 ? WOOD_PER_POP * POP_HEADROOM : 0;
+		return Math.min(1, pop * WOOD_USE * WOOD_BUFFER + grow);
 	}
 
 	needFood(i) {
@@ -89,37 +94,23 @@ class Harvest {
 		return this.satFood[i] < HUNGRY_SAT;
 	}
 
-	// Growth and construction draw from the town's own wood stock; returns what was granted.
+	// Growth and construction draw from the town's wood stock and expense any purchased book cost.
 	takeWood(i, amount) {
-		const granted = Math.min(amount, this.wood[i]);
+		const avail = this.wood[i];
+		const granted = Math.min(amount, avail);
 		if (granted <= 0) return 0;
-		this.wood[i] -= granted;
+		const ratio = Math.min(1, granted / avail);
+		const cost = this.woodFlow.cost[i] * ratio;
+		this.wood[i] = Math.max(0, avail - granted);
+		this.woodFlow.paid[i] = this.wood[i] > 1e-12 ? Math.max(0, this.woodFlow.paid[i] * (1 - ratio)) : 0;
+		this.woodFlow.cost[i] = this.wood[i] > 1e-12 ? Math.max(0, this.woodFlow.cost[i] - cost) : 0;
+		this.model.earned[i] -= cost / ECONOMY_DT;
 		this.builtWood += granted;
 		return granted;
 	}
 
-	// The pull fields are town need, not gold: harvested stock has no seller and is never billed.
-	updatePrices() {
-		const { actors } = this.model;
-		const { priceWood, priceFood, nextPriceWood, nextPriceFood } = this;
-		const decay = this.model.decay ? PRICE_DECAY : 0;
-		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			const town = actors[i] === ECONOMY_TOWN;
-			nextPriceWood[i] = stepBid(priceWood, i, priceWood[i], town ? START_PRICE * this.needWood(i) : -1, decay);
-			nextPriceFood[i] = stepBid(priceFood, i, priceFood[i], town ? START_PRICE * this.needFood(i) : -1, decay);
-		}
-		this.priceWood = nextPriceWood;
-		this.nextPriceWood = priceWood;
-		this.priceFood = nextPriceFood;
-		this.nextPriceFood = priceFood;
-	}
-
 	step() {
 		const m = this.model;
-		this.woodFlow.cap.fill(1);
-		this.foodFlow.cap.fill(1);
-		m.land.blockWater(this.woodFlow.cap);
-		m.land.blockWater(this.foodFlow.cap);
 		const picking = ++this.ticks % HARVEST_STRIDE === 0;
 		if (picking) this.regrow();
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
@@ -129,27 +120,38 @@ class Harvest {
 		}
 	}
 
-	transport() {
-		const m = this.model;
-		m.transport(this.woodFlow, this.wood, this.priceWood);
-		m.transport(this.foodFlow, this.food, this.priceFood);
-	}
-
 	useStores(i) {
 		const m = this.model;
 		const wantFood = m.pop[i] * FOOD_NEED * ECONOMY_DT, wantWood = m.pop[i] * WOOD_USE * ECONOMY_DT;
-		const ate = Math.min(this.food[i] * SERVICE_SHARE, wantFood);
-		const burned = Math.min(this.wood[i] * SERVICE_SHARE, wantWood);
-		this.food[i] -= ate;
-		this.wood[i] -= burned;
+		const foodAvail = this.food[i], woodAvail = this.wood[i];
+		const ate = Math.min(foodAvail * SERVICE_SHARE, wantFood);
+		const burned = Math.min(woodAvail * SERVICE_SHARE, wantWood);
+		const foodRatio = foodAvail > 0 ? Math.min(1, ate / foodAvail) : 0;
+		const woodRatio = woodAvail > 0 ? Math.min(1, burned / woodAvail) : 0;
+		const foodCost = this.foodFlow.cost[i] * foodRatio;
+		const woodCost = this.woodFlow.cost[i] * woodRatio;
+		this.food[i] = Math.max(0, foodAvail - ate);
+		this.wood[i] = Math.max(0, woodAvail - burned);
+		this.foodFlow.paid[i] = this.food[i] > 1e-12 ? Math.max(0, this.foodFlow.paid[i] * (1 - foodRatio)) : 0;
+		this.woodFlow.paid[i] = this.wood[i] > 1e-12 ? Math.max(0, this.woodFlow.paid[i] * (1 - woodRatio)) : 0;
+		this.foodFlow.cost[i] = this.food[i] > 1e-12 ? Math.max(0, this.foodFlow.cost[i] - foodCost) : 0;
+		this.woodFlow.cost[i] = this.wood[i] > 1e-12 ? Math.max(0, this.woodFlow.cost[i] - woodCost) : 0;
+		m.earned[i] -= (foodCost + woodCost) / ECONOMY_DT;
 		this.eatenFood += ate;
 		this.usedWood += burned;
 		m.land.dispose(i, ate, USE_FOOD);
 		m.land.dispose(i, burned, USE_WOOD);
 		this.satFood[i] += this.satBlend * ((wantFood > 0 ? ate / wantFood : 1) - this.satFood[i]);
 		this.satWood[i] += this.satBlend * ((wantWood > 0 ? burned / wantWood : 1) - this.satWood[i]);
-		this.woodFlow.cap[i] = this.needWood(i) > 0 ? Math.max(this.wood[i], this.woodTarget(i)) : this.wood[i];
-		this.foodFlow.cap[i] = this.needFood(i) > 0 ? Math.max(this.food[i], this.foodTarget(i)) : this.food[i];
+		const tax = m.towns.townTaxRate(i);
+		const ceiling = m.settlements.bidFactor(i) * 0.96;
+		const maxFood = m.derived ? (FOOD_BID_VALUE / FOOD_NEED) * tax * ceiling : Infinity;
+		const maxWood = m.derived ? (WOOD_BID_VALUE / WOOD_USE) * tax * ceiling : Infinity;
+		const young = m.settlements.isYoungTown(i);
+		const canFood = this.needFood(i) > 0 && (young || (m.towns.townFoodBid(i) > 0 && m.priceFood[i] <= maxFood));
+		const canWood = this.needWood(i) > 0 && (young || (m.towns.townWoodBid(i) > 0 && m.priceWood[i] <= maxWood));
+		this.foodFlow.cap[i] = canFood ? Math.max(this.food[i], this.foodTarget(i)) : this.food[i];
+		this.woodFlow.cap[i] = canWood ? Math.max(this.wood[i], this.woodTarget(i)) : this.wood[i];
 	}
 
 	regrow() {
@@ -158,8 +160,7 @@ class Harvest {
 		for (let i = 0; i < ECONOMY_SIZE; i++) wild[i] += this.regrowShare * (foodCap[i] - wild[i]);
 	}
 
-	// Only residents with no job pull work the land, and only while stores are short, so harvesting never
-	// competes with firms. The harvest lands on the picked cell and walks home along the pull field.
+	// Still residents with no job pull forage wild food and wood onto nearby cells (paid = 0) without deleting workers.
 	harvestFor(i) {
 		const m = this.model;
 		const needFood = this.needFood(i), needWood = this.needWood(i);
@@ -171,15 +172,13 @@ class Harvest {
 		const foodShare = needFood / (needFood + needWood);
 		const food = Math.max(0, Math.min(this.wild[c], work * foodShare * FOOD_PER_WORK, 1 - this.food[c]));
 		const wood = Math.max(0, Math.min(m.settlements.forest[c], work * (1 - foodShare) * WOOD_PER_WORK, 1 - this.wood[c]));
-		const used = food / FOOD_PER_WORK + wood / WOOD_PER_WORK;
-		if (used <= 1e-12) return;
+		if (food <= 1e-12 && wood <= 1e-12) return;
 		this.wild[c] -= food;
 		this.food[c] += food;
 		m.settlements.forest[c] -= wood;
 		this.wood[c] += wood;
 		this.harvestedFood += food;
 		this.harvestedWood += wood;
-		this.spend(i, used);
 	}
 
 	pick(i) {
@@ -190,22 +189,9 @@ class Harvest {
 		const y = Math.floor(i / ECONOMY_WIDTH) + (this.seed & 0xffff) % span - HARVEST_RADIUS;
 		if (x < 0 || y < 0 || x >= ECONOMY_WIDTH || y >= ECONOMY_HEIGHT) return -1;
 		const c = economyIndex(x, y);
-		if (m.land.terrain[c] === TERRAIN_WATER || (m.actors[c] && c !== i)) return -1;
+		if (m.land.terrain[c] === TERRAIN_WATER || (m.actors[c] && c !== i) || m.farms.plotOwner[c]) return -1;
 		return c;
-	}
-
-	// Harvest is household work: it spends fresh residents' time at home and never queues for paid rest,
-	// since charging rent to recover from unpaid work for one's own town drains resident purses.
-	spend(i, used) {
-		const m = this.model;
-		const moved = Math.min(used, m.labor[i]);
-		const all = moved >= m.labor[i] - 1e-12;
-		const gold = all ? m.laborFlow.gold[i] : m.laborFlow.gold[i] * (moved / m.labor[i]);
-		m.labor[i] = all ? 0 : m.labor[i] - moved;
-		m.laborFlow.gold[i] = all ? 0 : m.laborFlow.gold[i] - gold;
-		m.money.workerPurse[i] += gold;
-		m.workedLabor += moved;
 	}
 }
 
-if (typeof module === 'object') module.exports = { Harvest };
+if (typeof module === 'object') module.exports = { Harvest, FOOD_NEED, WOOD_USE, WOOD_PER_POP };

@@ -1,5 +1,5 @@
 // Owns: measured session histories, throughput readouts and the live conservation balance sheet.
-// Edit for: sparkline metrics, carried worker-gold, harvest and waste ledger readouts.
+// Edit for: sparkline metrics, carried worker-gold, resident lifecycle, harvest/farm and waste ledger readouts.
 'use strict';
 
 class EconomyTelemetry {
@@ -28,7 +28,7 @@ class EconomyTelemetry {
 		this.goldHeld = $('gold-held');
 		this.workerCarried = $('worker-carried');
 		this.ledger = {};
-		for (const id of ['wood-in', 'wood-out', 'wood-held', 'food-in', 'food-out', 'food-held', 'matter-used', 'co2-made', 'litter-made', 'litter-held']) this.ledger[id] = $(id);
+		for (const id of ['wood-in', 'wood-firm', 'wood-out', 'wood-held', 'food-in', 'food-firm', 'food-out', 'food-held', 'matter-used', 'co2-made', 'litter-made', 'litter-held', 'workers-seeded', 'workers-split', 'workers-starved', 'workers-held']) this.ledger[id] = $(id);
 	}
 
 	reset(model) {
@@ -118,15 +118,21 @@ class EconomyTelemetry {
 		let wood = 0, food = 0;
 		for (let i = 0; i < ECONOMY_SIZE; i++) { wood += h.wood[i]; food += h.food[i]; }
 		out['wood-in'].textContent = (h.seededWood + h.harvestedWood).toFixed(3);
+		if (out['wood-firm']) out['wood-firm'].textContent = model.producedWood.toFixed(3);
 		out['wood-out'].textContent = (h.usedWood + h.builtWood).toFixed(3);
 		out['wood-held'].textContent = wood.toFixed(3);
 		out['food-in'].textContent = (h.seededFood + h.harvestedFood).toFixed(3);
+		if (out['food-firm']) out['food-firm'].textContent = model.producedFood.toFixed(3);
 		out['food-out'].textContent = h.eatenFood.toFixed(3);
 		out['food-held'].textContent = food.toFixed(3);
 		out['matter-used'].textContent = land.used.toFixed(3);
 		out['co2-made'].textContent = land.co2.toFixed(3);
 		out['litter-made'].textContent = land.littered.toFixed(3);
 		out['litter-held'].textContent = land.litterHeld().toFixed(3);
+		if (out['workers-seeded']) out['workers-seeded'].textContent = model.seededWorkers.toFixed(3);
+		if (out['workers-split']) out['workers-split'].textContent = model.splitWorkers.toFixed(3);
+		if (out['workers-starved']) out['workers-starved'].textContent = model.starvedWorkers.toFixed(3);
+		if (out['workers-held']) out['workers-held'].textContent = model.totalWorkers().toFixed(3);
 	}
 
 	sparkline(card) {

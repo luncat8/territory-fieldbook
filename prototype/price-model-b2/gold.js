@@ -14,6 +14,8 @@ const PAYOUT_RATE = 1;
 const PAY_COAL = 0;
 const PAY_GOODS = 1;
 const PAY_WAGE = 2;
+const PAY_WOOD = 3;
+const PAY_FOOD = 4;
 
 function makeStream(receiver) {
 	return {
@@ -33,11 +35,13 @@ class GoldMoney {
 		this.model = model;
 		this.purse = new Float64Array(ECONOMY_SIZE);
 		this.workerPurse = new Float64Array(ECONOMY_SIZE);
-		this.streams = [makeStream(ECONOMY_MINE), makeStream(ECONOMY_FACTORY), makeStream(ECONOMY_TOWN)];
-		this.inbound = new Int8Array(ECONOMY_GOLD + 1).fill(-1);
+		this.streams = [makeStream(ECONOMY_MINE), makeStream(ECONOMY_FACTORY), makeStream(ECONOMY_TOWN), makeStream(ECONOMY_SAWMILL), makeStream(ECONOMY_FARM)];
+		this.inbound = new Int8Array(ECONOMY_FARM + 1).fill(-1);
 		this.inbound[ECONOMY_MINE] = PAY_COAL;
 		this.inbound[ECONOMY_FACTORY] = PAY_GOODS;
 		this.inbound[ECONOMY_TOWN] = PAY_WAGE;
+		this.inbound[ECONOMY_SAWMILL] = PAY_WOOD;
+		this.inbound[ECONOMY_FARM] = PAY_FOOD;
 		this.taxShare = (1 - REST_TAX_SHARE) * (1 - Math.exp(-ECONOMY_DT / WORKER_SECONDS));
 		this.payoutShare = 1 - Math.exp(-ECONOMY_DT * PAYOUT_RATE);
 	}
@@ -56,6 +60,10 @@ class GoldMoney {
 		const { actors } = this.model;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			if (actors[i] === ECONOMY_TOWN) this.seed(i);
+		}
+		if (this.model.ticks === 0) {
+			if (this.model.workforce) this.model.workforce.resetResidents();
+			if (this.model.farms) this.model.farms.syncActors();
 		}
 	}
 
@@ -90,8 +98,9 @@ class GoldMoney {
 	}
 
 	owedAt(i) {
-		const [coal, goods, wage] = this.streams;
-		return coal.owed[i] + goods.owed[i] + wage.owed[i];
+		let sum = 0;
+		for (let k = 0; k < this.streams.length; k++) sum += this.streams[k].owed[i];
+		return sum;
 	}
 
 	spendable(i) {
@@ -165,8 +174,9 @@ class GoldMoney {
 	}
 
 	held(i) {
-		const [coal, goods, wage] = this.streams;
-		return this.purse[i] + this.workerPurse[i] + this.model.workerGoldAt(i) + coal.coin[i] + goods.coin[i] + wage.coin[i];
+		let coins = 0;
+		for (let k = 0; k < this.streams.length; k++) coins += this.streams[k].coin[i];
+		return this.purse[i] + this.workerPurse[i] + this.model.workerGoldAt(i) + coins;
 	}
 
 	total() {
@@ -228,11 +238,14 @@ class GoldMoney {
 	}
 
 	payFirmSurplus(i, actor) {
-		const { priceCoal, priceLabor, scale } = this.model;
-		const unitRate = (actor === ECONOMY_FACTORY ? FACTORY_RATE : SOURCE_RATE) * (scale[i] || 1);
-		const costRate = actor === ECONOMY_FACTORY
-			? (priceCoal[i] / FACTORY_YIELD + priceLabor[i] * FACTORY_LABOR) * unitRate
-			: priceLabor[i] * unitRate * (actor === ECONOMY_GOLD ? GOLD_LABOR : MINE_LABOR);
+		const m = this.model, recipe = m.optimizer.recipes[actor];
+		if (!recipe) return;
+		const unitRate = recipe.rate * (m.scale[i] || 1);
+		let costRate = 0;
+		for (let k = 0; k < recipe.inputs.length; k++) {
+			const inp = recipe.inputs[k];
+			costRate += m.pricesAt(inp.item)[i] * inp.need * unitRate;
+		}
 		const payout = Math.max(0, this.purse[i] - costRate * RESERVE_SECONDS) * this.payoutShare;
 		this.purse[i] -= payout;
 		this.payWorkers(i, payout);

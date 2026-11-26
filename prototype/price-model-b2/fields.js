@@ -1,5 +1,5 @@
 // Owns: cell-aligned heatmaps, price isolines, realized stock/gold flux arrows and cell inspection.
-// Edit for: palette scaling, worker-gold flow arrows, water overlay and B2 wallet/tax/land/harvest tooltip readouts.
+// Edit for: palette scaling, worker-gold flow arrows, water/farmland overlays, sawmill/farm markers and tooltip readouts.
 'use strict';
 
 const STOCK_COLORS = [[0,'#19181b'],[0.12,'#35272a'],[0.26,'#6d3a26'],[0.41,'#a95627'],[0.55,'#e18a36'],[0.7,'#ffca70'],[1,'#fff1c6']];
@@ -8,9 +8,9 @@ const ISO_EDGES = [[],[3,0],[0,1],[3,1],[1,2],[3,0,1,2],[0,2],[3,2],[2,3],[0,2],
 const STOCK_EXPOSURE = 6000;
 const STOCK_LOG = Math.log1p(STOCK_EXPOSURE);
 const SCALE_FLOOR = { price:0.5, gold:1 };
-const ACTOR_NAMES = ['Cell','Mine','Factory','Town','Gold mine'];
-const ACTOR_TAGS = ['','M','F','T','G'];
-const ACTOR_INK = [[],['#77512c','#ffdb9f','#ffd69b'],['#2f4a3f','#9fe0c0','#a9e8c8'],['#514065','#e6d3ff','#e2cff4'],['#5c4a12','#f7d65a','#f7dc78']];
+const ACTOR_NAMES = ['Cell','Mine','Factory','Town','Gold mine','Sawmill','Farm'];
+const ACTOR_TAGS = ['','M','F','T','G','S','A'];
+const ACTOR_INK = [[],['#77512c','#ffdb9f','#ffd69b'],['#2f4a3f','#9fe0c0','#a9e8c8'],['#514065','#e6d3ff','#e2cff4'],['#5c4a12','#f7d65a','#f7dc78'],['#5e4024','#f2ba7a','#f4c58f'],['#354d26','#b6e37b','#c4eb92']];
 const cellName = i => `${String(i % ECONOMY_WIDTH).padStart(2,'0')}, ${String(Math.floor(i / ECONOMY_WIDTH)).padStart(2,'0')}`;
 
 // 1-2-5 steps keep the legend and contour spacing still while uncapped prices drift.
@@ -106,7 +106,7 @@ class FieldPlot {
 	}
 
 	readActors(actors) {
-		const counts = [0,0,0,0,0];
+		const counts = [0,0,0,0,0,0,0];
 		this.markers.length = 0;
 		for (let i = 0; i < actors.length; i++) {
 			const kind = actors[i];
@@ -126,8 +126,8 @@ class FieldPlot {
 	}
 
 	goldView(model) {
-		const { view, isStock } = this, { money, priceHome } = model, [coal, goods] = money.streams;
-		for (let i = 0; i < ECONOMY_SIZE; i++) view[i] = isStock ? money.held(i) : coal.ask[i] + goods.ask[i] + priceHome[i] * 0.25;
+		const { view, isStock } = this, { money, priceHome } = model, [coal, goods, , wood, food] = money.streams;
+		for (let i = 0; i < ECONOMY_SIZE; i++) view[i] = isStock ? money.held(i) : coal.ask[i] + goods.ask[i] + wood.ask[i] + food.ask[i] + priceHome[i] * 0.25;
 		return view;
 	}
 
@@ -147,7 +147,7 @@ class FieldPlot {
 
 	showScale(key) {
 		this.legendKey = key;
-		const unit = this.resource === 'gold' ? (this.isStock ? ' g' : '') : ['depleted', 'land', 'wood', 'food'].includes(this.resource) ? '' : ' g/u';
+		const unit = this.resource === 'gold' ? (this.isStock ? ' g' : '') : ['depleted', 'land'].includes(this.resource) ? '' : ' g/u';
 		if (key === 'stock') this.scaleLabel.innerHTML = 'Log scale <b>0 – 1</b>';
 		else this.scaleLabel.innerHTML = `${this.isStock && this.resource !== 'land' ? 'Log' : 'Linear'} scale <b>0 – ${this.scale}${unit}</b>`;
 	}
@@ -166,6 +166,7 @@ class FieldPlot {
 		g.imageSmoothingEnabled = !isStock;
 		g.drawImage(this.raster,0,0,pw,ph);
 		this.drawWater(model.land);
+		if (isStock && (this.resource === 'food' || this.resource === 'land')) this.drawFarmland(model.farms);
 		if (!isStock) this.contours(data);
 		g.restore();
 		g.drawImage(this.grid,0,0,this.w,this.h);
@@ -214,6 +215,15 @@ class FieldPlot {
 		for (let k = 0; k < land.waterCount; k++) {
 			const i = land.water[k];
 			g.fillRect((i%ECONOMY_WIDTH)*cw,Math.floor(i/ECONOMY_WIDTH)*ch,cw,ch);
+		}
+	}
+
+	drawFarmland(farms) {
+		const { ctx:g, cw, ch } = this, { plotOwner } = farms;
+		g.strokeStyle = '#b6e37b66';
+		g.lineWidth = 0.8;
+		for (let i = 0; i < ECONOMY_SIZE; i++) {
+			if (plotOwner[i]) g.strokeRect((i%ECONOMY_WIDTH)*cw+0.6,Math.floor(i/ECONOMY_WIDTH)*ch+0.6,cw-1.2,ch-1.2);
 		}
 	}
 
@@ -287,7 +297,9 @@ class FieldPlot {
 		g.beginPath();
 		if (marker.kind === ECONOMY_MINE) { g.moveTo(x,y-r); g.lineTo(x+r,y); g.lineTo(x,y+r); g.lineTo(x-r,y); g.closePath(); }
 		else if (marker.kind === ECONOMY_FACTORY) g.rect(x-r*0.85,y-r*0.85,r*1.7,r*1.7);
-		else if (marker.kind === ECONOMY_GOLD) this.hexagon(x,y,r);
+		else if (marker.kind === ECONOMY_GOLD) this.polygon(x,y,r,6,Math.PI/6);
+		else if (marker.kind === ECONOMY_SAWMILL) this.polygon(x,y,r*1.05,3,-Math.PI/2);
+		else if (marker.kind === ECONOMY_FARM) this.polygon(x,y,r*0.98,5,-Math.PI/2);
 		else g.arc(x,y,r*0.88,0,Math.PI*2);
 		g.fill(); g.stroke();
 		g.fillStyle = g.strokeStyle;
@@ -299,10 +311,10 @@ class FieldPlot {
 		g.font = '9px monospace'; g.textBaseline = 'middle'; g.textAlign = 'left'; g.fillText(marker.label,lx+2.5,y-0.3);
 	}
 
-	hexagon(x, y, r) {
+	polygon(x, y, r, sides, phase) {
 		const g = this.ctx;
-		for (let k = 0; k < 6; k++) {
-			const a = Math.PI/6 + k*Math.PI/3;
+		for (let k = 0; k < sides; k++) {
+			const a = phase + k*2*Math.PI/sides;
 			if (k) g.lineTo(x+r*Math.cos(a),y+r*Math.sin(a)); else g.moveTo(x+r*Math.cos(a),y+r*Math.sin(a));
 		}
 		g.closePath();
@@ -319,20 +331,22 @@ class FieldPlot {
 		const tip = this.tooltip;
 		tip.hidden = i < 0;
 		if (i < 0) return;
-		const { money, actors, settlements, land, harvest } = model, actor = actors[i];
+		const { money, actors, settlements, land, harvest, farms } = model, actor = actors[i];
 		const carried = model.workerGoldAt(i);
 		const occPct = actor ? Math.round(model.poolOccupancy(i) * 100) : 0;
+		const farmExtra = actor === ECONOMY_FARM ? ` · Plots ${farms.plots[i]}/${farms.wantPlots(i)}` : actor === ECONOMY_SAWMILL ? ` · Forest ${Math.round(farms.forestShare(i) * 100)}%` : '';
 		const detail = actor === ECONOMY_TOWN
-			? ` · ${WEALTH_NAMES[model.wealthClass[i]]} · Tier ${Math.round(settlements.tier[i] * 100)}% · Pop ${model.pop[i].toFixed(1)} · Food ${Math.round(harvest.satFood[i] * 100)}%${harvest.hungry(i) ? ' hungry' : ''} · Wait ${occPct}% · Tax ${model.townRestTax(i).toFixed(2)}g (${Math.round((model.taxMult[i] || 1) * 100)}%)`
-			: actor ? ` · Scale ${(model.scale[i] || 1).toFixed(2)}× · Pool ${occPct}%${actor === ECONOMY_GOLD ? '' : ` · Ask ${model.sellPrice(i).toFixed(2)}`}` : '';
+			? ` · ${WEALTH_NAMES[model.wealthClass[i]]} · Tier ${Math.round(settlements.tier[i] * 100)}% · Pop ${model.pop[i].toFixed(1)}/${model.rooms[i].toFixed(1)} · Food ${Math.round(harvest.satFood[i] * 100)}%${harvest.hungry(i) ? ' hungry' : ''} · Wait ${occPct}% · Tax ${model.townRestTax(i).toFixed(2)}g (${Math.round((model.taxMult[i] || 1) * 100)}%)`
+			: actor ? ` · Scale ${(model.scale[i] || 1).toFixed(2)}× · Pool ${occPct}%${farmExtra}${actor === ECONOMY_GOLD ? '' : ` · Ask ${model.sellPrice(i).toFixed(2)}`}` : '';
 		const head = `${pinned ? 'Pinned · ' : ''}${settlements.isYoungTown(i) ? 'Young town' : ACTOR_NAMES[actor]} ${cellName(i)}${detail}`;
 		const stocks = `Coal ${model.coal[i].toFixed(3)} · Goods ${model.goods[i].toFixed(3)} · Wood ${harvest.wood[i].toFixed(3)} · Food ${harvest.food[i].toFixed(3)} · Labor ${model.labor[i].toFixed(3)} · Depl ${model.depleted[i].toFixed(3)}`;
-		const prices = `Coal ${model.priceCoal[i].toFixed(2)} · Goods ${model.priceGoods[i].toFixed(2)} · Wage ${model.priceLabor[i].toFixed(2)} · Home ${model.priceHome[i].toFixed(2)}/${model.priceRest[i].toFixed(2)} · Pull wood ${harvest.priceWood[i].toFixed(2)} food ${harvest.priceFood[i].toFixed(2)}`;
+		const prices = `Coal ${model.priceCoal[i].toFixed(2)} · Goods ${model.priceGoods[i].toFixed(2)} · Wood ${harvest.priceWood[i].toFixed(2)} · Food ${harvest.priceFood[i].toFixed(2)} · Wage ${model.priceLabor[i].toFixed(2)} · Home ${model.priceHome[i].toFixed(2)}/${model.priceRest[i].toFixed(2)}`;
 		const wallet = actor === ECONOMY_TOWN
 			? `Town ${money.purse[i].toFixed(2)}g · Residents ${money.workerPurse[i].toFixed(2)}g · Carried ${carried.toFixed(2)}g · Profit ${model.profit[i].toFixed(2)}/s`
 			: `Held ${money.held(i).toFixed(2)}g · WorkerPay ${carried.toFixed(2)}g · Owed ${money.owedAt(i).toFixed(2)}g${actor ? ` · Profit ${model.profit[i].toFixed(2)}/s` : ''}`;
 		const edge = land.build[i] === SHORE_BUILD ? ' shore' : land.build[i] === GLADE_BUILD ? ' glade' : land.build[i] === MARSH_EDGE_BUILD ? ' marsh edge' : '';
-		const ground = `${TERRAIN_NAMES[land.terrain[i]]}${edge} · Build ${land.build[i].toFixed(2)} · Rest ${land.rest[i].toFixed(2)} · Site ${land.site[i].toFixed(2)} · Litter ${land.litter[i].toFixed(3)} · Forest ${settlements.forest[i].toFixed(2)}/${settlements.forestCap[i].toFixed(2)} · Wild food ${harvest.wild[i].toFixed(2)}`;
+		const plotNote = farms.plotOwner[i] ? ` · Plot #${farms.plotOwner[i]} (q ${farms.quality(i).toFixed(2)})` : '';
+		const ground = `${TERRAIN_NAMES[land.terrain[i]]}${edge}${plotNote} · Moist ${land.moisture[i].toFixed(2)} · Build ${land.build[i].toFixed(2)} · Rest ${land.rest[i].toFixed(2)} · Litter ${land.litter[i].toFixed(3)} · Forest ${settlements.forest[i].toFixed(2)}/${settlements.forestCap[i].toFixed(2)} · Wild ${harvest.wild[i].toFixed(2)}`;
 		const settle = `Still ${model.depletedFlow.still[i].toFixed(2)} · Settle intent ${model.depletedFlow.intent[i].toFixed(2)} · Gathered ${settlements.gather[i].toFixed(3)}`;
 		tip.textContent = `${head}\n${stocks}\n${prices}\n${wallet}\n${ground}\n${settle}`;
 		const x = this.left+(i%ECONOMY_WIDTH+0.5)*this.cw, y = this.top+(Math.floor(i/ECONOMY_WIDTH)+0.5)*this.ch;

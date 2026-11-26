@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-for (const file of ['simulation.js', 'actors.js', 'towns.js', 'gold.js', 'workforce.js', 'land.js', 'settlement.js', 'harvest.js']) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
+for (const file of ['simulation.js', 'actors.js', 'towns.js', 'gold.js', 'workforce.js', 'land.js', 'farms.js', 'settlement.js', 'harvest.js']) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 
 const sum = (values) => values.reduce((total, value) => total + value, 0);
 const closeTo = (actual, expected, eps = 1e-7) => assert.ok(Math.abs(actual - expected) < eps, `${actual} ≠ ${expected}`);
@@ -44,6 +44,7 @@ function harvestBalanced(model) {
 	closeTo(sum(h.wood), h.seededWood + h.harvestedWood - h.usedWood - h.builtWood);
 	closeTo(model.money.total(), model.money.seeded + model.money.mined);
 	closeTo(sum(model.labor), model.suppliedLabor - model.workedLabor);
+	closeTo(model.totalWorkers(), model.seededWorkers + model.splitWorkers - model.starvedWorkers);
 }
 
 test('the default map ranks building ground: shore, glade, meadow, hills, forest, swamp edge, swamp', () => {
@@ -139,22 +140,29 @@ test('a supplied town grows only as fast as harvested wood allows', () => {
 	assert.ok(treeless * WOOD_PER_POP <= 0.6, 'only seeded wood paid for treeless growth');
 });
 
-test('founding turns gathered tired settlers into residents but leaves nearby fresh labor where it stands', () => {
+test('founding builds rooms for gathered settlers and leaves workers on the map to walk in on their own', () => {
 	const model = emptyMap();
 	const c = economyIndex(20, 14);
 	for (let y = 13; y <= 15; y++) {
 		for (let x = 19; x <= 21; x++) {
 			model.depleted[economyIndex(x, y)] = 0.4;
 			model.emittedDepleted += 0.4;
+			model.seededWorkers += 0.4;
 		}
 	}
 	const fresh = economyIndex(22, 14);
 	model.labor[fresh] = 0.3;
 	model.suppliedLabor += 0.3;
+	model.seededWorkers += 0.3;
 	model.settlements.foundTown(c);
 	assert.equal(model.actors[c], ECONOMY_TOWN);
 	closeTo(model.labor[fresh], 0.3);
-	closeTo(model.pop[c], Math.min(model.settlements.popCap(c), 9 * 0.4 * SETTLER_POP));
+	closeTo(sum(model.depleted), 9 * 0.4);
+	closeTo(model.rooms[c], Math.min(model.settlements.popCap(c), 9 * 0.4 * SETTLER_POP));
+	assert.equal(model.pop[c], 0);
+	run(model, 5);
+	assert.ok(model.pop[c] > 0, 'settlers walk into the young town on their own');
+	harvestBalanced(model);
 });
 
 test('consumption leaves CO2 and litter that the land slowly heals once the town is gone', () => {

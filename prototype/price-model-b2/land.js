@@ -42,6 +42,7 @@ class Land {
 		this.model = model;
 		this.terrain = new Uint8Array(ECONOMY_SIZE);
 		this.woodland = new Float64Array(ECONOMY_SIZE);
+		this.moisture = new Float64Array(ECONOMY_SIZE);
 		this.waterEdge = new Uint8Array(ECONOMY_SIZE);
 		this.build = new Float64Array(ECONOMY_SIZE);
 		this.foodCap = new Float64Array(ECONOMY_SIZE);
@@ -69,6 +70,7 @@ class Land {
 			const wave = 0.5 + 0.4 * Math.sin(x * 0.42 + 1.3) * Math.cos(y * 0.57 - 0.4) + 0.2 * Math.sin((x + y) * 0.21);
 			const dryness = 0.5 + 0.35 * Math.sin(x * 0.16 - 2.2) * Math.cos(y * 0.2 - 2.6) + 0.15 * Math.sin((x - y) * 0.27);
 			const desert = dryness > DESERT_DRYNESS;
+			this.moisture[i] = Math.min(1, Math.max(0, 1 - dryness));
 			this.woodland[i] = desert ? 0 : Math.min(1, Math.max(0, wave));
 			this.terrain[i] = desert ? TERRAIN_DESERT : this.woodland[i] >= FOREST_TERRAIN ? TERRAIN_FOREST : TERRAIN_MEADOW;
 			this.stampFeatures(i, x, y);
@@ -100,8 +102,10 @@ class Land {
 		this.waste.fill(0);
 		this.claim.fill(0);
 		for (let a = 0; a < ECONOMY_SIZE; a++) {
-			if (actors[a] === ECONOMY_TOWN) this.stampCone(this.claim, a, TOWN_SPACING, 1);
-			else if (actors[a]) this.stampCone(this.waste, a, WASTE_REACH, WASTE_DEPTH);
+			const kind = actors[a];
+			if (kind === ECONOMY_TOWN) this.stampCone(this.claim, a, TOWN_SPACING, 1);
+			else if (kind === ECONOMY_SAWMILL || kind === ECONOMY_FARM) this.stampCone(this.claim, a, 3.5, 1);
+			else if (kind) this.stampCone(this.waste, a, WASTE_REACH, WASTE_DEPTH);
 		}
 		this.waterCount = 0;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
@@ -125,6 +129,7 @@ class Land {
 		}
 		const edged = t !== TERRAIN_WATER && t !== TERRAIN_SWAMP && t !== TERRAIN_DESERT;
 		this.waterEdge[i] = shore && t !== TERRAIN_WATER ? 1 : 0;
+		if (this.waterEdge[i] && t !== TERRAIN_DESERT) this.moisture[i] = Math.max(this.moisture[i], 0.62);
 		this.build[i] = TERRAIN_BUILD[t];
 		if (edged && marsh) this.build[i] = MARSH_EDGE_BUILD;
 		else if (edged && shore) this.build[i] = SHORE_BUILD;
@@ -151,6 +156,13 @@ class Land {
 		for (let k = 0; k < this.waterCount; k++) cap[this.water[k]] = 0;
 	}
 
+	addLitter(to, amount) {
+		if (to < 0 || amount <= 0 || this.terrain[to] === TERRAIN_WATER) return;
+		const added = Math.min(1 - this.litter[to], amount);
+		this.litter[to] += added;
+		this.littered += added;
+	}
+
 	// Every consumed unit is accounted: part burns to CO2, part is pushed as litter to a random neighbour, the rest dissipates.
 	dispose(i, mass, use) {
 		if (mass <= 0) return;
@@ -159,9 +171,7 @@ class Land {
 		this.seed = (Math.imul(this.seed, 1664525) + 1013904223) >>> 0;
 		let to = NEIGHBORS[i * DEGREE + (this.seed >>> 29)];
 		if (to < 0 || this.terrain[to] === TERRAIN_WATER) to = i;
-		const added = Math.min(1 - this.litter[to], mass * USE_LITTER[use]);
-		this.litter[to] += added;
-		this.littered += added;
+		this.addLitter(to, mass * USE_LITTER[use]);
 	}
 
 	// Recovery speed scales with (1 − d): light litter heals near the base rate, fully spoiled land never does.

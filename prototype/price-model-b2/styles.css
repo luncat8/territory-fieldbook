@@ -69,8 +69,10 @@ h2{font-size:19px;line-height:1.4;font-weight:650;letter-spacing:-.035em}
 .grid-size .icon{height:11px;width:11px;color:#a1a0ae}
 .field-options{gap:16px;font-size:12px;color:#bebfca}
 .actor-key{gap:7px}
-.source-key,.consumer-key,.factory-key,.gold-key{display:inline-block;position:relative;flex:none;width:9px;height:9px}
+.source-key,.consumer-key,.factory-key,.gold-key,.sawmill-key,.farm-key{display:inline-block;position:relative;flex:none;width:9px;height:9px}
 .factory-key{border:1.5px solid #9fe0c0;background:#2f4a3f}
+.sawmill-key{background:#f2ba7a;clip-path:polygon(50% 6%,100% 94%,0 94%)}
+.farm-key{background:#b6e37b;clip-path:polygon(50% 4%,98% 39%,80% 96%,20% 96%,2% 39%)}
 .gold-key{border:1.5px solid #f7d65a;border-radius:2px;background:#5c4a12;clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)}
 .source-key{border:1.5px solid #f5c47c;transform:rotate(45deg);background:#6b5233}
 .consumer-key{border:1.5px solid #c5adf1;border-radius:50%;background:#5a4872}
@@ -123,7 +125,7 @@ h2{font-size:19px;line-height:1.4;font-weight:650;letter-spacing:-.035em}
 .tools button{gap:6px;padding:6px 10px;min-height:32px;font-size:11px}
 .presets button[aria-pressed=true],.tools button[aria-pressed=true]{background:#322c40;border-color:#76618e;color:#d9c6ff}
 .tools .icon{width:14px;height:14px}
-.tools [data-tool=mine] .icon{color:var(--amber)}.tools [data-tool=factory] .icon{color:var(--mint)}.tools [data-tool=town] .icon{color:var(--violet)}.tools [data-tool=gold] .icon{color:var(--gold)}
+.tools [data-tool=mine] .icon{color:var(--amber)}.tools [data-tool=factory] .icon{color:var(--mint)}.tools [data-tool=sawmill] .icon{color:#f2ba7a}.tools [data-tool=farm] .icon{color:#b6e37b}.tools [data-tool=town] .icon{color:var(--violet)}.tools [data-tool=gold] .icon{color:var(--gold)}
 .tool-bottom{justify-content:space-between;gap:8px;margin-top:12px;color:#9595a2;font-size:10px}
 .text-button{font-size:11px;color:#b1b0be;padding:1px;gap:5px}
 .text-button .icon{height:12px;width:12px}.text-button:hover:not(:disabled){color:#dfcff5}

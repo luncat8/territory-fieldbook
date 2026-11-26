@@ -1,5 +1,5 @@
 // Owns: lab controls, linked cell inspection and the fixed-step playback clock.
-// Edit for: B2 resource descriptions, tool hints and UI bindings.
+// Edit for: B2 resource descriptions, sawmill/farm tool hints and UI bindings.
 'use strict';
 
 const $ = id => document.getElementById(id);
@@ -15,22 +15,23 @@ const ICON_PATHS = {
 	sliders:'M3 7h4m5 0h9M3 17h10m5 0h3M7 4h5v6H7zM13 14h5v6h-5z',
 	cursor:'m4 3 6.5 18 3.2-7.5L21 10z',crosshair:'M12 3v5m0 8v5M3 12h5m8 0h5M19 12a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z',
 	diamond:'m12 2 10 10-10 10L2 12z',hexagon:'M12 2l8.7 5v10L12 22l-8.7-5V7z',square:'M4 4h16v16H4z',circle:'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z',
+	triangle:'M12 3 21 19H3z',pentagon:'M12 2.5 21 9l-3.4 10.5H6.4L3 9z',
 	erase:'m3 14 10-10a2 2 0 0 1 3 0l5 5a2 2 0 0 1 0 3l-8 8H9l-6-6Zm6-6 8 8M12 20h9',
 	reset:'M3 4v6h6M4 9a8 8 0 1 1 .7 8',clear:'M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7',close:'m6 6 12 12M18 6 6 18'
 };
 const labIcon = name => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON_PATHS[name]}"/></svg>`;
-const TOOL_KINDS = { inspect:0, erase:0, mine:ECONOMY_MINE, factory:ECONOMY_FACTORY, town:ECONOMY_TOWN, gold:ECONOMY_GOLD };
+const TOOL_KINDS = { inspect:0, erase:0, mine:ECONOMY_MINE, factory:ECONOMY_FACTORY, town:ECONOMY_TOWN, gold:ECONOMY_GOLD, sawmill:ECONOMY_SAWMILL, farm:ECONOMY_FARM };
 const RESOURCE_TITLES = {
 	coal:['Coal stock','Available stock per cell','Coal price','Diffused buyer bid per cell'],
 	goods:['Goods stock','Available stock per cell','Goods price','Diffused buyer bid per cell'],
-	wood:['Wood stock','Harvested logs on the map and town stores','Wood pull','Town need for upkeep, growth and first build (not gold)'],
-	food:['Food stock','Harvested wild food on the map and town stores','Food pull','Town need to keep its residents fed (not gold)'],
-	labor:['Labor force','Fresh workers commuting to firms','Wage','Diffused firm wage bid per cell'],
+	wood:['Wood stock','Sawmill timber, town forage and stores','Wood price','Diffused town & builder bid per cell'],
+	food:['Food stock','Seasonal farm harvest, wild forage and stores','Food price','Diffused town food bid per cell'],
+	labor:['Labor force','Self-moving workers commuting to firms','Wage','Diffused firm wage bid per cell'],
 	depleted:['Depleted workforce','Tired or migrating workers carrying earned gold','Living value','Diffused comfort per gold tax (fades with distance)'],
 	gold:['Gold held','Vaults, resident purses, worker wallets and coin','Payment & home pull','Where owed bills and returning worker pay head'],
 	land:['Land rest','Terrain rest pace less facility wasteland and consumption litter','Town site','Rest × build ease (shore best, swamp worst) less other towns\' claim']
 };
-const TOOL_HINTS = { inspect:'Select a cell on either map to inspect its values and carried worker gold.', mine:'Select an empty cell on either map to place a mine.', factory:'Select an empty cell on either map to place a factory.', town:'Select an empty land cell on either map to place a town. Workers pay gold tax to live and rest here; shores and glades house the most.', gold:'Select an empty cell on either map to place a gold mine. Workers carry dug wages home in their wallets.', erase:'Select an actor to remove it. Stored stock and worker wallets stay in their cells.' };
+const TOOL_HINTS = { inspect:'Select a cell on either map to inspect its values, farmland plots and carried worker gold.', mine:'Select an empty cell on either map to place a mine.', factory:'Select an empty cell on either map to place a factory.', sawmill:'Select an empty cell near forest to place a sawmill. Hired workers fell patch trees into priced timber.', farm:'Select an empty cell on moist meadow or shore to place a farm. Workers clear and harvest cultivated plots.', town:'Select an empty land cell on either map to place a town. Resident workers step out on wage gradients and pay living tax on rest.', gold:'Select an empty cell on either map to place a gold mine. Workers carry dug wages home in their wallets.', erase:'Select an actor to remove it. Stored stock and worker wallets stay in their cells.' };
 
 function bootEconomy() {
 	for (const node of document.querySelectorAll('[data-icon]')) node.outerHTML = labIcon(node.dataset.icon);
@@ -56,12 +57,12 @@ function bootEconomy() {
 	$('gold-rate-note').textContent = GOLD_RATE.toFixed(2);
 
 	function syncActors() {
-		const counts = [0,0,0,0,0];
+		const counts = [0,0,0,0,0,0,0];
 		for (const kind of model.actors) counts[kind]++;
-		const [, mines, factories, towns, gold] = counts;
+		const [, mines, factories, towns, gold, sawmills, farms] = counts;
 		let young = 0;
 		for (let i = 0; i < ECONOMY_SIZE; i++) if (model.settlements.isYoungTown(i)) young++;
-		$('actor-count').textContent = `${mines} M · ${factories} F · ${towns} T${young ? ` (${young} young)` : ''} · ${gold} G`;
+		$('actor-count').textContent = `${mines} M · ${factories} F · ${sawmills} S · ${farms} A · ${towns} T${young ? ` (${young} young)` : ''} · ${gold} G`;
 		clearButton.disabled = !towns;
 		for (const plot of plots) plot.readActors(model.actors);
 		dirty = true;

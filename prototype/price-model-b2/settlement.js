@@ -72,8 +72,9 @@ class Settlements {
 		this.bestSite = -1;
 		this.bestScore = FOUND_SETTLERS;
 		this.pledged = false;
+		const plots = m.farms.plotOwner;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			this.forest[i] += this.regrowShare * (this.forestCap[i] - this.forest[i]);
+			if (!plots[i]) this.forest[i] += this.regrowShare * (this.forestCap[i] - this.forest[i]);
 			if (m.actors[i] === ECONOMY_TOWN && this.tier[i] < 1) this.growTier(i);
 			if (m.depleted[i] > 1e-12 && this.decide(i) && open) this.pledge(i);
 		}
@@ -119,31 +120,25 @@ class Settlements {
 		if (goal > this.tier[i]) this.tier[i] = Math.min(1, this.tier[i] + ECONOMY_DT * TIER_RATE * (goal - this.tier[i]));
 	}
 
-	// The gathered tired settlers become residents and bring their savings; no vault gold is minted, so the young
-	// town starts broke and lives on tax. Fresh labor nearby is not theirs to move: it stays and walks on its own.
+	// Founding builds young-town rooms sized to nearby settlers; workers and their wallets stay on the map and walk in on their own.
 	foundTown(c) {
 		const m = this.model;
 		const cx = c % ECONOMY_WIDTH, cy = Math.floor(c / ECONOMY_WIDTH);
-		let settled = 0, savings = 0;
+		let settled = 0;
 		for (let y = Math.max(0, cy - FOUND_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, cy + FOUND_RADIUS); y++) {
 			for (let x = Math.max(0, cx - FOUND_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, cx + FOUND_RADIUS); x++) {
 				const n = economyIndex(x, y);
-				if (m.actors[n]) continue;
-				settled += m.depleted[n];
-				savings += m.depletedFlow.gold[n];
-				m.depleted[n] = 0;
-				m.depletedFlow.gold[n] = 0;
+				if (!m.actors[n]) settled += m.depleted[n];
 			}
 		}
-		m.restedDepleted += settled;
 		m.actors[c] = ECONOMY_TOWN;
 		m.scale[c] = m.taxMult[c] = 1;
 		m.wealthClass[c] = wealthClassFor(c);
 		m.vacantTicks[c] = 0;
 		this.tier[c] = 0;
-		m.pop[c] = Math.min(this.popCap(c), Math.max(POP_BASE, settled * SETTLER_POP));
+		m.rooms[c] = Math.min(this.popCap(c), Math.max(POP_BASE, settled * SETTLER_POP));
+		m.pop[c] = m.away[c] = m.fresh[c] = 0;
 		m.satCoal[c] = m.satGoods[c] = m.workLoad[c] = m.profit[c] = 0;
-		m.money.workerPurse[c] += savings;
 		m.harvest.founded(c);
 		this.lastFound = this.ticks;
 		m.land.refresh();

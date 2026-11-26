@@ -1,10 +1,16 @@
-// Owns: engine-agnostic worker rules — wallet-weighted home score over rest quality and value fields, still-worker shelter rest.
-// Edit for: pareto home weighting and idle rest speed (scaled by land.js rest). Cells apply them per cell; a particle engine applies them per carrier.
+// Owns: self-moving resident workers — Pareto home scoring, roadside shelter, doorway step-out, commute tracking, splitting and starvation.
+// Edit for: pareto home weighting, idle rest speed, resident seeding/eviction, split gates or prolonged-hunger despawn.
 'use strict';
 
 const BASE_SHELTER = 0.15;
 const HOME_FEE_TRIPS = 2;
 const IDLE_RATE = 0.03;
+const SPLIT_COMFORT = 0.35;
+const SPLIT_FOOD = 0.65;
+const SPLIT_GOLD_FLOOR = 0.5;
+const SPLIT_RATE = 0.055;
+const STARVE_SECONDS = 25;
+const STARVE_RATE = 0.025;
 
 // The wallet picks the worker's point on the rest/price pareto front: broke workers chase rest per gold,
 // funded workers chase rest quality. Linear in both fields, so one weight per carrier scores every town.
@@ -20,6 +26,190 @@ class WorkerPolicy {
 		this.refFee = (START_TAX_PER_POP / LABOR_PER_POP) * REST_TAX_SHARE;
 		this.restShare = 1 - Math.exp(-ECONOMY_DT * IDLE_RATE);
 		this.view = new Float64Array(ECONOMY_SIZE);
+		this.hungerTicks = new Float64Array(ECONOMY_SIZE);
+	}
+
+	resetResidents() {
+		const m = this.model;
+		m.fresh.fill(0);
+		m.away.fill(0);
+		m.rooms.fill(0);
+		m.pop.fill(0);
+		this.hungerTicks.fill(0);
+		m.seededWorkers = m.splitWorkers = m.starvedWorkers = 0;
+		for (let i = 0; i < ECONOMY_SIZE; i++) {
+			if (m.actors[i] === ECONOMY_TOWN) this.seedTown(i);
+		}
+	}
+
+	seedTown(i) {
+		const m = this.model;
+		const rooms = Math.min(m.settlements.popCap(i), START_POP);
+		const workers = rooms * WORKER_PER_POP;
+		m.rooms[i] = rooms;
+		m.fresh[i] += workers;
+		m.seededWorkers += workers;
+		m.away[i] = 0;
+		m.pop[i] = rooms;
+		this.hungerTicks[i] = 0;
+	}
+
+	// Erasing a town never deletes its residents: housed fresh workers spill out tired with their savings.
+	evictTown(i) {
+		const m = this.model;
+		let spill = m.fresh[i];
+		m.fresh[i] = 0;
+		m.away[i] = 0;
+		m.rooms[i] = 0;
+		m.pop[i] = 0;
+		this.hungerTicks[i] = 0;
+		const purse = m.money.workerPurse[i];
+		if (spill <= 1e-12) return;
+		const total = spill;
+		let movedGold = 0;
+		const place = (c) => {
+			if (c < 0 || spill <= 1e-12 || m.land.terrain[c] === TERRAIN_WATER) return;
+			const take = Math.min(spill, 1 - m.depleted[c]);
+			if (take <= 1e-12) return;
+			const gold = purse * (take / total);
+			m.depleted[c] += take;
+			m.emittedDepleted += take;
+			m.depletedFlow.gold[c] += gold;
+			movedGold += gold;
+			spill -= take;
+		};
+		place(i);
+		for (let dir = 0; dir < DEGREE && spill > 1e-12; dir++) place(NEIGHBORS[i * DEGREE + dir]);
+		for (let c = 0; c < ECONOMY_SIZE && spill > 1e-12; c++) place(c);
+		if (spill > 1e-12) m.starvedWorkers += spill;
+		m.money.workerPurse[i] = Math.max(0, purse - movedGold);
+	}
+
+	// Fresh residents step from town rooms onto the doorway at shift pace so transport moves them up priceLabor on their own.
+	stepOut() {
+		const m = this.model;
+		for (let i = 0; i < ECONOMY_SIZE; i++) {
+			if (m.fresh[i] <= 1e-12) continue;
+			if (m.actors[i] !== ECONOMY_TOWN) {
+				m.starvedWorkers += m.fresh[i];
+				m.fresh[i] = 0;
+				continue;
+			}
+			const size = Math.max(m.pop[i], m.rooms[i]);
+			const workerGold = m.money.workerPurse[i] + m.workerGoldAt(i);
+			const afford = workerGold / (workerGold + size * 0.25);
+			const doorCap = Math.min(1, Math.max(0.22, size * LABOR_PER_POP * BUFFER_SECONDS));
+			const pace = (m.labor[i] < 0.18 && m.laborFlow.still[i] > 0.9
+				? 0.25
+				: Math.max(0.03, size * LABOR_PER_POP * (0.06 + 0.94 * afford))) * ECONOMY_DT;
+			const moved = Math.min(m.fresh[i], Math.max(0, doorCap - m.labor[i]), pace);
+			if (moved <= 1e-12) continue;
+			m.fresh[i] -= moved;
+			m.labor[i] += moved;
+			m.suppliedLabor += moved;
+		}
+	}
+
+	onSiteWorkers(i) {
+		const m = this.model;
+		return m.fresh[i] + m.labor[i] + m.depleted[i];
+	}
+
+	// Tracks commuters who walked out of each town minus tired/fresh workers who walked back, bounded by workers off-town.
+	trackCommute() {
+		const m = this.model;
+		const { actors, away, laborFlow, depletedFlow } = m;
+		let claimed = 0, offTown = 0;
+		for (let i = 0; i < ECONOMY_SIZE; i++) {
+			if (actors[i] === ECONOMY_TOWN) {
+				away[i] = Math.max(0, away[i] - laborFlow.delta[i] - Math.max(0, depletedFlow.delta[i]));
+				claimed += away[i];
+			} else {
+				away[i] = 0;
+				offTown += m.labor[i] + m.depleted[i];
+			}
+		}
+		if (claimed > offTown && claimed > 1e-12) {
+			const scale = offTown / claimed;
+			for (let i = 0; i < ECONOMY_SIZE; i++) {
+				if (actors[i] === ECONOMY_TOWN) away[i] *= scale;
+			}
+		}
+		this.derivePop();
+	}
+
+	derivePop() {
+		const m = this.model;
+		for (let i = 0; i < ECONOMY_SIZE; i++) {
+			m.pop[i] = m.actors[i] === ECONOMY_TOWN ? (this.onSiteWorkers(i) + m.away[i]) / WORKER_PER_POP : 0;
+		}
+	}
+
+	// Workers own their lifecycle: fed comfortable workers with savings split into open rooms; prolonged hunger despawns.
+	stepLife() {
+		const m = this.model;
+		for (let i = 0; i < ECONOMY_SIZE; i++) {
+			if (m.actors[i] !== ECONOMY_TOWN) {
+				this.hungerTicks[i] = 0;
+				continue;
+			}
+			if (m.harvest.hungry(i)) this.hungerTicks[i] += ECONOMY_DT;
+			else this.hungerTicks[i] = Math.max(0, this.hungerTicks[i] - ECONOMY_DT * 2);
+
+			if (this.hungerTicks[i] >= STARVE_SECONDS) {
+				this.starveAt(i);
+				continue;
+			}
+			const comfort = this.comfortAt(i);
+			if (comfort < SPLIT_COMFORT || m.harvest.satFood[i] < SPLIT_FOOD) continue;
+			const roomFree = m.rooms[i] - m.pop[i];
+			if (roomFree <= 1e-6) continue;
+			const savings = (m.money.workerPurse[i] + m.workerGoldAt(i)) / Math.max(1, m.pop[i]);
+			const afford = Math.min(1, savings / SPLIT_GOLD_FLOOR);
+			if (afford <= 1e-4) continue;
+			const split = roomFree * WORKER_PER_POP * SPLIT_RATE * comfort * afford * ECONOMY_DT;
+			m.fresh[i] += split;
+			m.splitWorkers += split;
+		}
+		this.stepOut();
+		this.derivePop();
+	}
+
+	starveAt(i) {
+		const m = this.model;
+		const onSite = this.onSiteWorkers(i);
+		if (onSite <= 1e-9) return;
+		let loss = Math.min(onSite, onSite * STARVE_RATE * ECONOMY_DT);
+		const fromFresh = Math.min(m.fresh[i], loss);
+		m.fresh[i] -= fromFresh;
+		loss -= fromFresh;
+		if (loss > 1e-12 && m.depleted[i] > 0) {
+			const take = Math.min(m.depleted[i], loss);
+			const gold = m.depletedFlow.gold[i] * (take / m.depleted[i]);
+			m.depleted[i] -= take;
+			m.restedDepleted += take;
+			m.depletedFlow.gold[i] = Math.max(0, m.depletedFlow.gold[i] - gold);
+			m.money.orphan(i, gold);
+			loss -= take;
+		}
+		if (loss > 1e-12 && m.labor[i] > 0) {
+			const take = Math.min(m.labor[i], loss);
+			const ratio = take / m.labor[i];
+			const gold = m.laborFlow.gold[i] * ratio;
+			m.labor[i] -= take;
+			m.workedLabor += take;
+			m.laborFlow.cost[i] = Math.max(0, m.laborFlow.cost[i] * (1 - ratio));
+			m.laborFlow.gold[i] = Math.max(0, m.laborFlow.gold[i] - gold);
+			m.money.orphan(i, gold);
+			loss -= take;
+		}
+		const died = onSite - this.onSiteWorkers(i);
+		if (died > 0) {
+			m.starvedWorkers += died;
+			const purseDrop = m.money.workerPurse[i] * Math.min(1, died / Math.max(died, onSite + m.away[i]));
+			m.money.workerPurse[i] = Math.max(0, m.money.workerPurse[i] - purseDrop);
+			m.money.orphan(i, purseDrop);
+		}
 	}
 
 	comfortAt(i) {
@@ -27,8 +217,6 @@ class WorkerPolicy {
 		return COAL_COMFORT * m.satCoal[i] + GOODS_COMFORT * m.satGoods[i];
 	}
 
-	// Rest comfort blends resource comfort with a free-space lift: an uncrowded town rests workers better
-	// (draft: "add some increment to comfort in case of free space in town").
 	restComfort(i) {
 		const m = this.model;
 		const cap = m.settlements.popCap(i);
@@ -36,26 +224,21 @@ class WorkerPolicy {
 		return Math.min(1, this.comfortAt(i) + SPACE_COMFORT * housingFree);
 	}
 
-	// A town keeps its room by taxing: full housing still offers a rest floor (tax handles crowding) and empty
-	// housing opens the door. This replaces the old "town wants to shrink, offers less room" premise.
 	shelterAt(i) {
 		const m = this.model;
 		const comfort = this.restComfort(i);
 		return (BASE_SHELTER + (1 - BASE_SHELTER) * comfort) * m.settlements.restFactor(i);
 	}
 
-	// Quality axis: how well a worker recovers here — comfort, tier and wait-pool crowding, ignoring tax.
 	homeRestBid(i) {
 		const m = this.model;
-		if (m.pop[i] <= 0) return 0;
+		if (m.rooms[i] <= 0 && m.pop[i] <= 0) return 0;
 		return START_PRICE * this.shelterAt(i) / m.towns.townCrowdMult(i);
 	}
 
-	// Value axis: recovery per gold of actual living tax, so crowding and inflated purses repel through price
-	// and an unsupplied town is no bargain at any tax.
 	homeValueBid(i) {
 		const m = this.model;
-		if (m.pop[i] <= 0) return 0;
+		if (m.rooms[i] <= 0 && m.pop[i] <= 0) return 0;
 		return START_PRICE * this.shelterAt(i) * START_TAX_PER_POP / Math.max(1e-6, m.towns.townRestTax(i));
 	}
 
@@ -72,13 +255,10 @@ class WorkerPolicy {
 		}
 	}
 
-	// Still workers rest slowly wherever they stand — the shelter floor, far slower than paid town rest — so a
-	// worker no town reaches never strands. The land sets the pace: meadow rests best, desert and wasteland worst.
 	stepStill() {
 		for (let i = 0; i < ECONOMY_SIZE; i++) this.restStill(i);
 	}
 
-	// Rest at a firm re-enters its pool, so the entry wage is paid like any arrival.
 	restStill(i) {
 		const m = this.model;
 		const { depleted, labor, depletedFlow, laborFlow, actors } = m;
@@ -98,4 +278,4 @@ class WorkerPolicy {
 	}
 }
 
-if (typeof module === 'object') module.exports = { WorkerPolicy, walletWeight };
+if (typeof module === 'object') module.exports = { WorkerPolicy, walletWeight, STARVE_SECONDS };

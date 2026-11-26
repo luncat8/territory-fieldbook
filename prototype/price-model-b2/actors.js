@@ -29,7 +29,9 @@ class ActorOptimizer {
 		this.recipes = {
 			[ECONOMY_MINE]: { rate: SOURCE_RATE, outItem: ITEM_COAL, outYield: 1, gate: PRICE_GATE, inputs: [{ item: ITEM_LABOR, need: MINE_LABOR }] },
 			[ECONOMY_FACTORY]: { rate: FACTORY_RATE, outItem: ITEM_GOODS, outYield: FACTORY_YIELD, gate: 0, inputs: [{ item: ITEM_COAL, need: 1 }, { item: ITEM_LABOR, need: FACTORY_LABOR * FACTORY_YIELD }] },
-			[ECONOMY_GOLD]: { rate: SOURCE_RATE, outItem: -1, outYield: GOLD_RATE / SOURCE_RATE, gate: 0, inputs: [{ item: ITEM_LABOR, need: GOLD_LABOR }] }
+			[ECONOMY_GOLD]: { rate: SOURCE_RATE, outItem: -1, outYield: GOLD_RATE / SOURCE_RATE, gate: 0, inputs: [{ item: ITEM_LABOR, need: GOLD_LABOR }] },
+			[ECONOMY_SAWMILL]: { rate: SAWMILL_RATE, outItem: ITEM_WOOD, outYield: 1, gate: SAWMILL_GATE, patch: true, inputs: [{ item: ITEM_LABOR, need: SAWMILL_LABOR }] },
+			[ECONOMY_FARM]: { rate: FARM_RATE, outItem: ITEM_FOOD, outYield: 1, gate: FARM_GATE, patch: true, inputs: [{ item: ITEM_LABOR, need: FARM_LABOR }] }
 		};
 	}
 
@@ -39,6 +41,7 @@ class ActorOptimizer {
 		if (actor === ECONOMY_MINE) return coalFlow.sell[i];
 		if (actor === ECONOMY_FACTORY) return goodsFlow.sell[i];
 		if (actor === ECONOMY_TOWN) return this.model.towns.townRestTax(i);
+		if (actor === ECONOMY_SAWMILL || actor === ECONOMY_FARM) return this.model.farms.askAt(i);
 		return 0;
 	}
 
@@ -52,7 +55,9 @@ class ActorOptimizer {
 			if (recipe.inputs[k].item === ITEM_LABOR) laborNeed = recipe.inputs[k].need;
 		}
 		if (laborNeed <= 0) return 0;
-		const nominal = recipe.rate * scale * laborNeed;
+		const nominal = m.actors[i] === ECONOMY_FARM
+			? Math.max(0.03, (m.farms.wantPlots(i) * FARM_PLOT_WORK / FARM_SEASON_SECONDS) * 1.2)
+			: recipe.rate * scale * laborNeed;
 		const occRatio = Math.min(1, m.workLoad[i] / Math.max(1e-9, nominal));
 		const outPrice = recipe.outItem < 0 ? 1 : (m.derived ? m.pricesAt(recipe.outItem)[i] : START_PRICE);
 		const ref = Math.max(0.02, outPrice * recipe.outYield * recipe.rate * 0.12);
@@ -89,7 +94,7 @@ class ActorOptimizer {
 		const outValue = outPrice * outYield;
 		if (outValue <= 0) return;
 		const outTarget = Math.min(0.92, rate * scale * BUFFER_SECONDS);
-		const sellRoom = outItem < 0 || !m.suppression ? 1 : Math.max(0, 1 - m.stocks[outItem][i] / outTarget);
+		const sellRoom = recipe.patch ? m.farms.sellRoom(i, m.actors[i]) : (outItem < 0 || !m.suppression ? 1 : Math.max(0, 1 - m.stocks[outItem][i] / outTarget));
 		const ref = Math.max(0.02, outValue * rate * 0.12);
 		const drive = m.derived ? Math.tanh(m.profit[i] / ref) : 0;
 		const cool = m.money.creditCool(i, INPUT_SHARE * outValue * rate * scale * PURSE_SECONDS);
@@ -124,6 +129,8 @@ class ActorOptimizer {
 	factoryLaborBid(i) { this.firmBids(i, this.recipes[ECONOMY_FACTORY]); return this.bidOut[1]; }
 	mineLaborBid(i) { this.firmBids(i, this.recipes[ECONOMY_MINE]); return this.bidOut[0]; }
 	goldLaborBid(i) { this.firmBids(i, this.recipes[ECONOMY_GOLD]); return this.bidOut[0]; }
+	sawmillLaborBid(i) { this.firmBids(i, this.recipes[ECONOMY_SAWMILL]); return this.bidOut[0]; }
+	farmLaborBid(i) { this.firmBids(i, this.recipes[ECONOMY_FARM]); return this.bidOut[0]; }
 
 	stepActors() {
 		const { actors } = this.model;
@@ -131,6 +138,8 @@ class ActorOptimizer {
 			const actor = actors[i];
 			if (!actor) continue;
 			if (actor === ECONOMY_TOWN) this.model.towns.stepTown(i);
+			else if (actor === ECONOMY_SAWMILL) this.model.farms.stepSawmill(i, this.recipes[actor]);
+			else if (actor === ECONOMY_FARM) this.model.farms.stepFarm(i, this.recipes[actor]);
 			else this.stepFirm(i, this.recipes[actor]);
 		}
 	}
@@ -228,7 +237,7 @@ class ActorOptimizer {
 		const drive = Math.tanh(m.profit[i] / ref);
 		const outStock = outItem < 0 ? 0 : m.stocks[outItem][i];
 		const outTarget = Math.min(0.92, rate * m.scale[i] * BUFFER_SECONDS);
-		const sellRoom = outItem < 0 ? 1 : Math.max(0, 1 - outStock / outTarget);
+		const sellRoom = recipe.patch ? m.farms.sellRoom(i, m.actors[i]) : (outItem < 0 ? 1 : Math.max(0, 1 - outStock / outTarget));
 		const solvent = m.money.owedAt(i) <= m.money.purse[i] + Math.max(0.25, outValue * rate * 2.5);
 		if (drive > 0.02 && solvent && sellRoom > 0.2) {
 			m.scale[i] = Math.min(SCALE_MAX, m.scale[i] + ECONOMY_DT * SCALE_UP * drive * sellRoom);
