@@ -3,6 +3,7 @@
 'use strict';
 
 const BASE_SHELTER = 0.15;
+const EVICT_REACH = 3;
 const HOME_FEE_TRIPS = 2;
 const IDLE_RATE = 0.03;
 const SPLIT_COMFORT = 0.35;
@@ -54,35 +55,39 @@ class WorkerPolicy {
 		this.hungerTicks[i] = 0;
 	}
 
-	// Erasing a town never deletes its residents: housed fresh workers spill out tired with their savings.
+	// Erasing a town never deletes its residents: housed fresh workers spill out tired with their savings onto
+	// nearby land, ring by ring, never teleported across the map.
 	evictTown(i) {
 		const m = this.model;
-		let spill = m.fresh[i];
-		m.fresh[i] = 0;
-		m.away[i] = 0;
-		m.rooms[i] = 0;
-		m.pop[i] = 0;
+		const total = m.fresh[i], purse = m.money.workerPurse[i];
+		m.fresh[i] = m.away[i] = m.rooms[i] = m.pop[i] = 0;
 		this.hungerTicks[i] = 0;
-		const purse = m.money.workerPurse[i];
-		if (spill <= 1e-12) return;
-		const total = spill;
-		let movedGold = 0;
-		const place = (c) => {
-			if (c < 0 || spill <= 1e-12 || m.land.terrain[c] === TERRAIN_WATER) return;
-			const take = Math.min(spill, 1 - m.depleted[c]);
-			if (take <= 1e-12) return;
-			const gold = purse * (take / total);
-			m.depleted[c] += take;
-			m.emittedDepleted += take;
-			m.depletedFlow.gold[c] += gold;
-			movedGold += gold;
-			spill -= take;
-		};
-		place(i);
-		for (let dir = 0; dir < DEGREE && spill > 1e-12; dir++) place(NEIGHBORS[i * DEGREE + dir]);
-		for (let c = 0; c < ECONOMY_SIZE && spill > 1e-12; c++) place(c);
+		if (total <= 1e-12) return;
+		const cx = i % ECONOMY_WIDTH, cy = Math.floor(i / ECONOMY_WIDTH);
+		const goldPer = purse / total;
+		let spill = total;
+		for (let r = 0; r <= EVICT_REACH && spill > 1e-12; r++) {
+			for (let dy = -r; dy <= r; dy++) {
+				for (let dx = -r; dx <= r; dx++) {
+					if (Math.max(Math.abs(dx), Math.abs(dy)) === r) spill -= this.spillAt(cx + dx, cy + dy, spill, goldPer);
+				}
+			}
+		}
 		if (spill > 1e-12) m.starvedWorkers += spill;
-		m.money.workerPurse[i] = Math.max(0, purse - movedGold);
+		m.money.workerPurse[i] = Math.max(0, purse - (total - spill) * goldPer);
+	}
+
+	spillAt(x, y, spill, goldPer) {
+		const m = this.model;
+		if (spill <= 1e-12 || x < 0 || y < 0 || x >= ECONOMY_WIDTH || y >= ECONOMY_HEIGHT) return 0;
+		const c = economyIndex(x, y);
+		if (m.land.terrain[c] === TERRAIN_WATER) return 0;
+		const take = Math.min(spill, 1 - m.depleted[c]);
+		if (take <= 1e-12) return 0;
+		m.depleted[c] += take;
+		m.emittedDepleted += take;
+		m.depletedFlow.gold[c] += take * goldPer;
+		return take;
 	}
 
 	// Fresh residents step from town rooms onto the doorway at shift pace so transport moves them up priceLabor on their own.
