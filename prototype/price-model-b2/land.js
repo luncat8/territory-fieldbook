@@ -196,10 +196,11 @@ class Land {
 
 	stampCone(field, c, reach, depth) {
 		const cx = c % ECONOMY_WIDTH, cy = Math.floor(c / ECONOMY_WIDTH), r = Math.ceil(reach);
-		for (let y = Math.max(0, cy - r); y <= Math.min(ECONOMY_HEIGHT - 1, cy + r); y++) {
-			for (let x = Math.max(0, cx - r); x <= Math.min(ECONOMY_WIDTH - 1, cx + r); x++) {
-				const i = economyIndex(x, y);
-				field[i] = Math.max(field[i], depth * Math.max(0, 1 - Math.hypot(x - cx, y - cy) / reach));
+		for (let dy = -r; dy <= r; dy++) {
+			for (let dx = -r; dx <= r; dx++) {
+				const i = wrapCell(cx + dx, cy + dy);
+				if (i < 0) continue;
+				field[i] = Math.max(field[i], depth * Math.max(0, 1 - Math.hypot(dx, dy) / reach));
 			}
 		}
 	}

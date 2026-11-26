@@ -52,13 +52,28 @@ const GRADIENT_KNEE = 0.006;
 const STEERING_BLEND = ECONOMY_DT / (0.18 + ECONOMY_DT);
 const economyIndex = (x, y) => y * ECONOMY_WIDTH + x;
 
+// Torus topology: wrapping X and Y leaves every cell with all 8 neighbours, so no corner or rim is special.
+// Bounded edges reflect diffusing bids into the corners — remnant price peaks linger there and attract stock.
+let MAP_WRAP = true;
+const wrapX = x => ((x % ECONOMY_WIDTH) + ECONOMY_WIDTH) % ECONOMY_WIDTH;
+const wrapY = y => ((y % ECONOMY_HEIGHT) + ECONOMY_HEIGHT) % ECONOMY_HEIGHT;
+
+// Cell for raw coordinates: wrapped on a torus, -1 off a bounded map.
+function wrapCell(x, y) {
+	if (x < 0 || y < 0 || x >= ECONOMY_WIDTH || y >= ECONOMY_HEIGHT) {
+		if (!MAP_WRAP) return -1;
+		x = wrapX(x); y = wrapY(y);
+	}
+	return economyIndex(x, y);
+}
+
 const DIRECTIONS = [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [-1, -1], [1, -1]]
 	.map(([x, y]) => {
 		const inv = x && y ? Math.SQRT1_2 : 1;
 		return { x, y, inv, ux: x * inv, uy: y * inv, weight: x && y ? 1 : 4 };
 	});
 const DEGREE = DIRECTIONS.length;
-const NEIGHBORS = buildEconomyNeighbors();
+let NEIGHBORS = buildEconomyNeighbors();
 const REFERENCE_MINES = [[7, 8], [22, 21], [39, 7]];
 const REFERENCE_FACTORIES = [[13, 13], [33, 10]];
 const REFERENCE_TOWNS = [[9, 20], [28, 12]];
@@ -70,12 +85,20 @@ function buildEconomyNeighbors() {
 	const result = new Int16Array(ECONOMY_SIZE * DEGREE).fill(-1);
 	for (let i = 0; i < ECONOMY_SIZE; i++) {
 		for (let k = 0; k < DEGREE; k++) {
-			const x = i % ECONOMY_WIDTH + DIRECTIONS[k].x;
-			const y = Math.floor(i / ECONOMY_WIDTH) + DIRECTIONS[k].y;
+			let x = i % ECONOMY_WIDTH + DIRECTIONS[k].x;
+			let y = Math.floor(i / ECONOMY_WIDTH) + DIRECTIONS[k].y;
+			if (MAP_WRAP) { x = wrapX(x); y = wrapY(y); }
 			if (x >= 0 && x < ECONOMY_WIDTH && y >= 0 && y < ECONOMY_HEIGHT) result[i * DEGREE + k] = economyIndex(x, y);
 		}
 	}
 	return result;
+}
+
+// Swap topology live: rebuilds the shared neighbour table; callers re-stamp derived land state (land.refresh()).
+function setMapWrap(wrap) {
+	if (MAP_WRAP === wrap) return;
+	MAP_WRAP = wrap;
+	NEIGHBORS = buildEconomyNeighbors();
 }
 
 function makeScratch(buyers, cell, rate = FLOW_RATE, payStream = -1, seller = 0, spread = 0, carriesGold = false, blend = false, trackedPaid = false) {
@@ -591,4 +614,4 @@ function stepBid(field, i, here, bid, decay) {
 	return ambient > here && ambient > relaxed ? ambient : relaxed;
 }
 
-if (typeof module === 'object') module.exports = { PriceEconomy, economyIndex };
+if (typeof module === 'object') module.exports = { PriceEconomy, economyIndex, setMapWrap };

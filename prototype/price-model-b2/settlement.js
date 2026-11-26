@@ -97,9 +97,10 @@ class Settlements {
 		const { actors, depleted, land } = this.model;
 		const cx = i % ECONOMY_WIDTH, cy = Math.floor(i / ECONOMY_WIDTH);
 		this.pledged = true;
-		for (let y = Math.max(0, cy - FOUND_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, cy + FOUND_RADIUS); y++) {
-			for (let x = Math.max(0, cx - FOUND_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, cx + FOUND_RADIUS); x++) {
-				const n = economyIndex(x, y);
+		for (let dy = -FOUND_RADIUS; dy <= FOUND_RADIUS; dy++) {
+			for (let dx = -FOUND_RADIUS; dx <= FOUND_RADIUS; dx++) {
+				const n = wrapCell(cx + dx, cy + dy);
+				if (n < 0) continue;
 				this.gather[n] += depleted[i];
 				const score = this.gather[n] * land.site[n];
 				if (actors[n] || score <= this.bestScore) continue;
@@ -125,10 +126,10 @@ class Settlements {
 		const m = this.model;
 		const cx = c % ECONOMY_WIDTH, cy = Math.floor(c / ECONOMY_WIDTH);
 		let settled = 0;
-		for (let y = Math.max(0, cy - FOUND_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, cy + FOUND_RADIUS); y++) {
-			for (let x = Math.max(0, cx - FOUND_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, cx + FOUND_RADIUS); x++) {
-				const n = economyIndex(x, y);
-				if (!m.actors[n]) settled += m.depleted[n];
+		for (let dy = -FOUND_RADIUS; dy <= FOUND_RADIUS; dy++) {
+			for (let dx = -FOUND_RADIUS; dx <= FOUND_RADIUS; dx++) {
+				const n = wrapCell(cx + dx, cy + dy);
+				if (n >= 0 && !m.actors[n]) settled += m.depleted[n];
 			}
 		}
 		m.actors[c] = ECONOMY_TOWN;

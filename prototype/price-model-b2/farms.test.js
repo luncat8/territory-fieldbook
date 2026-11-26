@@ -323,6 +323,11 @@ test('UI smoke check: index.html scripts, FieldPlot, EconomyTelemetry and Sawmil
 		b.dataset.resource = r;
 		return b;
 	});
+	const edgeButtons = ['wrap', 'bounded'].map((e) => {
+		const b = makeEl(`edge-${e}`);
+		b.dataset.mapEdge = e;
+		return b;
+	});
 	const metricCards = Array.from({ length: 5 }, () => ({
 		querySelector: (sel) => sel === 'canvas' ? makeEl() : sel === 'strong' ? makeEl() : { style: {} }
 	}));
@@ -343,6 +348,7 @@ test('UI smoke check: index.html scripts, FieldPlot, EconomyTelemetry and Sawmil
 				if (sel === '.metric') return metricCards;
 				if (sel === '[data-tool]') return toolButtons;
 				if (sel === '[data-resource]') return resourceButtons;
+				if (sel === '[data-map-edge]') return edgeButtons;
 				return [];
 			}
 		}
@@ -351,6 +357,12 @@ test('UI smoke check: index.html scripts, FieldPlot, EconomyTelemetry and Sawmil
 		for (const file of ['fields.js', 'telemetry.js', 'app.js']) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 
 		assert.match(getEl('actor-count').textContent, /1 S · 1 A/, 'actor badge reports starter sawmill and farm');
+		assert.match(getEl('grid-size').textContent, /wrap/, 'grid badge shows the torus default');
+		edgeButtons.find((b) => b.dataset.mapEdge === 'bounded').trigger('click');
+		assert.match(getEl('grid-size').textContent, /bounded/, 'grid badge follows the topology switch');
+		assert.equal(MAP_WRAP, false, 'bounded button swaps the engine topology');
+		edgeButtons[0].trigger('click');
+		assert.equal(MAP_WRAP, true, 'wrap button restores the torus');
 		assert.ok(Number(getEl('workers-held').textContent) > 0, 'worker conservation ledger renders live headcount');
 		for (const id of ['wood-in', 'wood-firm', 'food-in', 'food-firm', 'workers-seeded', 'workers-split', 'workers-starved', 'workers-held']) {
 			assert.equal(Number.isNaN(Number(getEl(id).textContent)), false, `${id} should not be NaN`);

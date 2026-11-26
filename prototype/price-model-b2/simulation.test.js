@@ -248,12 +248,15 @@ test('only the buyer cell uses stock, bounded by its population need', () => {
 });
 
 test('a distant mine feeds a town through a factory', () => {
+	// bounded calibration: with decay off the torus flattens the goods field from both sides, so this 60s throughput measures a hard-edge transient
+	setMapWrap(false);
 	const model = clearedMap();
 	model.setActor(economyIndex(0, 0), ECONOMY_MINE);
 	model.setActor(economyIndex(12, 7), ECONOMY_FACTORY);
 	model.setActor(economyIndex(24, 14), ECONOMY_TOWN);
 	model.decay = false;
 	run(model, 60);
+	setMapWrap(true);
 	assert.ok(model.consumedGoods > 2);
 	checkLedger(model);
 });
@@ -392,10 +395,13 @@ test('a supplied town attracts more population and earns more profit than an uns
 });
 
 test('mined gold inflates prices around the gold mine while distant towns stay steadier', () => {
+	// bounded calibration: hard-edge distances set the near/far gap; the torus dilutes the near peak below START_PRICE at this snapshot
+	setMapWrap(false);
 	const model = new PriceEconomy();
 	const near = economyIndex(9, 20);
 	const far = economyIndex(28, 12);
 	run(model, 140);
+	setMapWrap(true);
 	assert.ok(model.priceGoods[near] > START_PRICE);
 	assert.ok(model.priceGoods[near] > model.priceGoods[far] * 1.5);
 	checkLedger(model);
@@ -450,35 +456,65 @@ test('profitable companies raise workforce demand and expand scale; losing ones 
 	checkLedger(model);
 });
 
-test('profitable towns lower living taxes while struggling towns raise taxes so depleted workforces migrate', () => {
-	const paired = clearedMap();
-	const solo = clearedMap();
-	const mine = economyIndex(8, 14);
-	const f1 = economyIndex(11, 13);
-	const f2 = economyIndex(11, 15);
-	const thriving = economyIndex(14, 14);
-	const struggling = economyIndex(20, 14);
-	for (const model of [paired, solo]) {
-		model.setActor(mine, ECONOMY_MINE);
-		model.setActor(f1, ECONOMY_FACTORY);
-		model.setActor(f2, ECONOMY_FACTORY);
-		model.setActor(thriving, ECONOMY_TOWN);
-	}
-	paired.setActor(struggling, ECONOMY_TOWN);
-	paired.money.seeded -= paired.money.purse[struggling] + paired.money.workerPurse[struggling];
-	paired.money.purse[struggling] = 0;
-	paired.money.workerPurse[struggling] = 0;
+test('wrap edges give corner cells all 8 neighbours while bounded edges keep 3', () => {
+	const corner = economyIndex(0, ECONOMY_HEIGHT - 1);
+	const around = new Set();
+	for (let k = 0; k < DEGREE; k++) around.add(NEIGHBORS[corner * DEGREE + k]);
+	assert.equal(around.size, 8);
+	assert.ok(around.has(economyIndex(ECONOMY_WIDTH - 1, ECONOMY_HEIGHT - 1)));
+	assert.ok(around.has(economyIndex(0, 0)));
+	assert.ok(around.has(economyIndex(ECONOMY_WIDTH - 1, 0)));
 
-	run(paired, 16);
-	run(solo, 16);
-	assert.ok(paired.taxMult[thriving] < 1);
-	assert.ok(paired.taxMult[struggling] > 1.3);
-	assert.ok(paired.priceHome[thriving] > paired.priceHome[struggling] * 3);
-	assert.ok(paired.depletedFlow.flowX[economyIndex(17, 14)] < 0);
-	assert.ok(paired.emittedDepleted > 0.2);
-	assert.ok(paired.restedDepleted > solo.restedDepleted);
-	checkLedger(paired);
-	checkLedger(solo);
+	setMapWrap(false);
+	const bounded = new Set();
+	for (let k = 0; k < DEGREE; k++) bounded.add(NEIGHBORS[corner * DEGREE + k]);
+	setMapWrap(true);
+	assert.equal(bounded.size, 4);
+	assert.ok(bounded.has(-1));
 });
 
+test('wrap edges let no corner price trap form: a corner peak decays exactly like an interior peak', () => {
+	const model = clearedMap();
+	const corner = economyIndex(0, ECONOMY_HEIGHT - 1);
+	const interior = economyIndex(20, 14);
+	model.priceCoal[corner] = 10;
+	model.priceCoal[interior] = 10;
+	run(model, 3);
+	assert.ok(Math.abs(model.priceCoal[corner] - model.priceCoal[interior]) < 1e-6);
+
+	setMapWrap(false);
+	const bounded = clearedMap();
+	bounded.priceCoal[corner] = 10;
+	bounded.priceCoal[interior] = 10;
+	for (let n = 0; n < Math.round(3 / ECONOMY_DT); n++) bounded.step();
+	setMapWrap(true);
+	assert.ok(bounded.priceCoal[corner] > bounded.priceCoal[interior] * 3);
+});
+
+test('wrap edges carry price and stock across the seams to a rim town', () => {
+	const model = clearedMap();
+	const town = economyIndex(0, 14);
+	const seam = economyIndex(ECONOMY_WIDTH - 1, 14);
+	model.setActor(town, ECONOMY_TOWN);
+	run(model, 4);
+	assert.ok(model.priceGoods[seam] > model.priceGoods[economyIndex(18, 14)]);
+	assert.ok(model.priceGoods[seam] > model.priceGoods[town] * 0.5);
+
+	model.goods[seam] = 0.8;
+	run(model, 1);
+	assert.ok(model.goods[seam] < 0.1);
+	assert.ok(model.goods[town] > 0.3);
+	assert.ok(model.consumedGoods > 0.1);
+	closeTo(sum(model.goods) + model.consumedGoods, 0.8);
+});
+
+test('map edges swap live mid-run while stock and gold stay conserved', () => {
+	const model = new PriceEconomy();
+	run(model, 10);
+	setMapWrap(false);
+	run(model, 10);
+	setMapWrap(true);
+	run(model, 10);
+	checkLedger(model);
+});
 

@@ -40,6 +40,7 @@ function bootEconomy() {
 	const stats = new EconomyTelemetry();
 	const guide = $('field-guide'), runButton = $('run-button'), runState = $('run-state');
 	const speedSelect = $('speed'), decay = $('price-decay'), derived = $('derived-bid'), suppression = $('stock-suppression'), flow = $('show-flow');
+	const edgeButtons = document.querySelectorAll('[data-map-edge]');
 	const toolButtons = document.querySelectorAll('[data-tool]'), clearButton = $('clear-towns');
 	const resourceButtons = document.querySelectorAll('[data-resource]');
 	const message = $('edit-message'), stepButton = $('step-button');
@@ -50,7 +51,10 @@ function bootEconomy() {
 	model.decay = decay.checked;
 	model.derived = derived.checked;
 	model.suppression = suppression.checked;
-	$('grid-size').textContent = `${ECONOMY_WIDTH} × ${ECONOMY_HEIGHT}`;
+	function syncEdgeLabel() {
+		$('grid-size').textContent = `${ECONOMY_WIDTH} × ${ECONOMY_HEIGHT} · ${MAP_WRAP ? 'wrap' : 'bounded'}`;
+	}
+	syncEdgeLabel();
 	$('source-note').textContent = SOURCE_RATE.toFixed(2);
 	$('uptake-note').textContent = NEED_RATE.toFixed(2);
 	$('start-price-note').textContent = START_PRICE.toFixed(0);
@@ -182,6 +186,15 @@ function bootEconomy() {
 	derived.addEventListener('change',() => { model.derived = derived.checked; message.textContent = `Derived bid ${model.derived ? 'enabled' : 'disabled'}.`; });
 	suppression.addEventListener('change',() => { model.suppression = suppression.checked; message.textContent = `Stock suppression ${model.suppression ? 'enabled' : 'disabled'}.`; });
 	flow.addEventListener('change',() => { dirty = true; });
+	for (const button of edgeButtons) button.addEventListener('click',() => {
+		const wrap = button.dataset.mapEdge === 'wrap';
+		for (const candidate of edgeButtons) candidate.setAttribute('aria-pressed',candidate === button);
+		setMapWrap(wrap);
+		model.land.refresh();
+		syncEdgeLabel();
+		message.textContent = wrap ? 'Map wraps X and Y: goods, workers and prices cross the edges.' : 'Map bounded: edges and corners reflect price peaks.';
+		dirty = true;
+	});
 	$('new-map').addEventListener('click',reset);
 	clearButton.addEventListener('click',() => { model.clearTowns(); syncActors(); readings(); message.textContent = 'Towns removed. Bids fade and the chain halts.'; });
 	$('guide-button').addEventListener('click',() => guide.showModal());

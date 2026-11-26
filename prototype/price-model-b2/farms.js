@@ -96,8 +96,11 @@ class LandFirms {
 	patchPaid(i, flow, radius) {
 		const cx = i % ECONOMY_WIDTH, cy = Math.floor(i / ECONOMY_WIDTH);
 		let sum = 0;
-		for (let y = Math.max(0, cy - radius); y <= Math.min(ECONOMY_HEIGHT - 1, cy + radius); y++) {
-			for (let x = Math.max(0, cx - radius); x <= Math.min(ECONOMY_WIDTH - 1, cx + radius); x++) sum += flow.paid[economyIndex(x, y)];
+		for (let dy = -radius; dy <= radius; dy++) {
+			for (let dx = -radius; dx <= radius; dx++) {
+				const c = wrapCell(cx + dx, cy + dy);
+				if (c >= 0) sum += flow.paid[c];
+			}
 		}
 		return sum;
 	}
@@ -106,9 +109,11 @@ class LandFirms {
 		const { forest } = this.model.settlements;
 		const cx = i % ECONOMY_WIDTH, cy = Math.floor(i / ECONOMY_WIDTH);
 		let sum = 0, cells = 0;
-		for (let y = Math.max(0, cy - SAWMILL_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, cy + SAWMILL_RADIUS); y++) {
-			for (let x = Math.max(0, cx - SAWMILL_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, cx + SAWMILL_RADIUS); x++) {
-				sum += forest[economyIndex(x, y)];
+		for (let dy = -SAWMILL_RADIUS; dy <= SAWMILL_RADIUS; dy++) {
+			for (let dx = -SAWMILL_RADIUS; dx <= SAWMILL_RADIUS; dx++) {
+				const c = wrapCell(cx + dx, cy + dy);
+				if (c < 0) continue;
+				sum += forest[c];
 				cells++;
 			}
 		}
@@ -192,10 +197,8 @@ class LandFirms {
 		const m = this.model;
 		this.workAcc[i] -= SAWMILL_SEARCH_WORK;
 		const span = 2 * SAWMILL_RADIUS + 1;
-		const x = i % ECONOMY_WIDTH + this.rand(span) - SAWMILL_RADIUS;
-		const y = Math.floor(i / ECONOMY_WIDTH) + this.rand(span) - SAWMILL_RADIUS;
-		if (x < 0 || y < 0 || x >= ECONOMY_WIDTH || y >= ECONOMY_HEIGHT) return;
-		const c = economyIndex(x, y);
+		const c = wrapCell(i % ECONOMY_WIDTH + this.rand(span) - SAWMILL_RADIUS, Math.floor(i / ECONOMY_WIDTH) + this.rand(span) - SAWMILL_RADIUS);
+		if (c < 0) return;
 		if (m.land.terrain[c] === TERRAIN_WATER || (m.actors[c] && c !== i) || this.plotOwner[c]) return;
 		const cover = m.settlements.forest[c];
 		if (cover < SAWMILL_MIN_FOREST || m.wood[c] > 0.9 || m.priceWood[c] <= SAWMILL_GATE) return;
@@ -252,10 +255,8 @@ class LandFirms {
 	clearVisit(i) {
 		const m = this.model;
 		const span = 2 * FARM_RADIUS + 1;
-		const x = i % ECONOMY_WIDTH + this.rand(span) - FARM_RADIUS;
-		const y = Math.floor(i / ECONOMY_WIDTH) + this.rand(span) - FARM_RADIUS;
-		if (x < 0 || y < 0 || x >= ECONOMY_WIDTH || y >= ECONOMY_HEIGHT) return;
-		const c = economyIndex(x, y);
+		const c = wrapCell(i % ECONOMY_WIDTH + this.rand(span) - FARM_RADIUS, Math.floor(i / ECONOMY_WIDTH) + this.rand(span) - FARM_RADIUS);
+		if (c < 0) return;
 		if (!this.legalPlot(c)) return;
 		const felled = Math.min(m.settlements.forest[c], Math.max(0, 1 - m.wood[c]) / WOOD_PER_FOREST);
 		if (felled > 1e-9) {
@@ -282,18 +283,18 @@ class LandFirms {
 
 		const cx = i % ECONOMY_WIDTH, cy = Math.floor(i / ECONOMY_WIDTH);
 		let potential = 0;
-		for (let y = Math.max(0, cy - FARM_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, cy + FARM_RADIUS); y++) {
-			for (let x = Math.max(0, cx - FARM_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, cx + FARM_RADIUS); x++) {
-				const c = economyIndex(x, y);
-				if (this.plotOwner[c] === i + 1) potential += Math.min(1 - m.food[c], FARM_PLOT_YIELD * this.quality(c) * tended);
+		for (let dy = -FARM_RADIUS; dy <= FARM_RADIUS; dy++) {
+			for (let dx = -FARM_RADIUS; dx <= FARM_RADIUS; dx++) {
+				const c = wrapCell(cx + dx, cy + dy);
+				if (c >= 0 && this.plotOwner[c] === i + 1) potential += Math.min(1 - m.food[c], FARM_PLOT_YIELD * this.quality(c) * tended);
 			}
 		}
 		if (potential <= 1e-9) return;
 		this.cropCost[i] = 0;
 		let totalFood = 0;
-		for (let y = Math.max(0, cy - FARM_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, cy + FARM_RADIUS); y++) {
-			for (let x = Math.max(0, cx - FARM_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, cx + FARM_RADIUS); x++) {
-				const c = economyIndex(x, y);
+		for (let dy = -FARM_RADIUS; dy <= FARM_RADIUS; dy++) {
+			for (let dx = -FARM_RADIUS; dx <= FARM_RADIUS; dx++) {
+				const c = wrapCell(cx + dx, cy + dy);
 				if (this.plotOwner[c] !== i + 1) continue;
 				const made = Math.min(1 - m.food[c], FARM_PLOT_YIELD * this.quality(c) * tended);
 				if (made <= 1e-9) continue;
@@ -316,10 +317,8 @@ class LandFirms {
 		for (let dy = -ring; dy <= ring; dy++) {
 			for (let dx = -ring; dx <= ring; dx++) {
 				if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
-				const x = cx + dx, y = cy + dy;
-				if (x < 0 || y < 0 || x >= ECONOMY_WIDTH || y >= ECONOMY_HEIGHT) continue;
-				const c = economyIndex(x, y);
-				if (this.model.land.terrain[c] === TERRAIN_WATER) continue;
+				const c = wrapCell(cx + dx, cy + dy);
+				if (c < 0 || this.model.land.terrain[c] === TERRAIN_WATER) continue;
 				if (this.rand(++seen) === 0) chosen = c;
 			}
 		}

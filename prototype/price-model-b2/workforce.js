@@ -79,8 +79,8 @@ class WorkerPolicy {
 
 	spillAt(x, y, spill, goldPer) {
 		const m = this.model;
-		if (spill <= 1e-12 || x < 0 || y < 0 || x >= ECONOMY_WIDTH || y >= ECONOMY_HEIGHT) return 0;
-		const c = economyIndex(x, y);
+		const c = wrapCell(x, y);
+		if (spill <= 1e-12 || c < 0) return 0;
 		if (m.land.terrain[c] === TERRAIN_WATER) return 0;
 		const take = Math.min(spill, 1 - m.depleted[c]);
 		if (take <= 1e-12) return 0;

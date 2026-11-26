@@ -112,6 +112,7 @@ h2{font-size:19px;line-height:1.4;font-weight:650;letter-spacing:-.035em}
 .setting h3,.setting strong{font:600 13px/1.5 var(--sans);color:#dfdfe7}
 .setting p,.setting small{display:block;font-size:12px;margin-top:2px}
 .pressure-setting{border-top:1px solid var(--line);margin-top:11px;padding-top:10px;cursor:pointer}
+.map-edge-setting{border-top:1px solid var(--line);margin-top:11px;padding-top:10px}
 .presets{gap:6px}
 .presets button,.tools button{border:1px solid #393a45;background:#222329;color:#c5c5d0;border-radius:5px;font:600 12px var(--sans);min-height:31px}
 .presets button{padding-inline:9px;min-width:60px;font:11px var(--mono);gap:7px}

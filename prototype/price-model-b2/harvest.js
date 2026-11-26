@@ -187,8 +187,8 @@ class Harvest {
 		this.seed = (Math.imul(this.seed, 1664525) + 1013904223) >>> 0;
 		const x = i % ECONOMY_WIDTH + (this.seed >>> 16) % span - HARVEST_RADIUS;
 		const y = Math.floor(i / ECONOMY_WIDTH) + (this.seed & 0xffff) % span - HARVEST_RADIUS;
-		if (x < 0 || y < 0 || x >= ECONOMY_WIDTH || y >= ECONOMY_HEIGHT) return -1;
-		const c = economyIndex(x, y);
+		const c = wrapCell(x, y);
+		if (c < 0) return -1;
 		if (m.land.terrain[c] === TERRAIN_WATER || (m.actors[c] && c !== i) || m.farms.plotOwner[c]) return -1;
 		return c;
 	}
