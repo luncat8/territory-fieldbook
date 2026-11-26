@@ -11,7 +11,7 @@ finally item come to buyer storage, difference of item.price with what buyer pay
 
 ### workers and items are particle objects
 
-workers carry gold, fresh/deflated related and other variables. keep cache and GPU friendly for possible optimizations in future.
+workers carry gold, fresh/depleted state and other variables. keep cache and GPU friendly for possible optimizations in future.
 
 whether particles should have fixed discrete or variable amount is open question.
 
@@ -19,14 +19,13 @@ whether particles should have fixed discrete or variable amount is open question
 
 ## suggested to have common base with model-b2 engine, but for prototype feel free to experiment
 
-## picked from B2 (prototype/price-model-b2 works smooth, 46/46 tests)
+## picked from B2 (prototype/price-model-b2 works smooth, 51/51 tests)
 
 B2 already proves the rules work on a pure cell field, so the particle engine does **not** re-derive them:
-`workforce.js` (WorkerPolicy) and `settlement.js` (Settlements) are engine-neutral and reused unchanged,
+`workforce.js` (WorkerPolicy), `land.js` (Land) and `settlement.js` (Settlements) are engine-neutral so may be reused by both engines,
 applied per particle instead of per cell. The particle engine is a **transport-substrate swap** —
-Eulerian field advection becomes Lagrangian SoA particles — over the same pricing, pool, rest and tax rules.
-Only the particle pool, spawn accumulators, per-particle cost/spoilage/transport accrual, arrival split and
-particle render are new code.
+Eulerian field advection becomes Lagrangian SoA particles — over the same pricing, pool, rest and tax rules (as long as rules supported by particles or cells engine).
+particle pool, per-particle cost/spoilage/transport accrual, arrival split, particle render are new code.
 
 - **Town wealth class** (cheap/med/rich, deterministic per cell): cheap drops living tax to fill vacant slots
   and keeps its built size; med buys needs then grows; rich holds a cozy occupancy (queue ≈ 0) and cuts size
@@ -56,7 +55,7 @@ reaches (B2: radius 2, still sum above 0.35, home+rest below 0.25 reach).
 
 #### spawn town:
 
-possible to have some variable in worker to track state when he want to establish new settlement and write to some grid to have automatic count without re-scan. Previous agent suggested:
+possible to have some variable in worker to track state when he want to establish new settlement and write to some grid to have automatic count without re-scan (B2 done: settle `intent` + gather grid). Previous agent suggested:
 Scan every ~5 s, not every tick, so a
 new settlement's home field spreads before the next scan. The gathered workers become residents (converted with
 the migrant rate, capped at the tier pop cap) and bring their savings — no vault gold is minted, so the young
@@ -100,4 +99,14 @@ if gradient for job available he moved by gradient to next job
 if movement is slow he rest in place even not being 100% depleted.
 if movement is slow and he is fresh - he count as subject to free work force to found new firm to produce something useful with big price and resources available 
 numbers are just example, not rebalance.
+
+
+Town population in the particle engine: what is a 'resident'?
+Every person is a worker object (recommended for first prototype)
+
+Particle amount (open question in the draft):
+Workers fixed, goods variable (recommended for first prototype)
+
+A rested FRESH worker in town when there is no job gradient strong enough:
+Leaves the room right after rest. this is need to count him as fee force to spawn new factories
 

@@ -1,8 +1,9 @@
 ## settlements
 
 demands, effect, purpose:
-- wood. big amount need to growth and some constant use, this may push sawmill industry.
+- wood. big amount need to growth and some constant use (x per person per simulation second), this may push sawmill industry before processors exist.
 - food, keep population, 
+
 
 settlement is a harvester
 
@@ -16,6 +17,10 @@ so if tired worker very slow move (low gradient of settlement with acceptable ta
 every some time check areas in some radius or window and if there are meany shelters (slow moving tired workers) - found settlement (aka town) - it cut forest to get some initial construction, then try to up tax gradually if possible to buy resources for better rest workers and increase town size.
 
 (hamlet): "young town" flag — marks a town still in construction that can gather resources itself (e.g. fell forest) without buying. 
+
+
+town is not a worker manager. 
+i told this 4 times. town cant spawn despawn or do anything strange else. fix and clean plans if need.
 
 ### size from construction difficulty
 
@@ -44,7 +49,7 @@ towns for rich workers - should be implemented in more natural way. we can set 3
 
 Deferred for future: to make this better work need some upkeep cost and wearing items inside town's depot so keep big town almost empty will cause loss.
 
-rich cuts . other keep built size and shrink slowly only if very low on money or vacant for a long time.
+rich cuts size first. other keep built size and shrink slowly only if very low on money or vacant for a long time.
 
 better also add some increment to comfort in case of free space in town. is this case rich town want keep queue pool 0 and few free slots to fit comfort level.
 example (numbers are subject to balance, usually we operate with more workers to keep things smooth, float numbers also possible): 
