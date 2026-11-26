@@ -22,11 +22,10 @@ whether particles should have fixed discrete or variable amount is open question
 ## picked from B2 (prototype/price-model-b2 works smooth, 51/51 tests)
 
 B2 already proves the rules work on a pure cell field, so the particle engine does **not** re-derive them:
-`workforce.js` (WorkerPolicy), `land.js` (Land) and `settlement.js` (Settlements) are engine-neutral and reused unchanged,
+`workforce.js` (WorkerPolicy), `land.js` (Land) and `settlement.js` (Settlements) are engine-neutral so may be reused by both engines,
 applied per particle instead of per cell. The particle engine is a **transport-substrate swap** —
-Eulerian field advection becomes Lagrangian SoA particles — over the same pricing, pool, rest and tax rules.
-Only the particle pool, spawn accumulators, per-particle cost/spoilage/transport accrual, arrival split and
-particle render are new code.
+Eulerian field advection becomes Lagrangian SoA particles — over the same pricing, pool, rest and tax rules (as long as rules supported by particles or cells engine).
+particle pool, per-particle cost/spoilage/transport accrual, arrival split, particle render are new code.
 
 - **Town wealth class** (cheap/med/rich, deterministic per cell): cheap drops living tax to fill vacant slots
   and keeps its built size; med buys needs then grows; rich holds a cozy occupancy (queue ≈ 0) and cuts size
