@@ -1,0 +1,123 @@
+<!doctype html>
+<!-- Standalone entry point for the Particle Transfer economy lab. -->
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="theme-color" content="#101115">
+	<title>Particle transfer · Diffused prices &amp; Lagrangian goods</title>
+	<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23161520'/%3E%3Cpath d='m3 12 13-7 13 7-13 7zM3 17l13 7 13-7M3 22l13 7 13-7' fill='none' stroke='%23b6a0ff' stroke-width='2'/%3E%3C/svg%3E">
+	<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+	<header class="topbar"><div class="frame topbar-inner">
+		<div class="brand"><svg class="brand-mark" viewBox="0 0 36 36" fill="none" aria-hidden="true"><path d="m2 11 16-8 16 8-16 8z" fill="currentColor"/><path d="m2 17 16 8 16-8M2 23l16 8 16-8" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>Fluxfield</div>
+		<span class="brand-context">Particle transfer · Goods shipments</span>
+		<div class="topbar-end"><span class="local-tag"><i class="dot"></i> Local engine</span><button id="guide-button" class="quiet-button" type="button"><i data-icon="book"></i>Field guide<kbd>?</kbd></button></div>
+	</div></header>
+
+	<main class="frame">
+		<section class="overview" aria-labelledby="page-title">
+			<div><div class="eyebrow"><span></span>Particle transfer<b>/</b>Diffused prices &amp; owned shipments</div>
+				<h1 id="page-title">Particle transfer</h1>
+				<p>Diffused fields carry buyer bids, firm wages and town appeal only. Coal and manufactured goods travel as owned particles carrying exact factory book cost and terrain-weighted haulage, settling carrier fees to the Transport Company and realized profit to their producer on arrival.</p>
+			</div>
+			<canvas id="field-relief" class="relief" aria-hidden="true"></canvas>
+			<div class="playback" aria-label="Playback controls">
+				<div class="run-status"><span class="running-label" id="run-state"><i class="dot"></i><span>Running</span></span><time id="sim-time" aria-label="Simulated time">00:00</time></div>
+				<div class="playback-buttons"><button class="primary" id="run-button" type="button" aria-label="Pause simulation"><i data-icon="pause"></i><span>Pause</span></button>
+					<button id="step-button" class="icon-button step-button" type="button" title="Advance one tick" aria-label="Advance one simulation tick" hidden><i data-icon="step"></i></button>
+					<div class="speed-box"><select id="speed" aria-label="Simulation speed"><option value="0.5">0.5×</option><option value="1">1×</option><option value="2">2×</option><option value="4" selected>4×</option><option value="16">16×</option></select><i data-icon="chevron"></i></div>
+				</div>
+			</div>
+		</section>
+
+		<section class="metrics" aria-label="Live simulation measurements">
+			<div class="metric metric-stock"><div class="metric-label"><i data-icon="box"></i>Coal total</div><div class="metric-value"><strong id="coal-stored">0.00</strong><small>units</small></div><canvas class="spark" aria-hidden="true"></canvas></div>
+			<div class="metric metric-demand"><div class="metric-label"><i data-icon="box"></i>Goods total</div><div class="metric-value"><strong id="goods-stored">0.00</strong><small>units</small></div><canvas class="spark" aria-hidden="true"></canvas></div>
+			<div class="metric metric-production"><div class="metric-label"><i data-icon="up"></i>Mean coal price</div><div class="metric-value"><strong id="coal-price">0.00</strong><small>g/u</small></div><canvas class="spark" aria-hidden="true"></canvas></div>
+			<div class="metric metric-uptake"><div class="metric-label"><i data-icon="down"></i>Mean goods price</div><div class="metric-value"><strong id="goods-price">0.00</strong><small>g/u</small></div><canvas class="spark" aria-hidden="true"></canvas></div>
+			<div class="metric metric-gold"><div class="metric-label"><i data-icon="hexagon"></i>Gold supply</div><div class="metric-value"><strong id="gold-supply">0.00</strong><small>g</small></div><canvas class="spark" aria-hidden="true"></canvas></div>
+		</section>
+
+		<section class="field-section" aria-labelledby="field-title">
+			<div class="section-bar"><div class="section-title"><h2 id="field-title">Field &amp; particle maps</h2><span class="grid-size"><i data-icon="grid"></i><span id="grid-size">48 × 28</span></span></div>
+				<div class="field-options"><span class="actor-key"><i class="source-key"></i>Mine</span><span class="actor-key"><i class="factory-key"></i>Factory</span><span class="actor-key"><i class="consumer-key"></i>Town</span><span class="actor-key"><i class="gold-key"></i>Gold mine</span><span class="option-divider"></span><div class="presets"><button data-resource="coal" aria-pressed="true" type="button">Coal</button><button data-resource="goods" aria-pressed="false" type="button">Goods</button><button data-resource="labor" aria-pressed="false" type="button">Labor</button><button data-resource="depleted" aria-pressed="false" type="button">Depleted</button><button data-resource="gold" aria-pressed="false" type="button">Gold</button><button data-resource="land" aria-pressed="false" type="button">Land</button></div><span class="option-divider"></span><label class="flow-option"><input id="show-flow" type="checkbox"><i data-icon="check"></i>Motion tails</label><label class="shape-box">Particles<select id="particle-shape" aria-label="Particle shape"><option value="triangles" selected>Triangles</option><option value="points">Points</option><option value="large">Large ×⅛</option></select><i data-icon="chevron"></i></label></div>
+			</div>
+			<div class="maps">
+				<article class="field-card stock-card"><header class="card-head"><span class="layer-icon"><i data-icon="layers"></i></span><div><h3 id="stock-title">Coal particles &amp; storage</h3><p id="stock-note">Site buffers plus live shipments colored by delivered price</p></div><span class="layer-id">Map 01</span></header>
+					<div class="plot"><canvas id="resource-map" tabindex="0" aria-label="Stock and particle grid. Use arrow keys to inspect cells and Enter to apply the selected tool."></canvas><output class="tooltip" hidden></output></div>
+					<div class="map-legend"><span>Empty</span><i class="ramp"></i><span>Full</span><span class="scale-label">Site log <b>0 – 1</b> · marks <b>price / amt</b></span></div>
+				</article>
+				<article class="field-card demand-card"><header class="card-head"><span class="layer-icon"><i data-icon="contour"></i></span><div><h3 id="price-title">Coal price</h3><p id="price-note">Diffused buyer bid per cell</p></div><span class="layer-id">Map 02</span></header>
+					<div class="plot"><canvas id="price-map" tabindex="0" aria-label="Price grid. Use arrow keys to inspect cells and Enter to apply the selected tool."></canvas><output class="tooltip" hidden></output></div>
+					<div class="map-legend"><span>Cheap</span><i class="ramp"></i><span>Dear</span><span class="scale-label">Linear scale <b>0 – 5 g/u</b></span></div>
+				</article>
+			</div>
+		</section>
+
+		<section class="bench" aria-label="Experiment controls">
+			<article class="panel"><div class="panel-heading"><i data-icon="sliders"></i><h2>Experiment settings</h2></div>
+				<div class="setting"><div><h3>New map</h3><p>Reset to the reference chain (one mine, one factory, one town).</p></div><div class="presets"><button id="new-map" type="button" aria-label="New map"><i data-icon="reset"></i>Reset</button></div></div>
+				<label class="setting pressure-setting" for="price-decay"><span><strong>Price decay</strong><small>Bids and town appeal weaken with distance, pricing travel cost.</small></span><input id="price-decay" type="checkbox" checked><span class="switch" aria-hidden="true"></span></label>
+				<label class="setting pressure-setting" for="derived-bid"><span><strong>Derived bid</strong><small>Firms and towns derive buy prices from output price and resident taxes.</small></span><input id="derived-bid" type="checkbox" checked><span class="switch" aria-hidden="true"></span></label>
+				<label class="setting pressure-setting" for="stock-suppression"><span><strong>Stock suppression</strong><small>Buy bids fall to zero once local stock covers finite operating need.</small></span><input id="stock-suppression" type="checkbox" checked><span class="switch" aria-hidden="true"></span></label>
+			</article>
+			<article class="panel"><div class="panel-heading"><i data-icon="cursor"></i><h2>Map tools</h2><span id="actor-count" class="actor-count"></span></div>
+				<p class="tool-hint" id="tool-hint">Select a cell on either map to inspect site storage, passing particles, prices and wallets.</p>
+				<div class="tools" role="group" aria-label="Map editing tool"><button data-tool="inspect" aria-pressed="true" type="button"><i data-icon="crosshair"></i>Inspect</button><button data-tool="mine" aria-pressed="false" type="button"><i data-icon="diamond"></i>Mine</button><button data-tool="factory" aria-pressed="false" type="button"><i data-icon="square"></i>Factory</button><button data-tool="town" aria-pressed="false" type="button"><i data-icon="circle"></i>Town</button><button data-tool="gold" aria-pressed="false" type="button"><i data-icon="hexagon"></i>Gold</button><button data-tool="worker" aria-pressed="false" type="button"><i data-icon="radio"></i>Worker</button><button data-tool="erase" aria-pressed="false" type="button"><i data-icon="erase"></i>Erase</button></div>
+				<div class="tool-bottom"><span id="edit-message" role="status">Both maps are linked.</span><button id="clear-towns" class="text-button" type="button"><i data-icon="clear"></i>Clear towns</button></div>
+			</article>
+			<article class="panel tracked" id="tracked-panel" hidden>
+				<div class="panel-heading"><i data-icon="radio"></i><h2>Watched workers</h2><span id="tracked-count" class="actor-count"></span></div>
+				<p class="tool-hint">Spawn a named worker, grant him gold and audit how he carries and spends it.</p>
+				<div class="setting"><label for="tracked-select">Watched worker</label><select id="tracked-select"></select></div>
+				<div class="tracked-actions">
+					<span class="tracked-field"><label for="tracked-gold">Spawn gold</label><input id="tracked-gold" type="number" min="0" step="10" value="50"></span>
+					<button id="tracked-spawn" class="text-button" type="button"><i data-icon="play"></i>Spawn at picked cell</button>
+				</div>
+				<div class="tracked-actions">
+					<span class="tracked-field"><label for="tracked-fund-amount">Grant gold</label><input id="tracked-fund-amount" type="number" min="0" step="10" value="50"></span>
+					<button id="tracked-fund" class="text-button" type="button"><i data-icon="up"></i>Grant</button>
+				</div>
+				<dl class="tracked-props" id="tracked-props"></dl>
+				<canvas id="tracked-purse" class="tracked-purse" aria-label="Watched worker purse over time"></canvas>
+				<ol id="tracked-events" class="tracked-events"></ol>
+			</article>
+			<article class="panel economy" id="economy-panel">
+				<div class="panel-heading"><i data-icon="pulse"></i><h2>Economy inspector</h2><span id="economy-copy-state" class="actor-count" role="status"></span><button id="economy-copy" class="text-button" type="button"><i data-icon="copy"></i>Copy all stats</button></div>
+				<p class="tool-hint">Map-wide averages for workers, gold, wages and prices. Red rows and the flags point at where the chain stalls. Copy all stats copies the full report, the watched workers, every actor and the 10-second history as plain text.</p>
+				<ul id="economy-flags" class="economy-flags"></ul>
+				<dl class="tracked-props economy-props" id="economy-props"></dl>
+			</article>
+		</section>
+		<footer class="footer"><span><i class="footer-mark"></i>Fluxfield <b>/</b> Particle transfer lab</span><span>Fixed timestep <b>·</b> 60 Hz</span></footer>
+	</main>
+
+	<dialog id="field-guide" aria-labelledby="guide-title"><div class="dialog-head"><div class="eyebrow"><span></span>Particle transfer reference</div><button id="close-guide" class="icon-button" type="button" aria-label="Close field guide"><i data-icon="close"></i></button></div><h2 id="guide-title">Field guide</h2>
+		<dl class="guide-notes"><dt><i class="factory-key"></i>Owned goods particles &amp; cost basis</dt><dd>Mines (<b id="source-note"></b> u/s base) and factories accumulate output in cell spawn buffers and launch a particle only when an uphill price gradient clears <b>selfPrice</b> (exact input + wage book cost plus margin). In transit, haulage cost accrues as <b>1 / conductance</b> over meadow, forest and desert, raising each particle's unit price color from green-gold toward violet.</dd>
+			<dt><i class="gold-key"></i>Arrival split &amp; Transport Company</dt><dd>Buyers admit arriving particles up to remaining buffer room. From the buyer's payment, accrued haulage settles to the map-wide <b>Transport Company</b> vault (which gently pays carrier dividends back to active town households) and the remainder credits directly to the particle's producing owner, realizing exact profit <b>amount · (buyerPrice − item.price)</b>. Gold mines start at <b id="gold-rate-note"></b> g/s.</dd>
+			<dt><i class="source-key"></i>Worker particles &amp; pools</dt><dd>Fresh workers leave town docks as walkers climbing the wage bid and join a firm's fresh-worker pool on arrival, where the entry wage is paid into their wallet. Worked shifts turn tired: tired walkers carry their wallets up the home appeal (broke ones chase cheap rest, funded ones rest quality) and rest at a town while it has room. Walkers queued at a full firm cool its wage; still walkers settle where they stand, rest slowly and may found a town.</dd>
+			<dt><i class="consumer-key"></i>Underwater consignments, towns &amp; land</dt><dd>If local price drops mid-flight, shipments re-steer toward hungrier buyers; at a local price peak below delivered cost, non-perishables wait in consignment while perishables spot-sell before spoiling. Starter towns bid <b id="start-price-note"></b> g/u for goods and use <b id="uptake-note"></b> goods/s, taxing worker rest by wealth class while land rest and town claims govern new settlement founding.</dd></dl>
+		<div class="ledger"><span>Conservation ledgers</span><p>Coal <b id="coal-made">0</b> mined − <b id="coal-burned">0</b> burned − <b id="coal-spoiled">0</b> spoiled = <b id="coal-held">0</b> total (<b id="coal-flight">0</b> in flight)</p><p>Goods <b id="goods-made">0</b> made − <b id="goods-eaten">0</b> eaten − <b id="goods-spoiled">0</b> spoiled = <b id="goods-held">0</b> total (<b id="goods-flight">0</b> in flight)</p><p>Labor <b id="labor-made">0</b> supplied − <b id="labor-used">0</b> worked = <b id="labor-held">0</b> total (<b id="labor-walking">0</b> walking)</p><p>Depleted <b id="depleted-made">0</b> tired − <b id="depleted-rested">0</b> settled = <b id="depleted-held">0</b> total (<b id="depleted-walking">0</b> walking)</p><p>Gold <b id="gold-seeded">0</b> seeded + <b id="gold-mined">0</b> mined = <b id="gold-held">0</b> total (<b id="transport-vault">0</b> haul vault · <b id="worker-carried">0</b> worker wallets)</p></div>
+		<p class="shortcuts"><kbd>Space</kbd> Play / pause <kbd>Esc</kbd> Dismiss</p>
+	</dialog>
+	<script src="simulation.js"></script>
+	<script src="steering.js"></script>
+	<script src="particles.js"></script>
+	<script src="worker-lifecycle.js"></script>
+	<script src="workers.js"></script>
+	<script src="track.js"></script>
+	<script src="tracked.js"></script>
+	<script src="actors.js"></script>
+	<script src="gold.js"></script>
+	<script src="workforce.js"></script>
+	<script src="land.js"></script>
+	<script src="settlement.js"></script>
+	<script src="diagnostics.js"></script>
+	<script src="fields.js"></script>
+	<script src="telemetry.js"></script>
+	<script src="economy-panel.js"></script>
+	<script src="app.js"></script>
+</body>
+</html>
