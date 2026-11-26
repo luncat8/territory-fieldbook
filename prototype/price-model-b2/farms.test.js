@@ -199,6 +199,45 @@ test('farms clear plots, drop seasonal harvests paid in gold, respect moisture/t
 	checkAllLedgers(model);
 });
 
+
+test('plot clearing conserves forest: a full wood cell holds felling and the plot is claimed only once cleared', () => {
+	const model = emptyMap(TERRAIN_MEADOW, 0);
+	const farm = economyIndex(24, 14), plot = economyIndex(24, 13);
+	assert.equal(model.setActor(farm, ECONOMY_FARM), true);
+	for (let dy = -FARM_RADIUS; dy <= FARM_RADIUS; dy++) {
+		for (let dx = -FARM_RADIUS; dx <= FARM_RADIUS; dx++) {
+			const c = economyIndex(24 + dx, 14 + dy);
+			if (c !== farm && c !== plot) model.land.waste[c] = 1; // every other cell in range is too disturbed to claim
+		}
+	}
+	model.settlements.forestCap[plot] = 1;
+	model.settlements.forest[plot] = 1;
+	model.wood[plot] = 0.99; // nearly full: only 0.01 wood fits
+	model.harvest.seededWood += 0.99;
+	model.labor[farm] = 1;
+	model.suppliedLabor += 1;
+	model.seededWorkers += 1;
+	model.farms.clearWork[farm] = 100; // enough visits that the single legal cell is hit many times
+	model.farms.stepFarm(farm, model.optimizer.recipes[ECONOMY_FARM]);
+
+	assert.ok(model.settlements.forest[plot] > 0.99, `unfelled forest stands (${model.settlements.forest[plot]})`);
+	closeTo(model.wood[plot], 1, 1e-9);
+	closeTo(model.settlements.forest[plot] + model.wood[plot] / WOOD_PER_FOREST, 1 + 0.99 / WOOD_PER_FOREST, 1e-9);
+	assert.equal(model.farms.plots[farm], 0, 'plot is not claimed while forest stands');
+	assert.equal(model.farms.plotOwner[plot], 0);
+
+	model.harvest.usedWood += model.wood[plot]; // buyers haul the cell's timber away
+	model.wood[plot] = 0;
+	model.settlements.forest[plot] = 0.5;
+	model.farms.clearWork[farm] = 100;
+	model.farms.stepFarm(farm, model.optimizer.recipes[ECONOMY_FARM]);
+
+	assert.equal(model.farms.plotOwner[plot], farm + 1, 'cleared cell becomes a plot');
+	assert.equal(model.settlements.forest[plot], 0);
+	closeTo(model.wood[plot], 0.5 * WOOD_PER_FOREST, 1e-9);
+	checkAllLedgers(model);
+});
+
 test('mixed wild forage and commercial farm food only bill gold on the commercial share', () => {
 	const model = emptyMap(TERRAIN_MEADOW, FOREST_TERRAIN);
 	model.land.moisture.fill(0.58);

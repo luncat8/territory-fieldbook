@@ -247,7 +247,8 @@ class LandFirms {
 		return !m.actors[c] && !this.plotOwner[c] && m.land.waste[c] + m.land.litter[c] < FARM_MAX_DISTURB;
 	}
 
-	// Clearing a farm plot never deletes forest to nothing: felled trees turn into wood on that cell.
+	// Clearing a farm plot never deletes forest to nothing: only trees whose wood fits the cell are
+	// felled, the rest stands until a later visit, and the plot is claimed only once cleared.
 	clearVisit(i) {
 		const m = this.model;
 		const span = 2 * FARM_RADIUS + 1;
@@ -256,15 +257,14 @@ class LandFirms {
 		if (x < 0 || y < 0 || x >= ECONOMY_WIDTH || y >= ECONOMY_HEIGHT) return;
 		const c = economyIndex(x, y);
 		if (!this.legalPlot(c)) return;
-		const felled = m.settlements.forest[c];
+		const felled = Math.min(m.settlements.forest[c], Math.max(0, 1 - m.wood[c]) / WOOD_PER_FOREST);
 		if (felled > 1e-9) {
-			const made = Math.min(1 - m.wood[c], felled * WOOD_PER_FOREST);
-			m.settlements.forest[c] = 0;
-			if (made > 1e-9) {
-				m.wood[c] += made;
-				m.harvest.harvestedWood += made;
-			}
+			const made = felled * WOOD_PER_FOREST;
+			m.settlements.forest[c] -= felled;
+			m.wood[c] += made;
+			m.harvest.harvestedWood += made;
 		}
+		if (m.settlements.forest[c] > 1e-9) return;
 		this.cropCost[i] += this.workCost[i];
 		this.workCost[i] = 0;
 		this.plotOwner[c] = i + 1;
