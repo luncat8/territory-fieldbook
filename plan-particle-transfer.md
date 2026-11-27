@@ -7,6 +7,14 @@ personal food bag. The pricing, pool, tax, land and settlement rules are the one
 already runs on a cell field; this engine swaps the transport substrate (Eulerian cell flow → Lagrangian SoA
 particles) under them. All numbers live in the owning source file; numbers below are starting values.
 
+## Monetary design extension (proposed)
+
+[Gold circulation and competing paper currencies](plan-gold-and-paper-money.md), sourced from
+[draft/gold-and-paper-money.md](draft/gold-and-paper-money.md), owns the proposed mine-only gold origin,
+wood-funded mine operation, transport/custody accounting and optional bank/town/faction note experiments.
+Its approval checkpoints precede implementation; the gold/vault rules below describe the existing baseline,
+not approval of paper money or indefinite town redistribution.
+
 ## Scope
 
 - Built and verified in a standalone lab `prototype/particle-transfer-b2/` on a B2 base, then ported to the game
