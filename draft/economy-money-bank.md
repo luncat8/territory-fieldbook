@@ -42,3 +42,58 @@ open generalized question : should output of firms placed on map if zero gradien
 deferred: to move money, owners and banks use transport object that moving to target buy roads graph, or by line unless roads implemented.
 
 
+
+
+
+there suggestions by llm looks out of design of cell and particle engines:
+
+>>Financing: owner capital → existing-gold bank loans → backed notes → credit notes.
+
+i dont recommend emit paper money from same gold amount. this is miss-concept of real economy and not worth to put it in game. if have gold - pay with gold. if want credit money more then gold exist - emit them if anyone want to accept it in exchange for real goods.
+
+>>Output: internal depot versus speculative map particles; reserved buyer-directed dispatch later.
+
+we dont have directed dispatch : cell and   particle transport engine  dont support such by design.
+
+---- answers:
+
+
+Starting gold: i recommend not hardcoded but get amount from reasonable daily amount to not have start transient issues. i.e. 1 gold per worker.
+
+Shared owners: all owned facilities share both cash and debt.
+
+
+use internal storage for factory output for products that appears internally like A+B=Out or A+work=Out. till demand price gradient appears. if nobody ask - we can even skip transportation calculation to save CPU for products that not yet have any demand.
+! important: this is about items amount. the prices demand field always should be emitted and faded to provide price gradients over map and be able to predict cost in any position with simple cells interpolations.
+
+also
+place on map harvested resources like forest -> logs at their cutting location.
+
+good feature worth to test (deferred): some products better stored in depot then on map, like food, so factory can keep them until good price.
+
+
+credit-note defaults/runs intended
+- allow some debt amount limit per firm.
+if factory negative - firm may sell it to bank.
+if firm cant pay workers and cant get more money or sold last facility - firm closed, all factories become ownership by bank, bank sell them.
+
+this lead us to important to have owners same as workers - any worker with money can buy or found firm. no money - we spawned firms like sawmill just by select random free worker from that free workforce around, who need to spawn new fab where free workers and resources exist without some paid initiation. as drafts said.
+
+saving settings - for prototypes saving interface is enough. for game - we will also implement whole save later.
+
+
+Suggested first implementation of scenario to test whole system:
+place gold site
+place free workers
+place some towns and other facilities
+free workers → firm owner + gold mine
+(gold mine can pay with gold itself) and set job demand gradient to hire workers
+free workers movement to gold mine by job demand gradient
+
+place forest
+place free workers
+free workers → firm owner + sawmill
+sawmill owner get money from bank to be able pay workers
+...
+bank-loan repayment
+
