@@ -8,20 +8,27 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'gold.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js'];
+const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'owners.js', 'gold.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js'];
 for (const file of SCRIPTS) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 
 function run(model, seconds) {
 	for (let n = 0; n < Math.round(seconds / ECONOMY_DT); n++) model.step();
 }
 
-test('clearing towns causes tired workers to gather, found a young town and build tier without minting gold', () => {
+test('a tired crowd beyond town reach founds a young town without minting gold', () => {
 	const model = new PriceEconomy();
 	run(model, 8);
 	model.clearTowns();
+	model.priceHome.fill(0);
+	model.priceRest.fill(0);
+	const camp = model.land.site.findIndex((quality, i) => quality > 0.8 && !model.actors[i] && !model.farms.plotOwner[i] && !model.forage.plotOwner[i]);
+	assert.ok(camp >= 0);
 	for (let w = 0; w < model.workers.count; w++) {
+		model.workers.cell[w] = camp;
+		model.workers.x[w] = camp % ECONOMY_WIDTH + 0.5;
+		model.workers.y[w] = Math.floor(camp / ECONOMY_WIDTH) + 0.5;
 		model.workers.tired[w] = 1;
-		model.workers.setState(w, WORKER_WALK_HOME);
+		model.workers.setState(w, WORKER_STILL);
 	}
 	const goldBefore = model.money.seeded + model.money.mined;
 	run(model, 45);
@@ -60,7 +67,10 @@ test('idle fresh workers found and complete a sweat-equity coal mine on a coal d
 	const factoryCell = economyIndex(9, 8);
 	model.setActor(townCell, ECONOMY_TOWN);
 	model.setActor(factoryCell, ECONOMY_FACTORY);
-	model.money.seedFirm(factoryCell);
+	model.money.payOwner(model.owners.ownerAt(factoryCell), 12);
+	model.money.seedWorker(24);
+	model.money.payOwner(model.owners.ownerAt(townCell), 12);
+	model.owners.allocate();
 	let depositCell = -1;
 	for (let y = 5; y <= 11 && depositCell < 0; y++) {
 		for (let x = 5; x <= 11 && depositCell < 0; x++) {
@@ -74,7 +84,7 @@ test('idle fresh workers found and complete a sweat-equity coal mine on a coal d
 		model.workers.spawn(dx, dy, WORKER_STILL, 0, 2, 0.95, true);
 		model.money.seedWorker(2);
 	}
-	run(model, 30);
+	run(model, 60);
 	assert.ok(model.founding.founded >= 1, `expected idle fresh workers to found at least 1 firm, got ${model.founding.founded}`);
 	assert.ok(model.founding.completed >= 1, `expected founders to finish sweat-equity construction, got ${model.founding.completed}`);
 	let mines = 0;

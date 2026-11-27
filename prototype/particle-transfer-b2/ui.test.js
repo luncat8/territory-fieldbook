@@ -71,7 +71,7 @@ const cardStub = { querySelector() { return makeNode('SPAN', '', 1); } };
 function bootLab() {
 	const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 	const scripts = Array.from(html.matchAll(/<script src="([^"]+)"><\/script>/g), m => m[1]);
-	assert.equal(scripts.length, 22);
+	assert.equal(scripts.length, 23);
 	const byId = new Map();
 	for (const [, id] of html.matchAll(/\bid="([^"]+)"/g)) {
 		const node = makeNode(id.includes('map') || id.includes('relief') ? 'CANVAS' : 'DIV', id);
@@ -123,7 +123,7 @@ function bootLab() {
 	return { byId, resources, tools, asides, frame: now => rafCb(now), copiedText: () => copied };
 }
 
-test('index.html boots all 22 scripts, renders every resource tab, places a Garden/Farm and updates watched worker', () => {
+test('index.html boots all 23 scripts, renders every resource tab, places a Garden/Farm and updates watched worker', () => {
 	const { byId, resources, tools, frame } = bootLab();
 	assert.match(byId.get('watched-worker').querySelector('[data-track-head]').textContent, /Watched worker #1/);
 	assert.match(byId.get('actor-count').textContent, /1 A/);
@@ -136,9 +136,10 @@ test('index.html boots all 22 scripts, renders every resource tab, places a Gard
 	gardenTool.click();
 	byId.get('resource-map').dispatch('click', { clientX: 260, clientY: 150 });
 	assert.match(byId.get('actor-count').textContent, /2 A/, 'Garden tool should place a second Monastery garden');
+	const farmsBefore = Number(byId.get('actor-count').textContent.match(/(\d+) H/)?.[1] || 0);
 	tools.find(b => b.dataset.tool === 'farm').click();
 	byId.get('resource-map').dispatch('click', { clientX: 350, clientY: 150 });
-	assert.match(byId.get('actor-count').textContent, /1 H/, 'Farm tool should place a commercial farm');
+	assert.equal(Number(byId.get('actor-count').textContent.match(/(\d+) H/)?.[1]), farmsBefore + 1, 'Farm tool should place one more commercial farm');
 	byId.get('clear-towns').click();
 	frame(1250);
 	assert.ok(!byId.get('gold-held').textContent.includes('NaN'));

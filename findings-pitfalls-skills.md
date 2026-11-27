@@ -566,3 +566,18 @@ Carried over from the particle-transfer lab; these govern the persistent-worker 
 - Clipboard flashes run in a promise `.then`; assert on the copied text, not on the ✓ glyph.
 - Moving a lab to `prototype/archive/` must grep `index.html` for its `<script src>`: the game shared
   `water-humidity/{terrain,simulation}.js` and boot failed with ENOENT until the paths followed the move.
+
+
+## gold-scale and owner-account invariants
+
+- A diffused wage field is a set of competing buyer signals, not the employer’s executable quote. Paying
+  the field at check-in makes a poor site promise a rich rival’s wage and silently manufactures bad debt.
+  Use the local employer quote for settlement; keep the field for discovery and movement.
+- Removing a rest-price minimum is insufficient for a small-money economy: absolute hauling charges,
+  inventory write-down steps and gradient speed knees can preserve the same hidden nominal barrier.
+  Price gradients need relative normalization; quoted hauling and book write-downs must scale with live value.
+- Stable IDs are required on both sides of settlement. A cargo producer cell or wage-debtor cell reused by
+  another facility must not inherit receipts or erase claims. Count owner cash once, never once per site;
+  spending envelopes are limits, not extra assets. Retired/estate accounts stay in the conservation sum.
+- A static lab preview must serve the shared parent directory too. Serving only the lab folder breaks its
+  `../shared/` scripts/styles; redirect the preview root to the lab path while serving the repository root.

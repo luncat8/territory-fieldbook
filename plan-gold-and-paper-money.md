@@ -87,13 +87,15 @@ travel, an unpaid wage claim, worker splitting, founding, ordinary actor placeme
 ### Starting gold is a scenario amount, not a hardcoded grant
 
 Starting gold is derived from a reasonable daily amount rather than a fixed constant, so the opening
-transient is not distorted. Default: **1 gold per worker** (`START_GOLD_PER_WORKER`), recorded once at
+transient is not distorted. Default: **1 gold per worker** (`INITIAL_GOLD_PER_WORKER`), recorded once at
 scenario initialization as `initialHistoricalGold` and allocated to named starting owners and the bank
 capital account. It is historical funding, never recurring income, never per-placement minting.
 
-- The total is `initialHistoricalGold = START_GOLD_PER_WORKER × workerCount` at scene setup.
-- Allocation is explicit: named owners receive founding capital; the bank receives lendable equity.
-  Worker wallets start at zero unless a scenario assigns them.
+- The total is `initialHistoricalGold = INITIAL_GOLD_PER_WORKER × workerCount` at scene setup.
+- Allocation is explicit: named owners receive founding capital; a bank scenario assigns lendable equity.
+  The gold-only reference scene assigns half to worker wallets and half equally across initial owner/town
+  accounts. This is one scenario allocation, not a grant on facility creation. Every later investment or
+  purchase transfers existing gold. The zero-start control allocates nothing.
 - **Workers start with full food in the particle engine.** The opening transient must not be a starvation
   cycle: each seeded worker begins with a full `food` bag, so the first job/walk/rest cycle is not spent
   foraging or starving. Food is a real stock, not money; funding the bag is a scenario real-asset grant,
@@ -103,6 +105,25 @@ capital account. It is historical funding, never recurring income, never per-pla
 - A strict zero-start scene remains available as a diagnostic: all accounts at zero, founders contribute
   sweat equity and locally gathered construction wood, or the scene starts with one built mine. Even there,
   seeded workers begin with full food so the bootstrap measures work/financing, not hunger.
+
+### Adaptive prices, independent of starting gold
+
+Initial quotes prevent startup singularities and spikes; they are not permanent price anchors. Never set a
+price-level multiplier from `INITIAL_GOLD_PER_WORKER`, and never require a minimum gold supply by retaining
+absolute rest, food, wage or sell-price floors in the derived economy. More or less gold changes nominal
+prices through current spendable balances, observed wallets, inventories and competing demand.
+
+- Town quotes follow smoothed current worker wealth, including zero, without restoring a seeded-wallet floor.
+  Bazaar rations can sell below historical acquisition cost; cost basis is accounting, not a guaranteed bid.
+- Ordinary firms split output value over joint inputs and cap quotes by the facility's spendable envelope.
+  Diffused competing buyer bids are estimates, not executable supplier asks that may veto every input bid.
+- Express hauling charges relative to live item value and use relative price gradients for movement, so
+  changing monetary units alone cannot change transport speed or create a nominal transport-cost barrier.
+- Sell floors follow carried cost, with proportional inventory write-downs recorded separately from gold.
+  Startup cost must not strand inventory forever merely because nominal prices have fallen.
+- Validate small-money settlement and circulation separately from physical throughput: geography, workforce,
+  capital distribution and a growing mined supply can change real production. Any positive representable
+  gold amount should permit trade; it does not promise identical output or remove physical bottlenecks.
 
 ### Mine funds and payouts
 
@@ -179,6 +200,12 @@ Do not give a portfolio each facility's full cash as an independent buying budge
   attribute use and results. Limited-liability subsidiaries are a later alternative, not implicit protection.
 - Deleting/replacing a facility preserves the owner cash, debts, earned wage claims and cargo payee IDs.
   Ownership transfer does not rewrite existing contracts; explicit stock/contract transfers need atomic terms.
+- Owner accounts without a living proprietor remain estates: their cash, facilities and wage debts persist;
+  no new worker identity inherits them implicitly. Settled claims of dead workers enter the explicitly labeled
+  custody/vault control until transport and custody are separated in T1.
+- A facility-only sale transfers the site and its local stock at an explicit worker-wallet price; the seller
+  retains cash, debts and existing cargo contracts. Whole-business acquisition with liability transfer is a
+  separate atomic contract, not an implicit side effect of editing a site.
 - New owner starts at zero. Startup funding records lender/investor, currency, amount and repayment terms.
   No approval or insufficient funds means pending/unfunded construction, not a hidden grant.
 - O2 reinvestment can finance a second site only from uncommitted owner cash or an approved loan. Record
@@ -615,7 +642,7 @@ invariant errors. Judge trade, welfare, inflation and failure exposure together;
 ### Automated acceptance tests (introduced with owning slices)
 
 - Conservation of physical gold per tick, nonnegative balances, bounded extraction and no item-gold spawning.
-- Scenario starting gold equals `START_GOLD_PER_WORKER × workerCount`, allocated once; ordinary new
+- Scenario starting gold equals `INITIAL_GOLD_PER_WORKER × workerCount`, allocated once; ordinary new
   actor/founder never seeds; placement mints nothing.
 - Stable owner/facility IDs across cell reuse; facilities of one owner share a bounded cash budget and
   owner-level debt; owner cash, debt and wage/cargo payees survive facility removal; account and overlay
@@ -696,7 +723,7 @@ that draft and are no longer open:
 Global recommendation: one accounting/settlement kernel and orthogonal small policy presets, not separate
 copies of the economy for every model. Freeze production, geography and transport when comparing monetary
 rules. First review the end-to-end mine → wages/wood → town → supplier → bank-repayment loop; only then add
-competing issuers, adaptive bank policy or main-game influence. No implementation is authorized by this plan.
+competing issuers, adaptive bank policy or main-game influence. Implementation is sliced by the gates in M.7; issuer work follows the gold-only baseline.
 
 ## M.10 Prototype-to-game boundary
 

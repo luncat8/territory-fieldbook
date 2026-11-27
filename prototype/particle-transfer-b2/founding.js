@@ -46,6 +46,30 @@ class FirmFounding {
 		return this.building[i] !== 0;
 	}
 
+	hasProject(workerId) {
+		const { owners } = this.model;
+		for (let id = 1; id < owners.facilities.length; id++) {
+			const f = owners.facilities[id];
+			if (f.cell >= 0 && this.building[f.cell] && owners.accounts[f.owner].workerId === workerId) return true;
+		}
+		return false;
+	}
+
+	founderId(cell) {
+		const { workers } = this.model;
+		let best = -1, rank = Infinity;
+		for (let w = 0; w < workers.count; w++) {
+			if (workers.state[w] !== WORKER_STILL || workers.tired[w] > 1e-6) continue;
+			const d = Math.max(Math.abs(torusDelta(workers.x[w] - cell % ECONOMY_WIDTH - 0.5, ECONOMY_WIDTH)), Math.abs(torusDelta(workers.y[w] - Math.floor(cell / ECONOMY_WIDTH) - 0.5, ECONOMY_HEIGHT)));
+			if (d > FIRM_SEARCH_RADIUS) continue;
+			const draw = Math.imul(workers.id[w] ^ Math.imul(cell + 1, 2246822519) ^ Math.imul(this.ticks + 1, 3266489917), 2654435761) >>> 0;
+			if (draw >= rank) continue;
+			rank = draw;
+			best = workers.id[w];
+		}
+		return best;
+	}
+
 	step() {
 		const m = this.model, { workers } = m;
 		this.ticks++;
@@ -110,7 +134,7 @@ class FirmFounding {
 	scanAndFound(anchor) {
 		const m = this.model, { actors, land, forage } = m;
 		const ax = anchor % ECONOMY_WIDTH, ay = Math.floor(anchor / ECONOMY_WIDTH);
-		let bestCell = -1, bestKind = 0, bestValue = 0.03;
+		let bestCell = -1, bestKind = 0, bestValue = 0;
 		for (let y = ay - FIRM_SEARCH_RADIUS, yEnd = ay + FIRM_SEARCH_RADIUS; y <= yEnd; y++) {
 			const wy = MAP_WRAP ? wrapY(y) : y;
 			if (wy < 0 || wy >= ECONOMY_HEIGHT) continue;
@@ -119,23 +143,26 @@ class FirmFounding {
 				if (wx < 0 || wx >= ECONOMY_WIDTH) continue;
 				const i = economyIndex(wx, wy);
 				if (actors[i] || land.terrain[i] === TERRAIN_WATER || forage.plotOwner[i] || m.farms.plotOwner[i]) continue;
-				if (land.claim[i] > 0.72) continue;
-				if (m.priceFood[i] > FARM_MIN_PRICE && m.farms.canSite(i)) {
+				if (land.claim[i] > 0.72 || this.founderId(i) < 0) continue;
+				if (m.priceFood[i] > 0 && m.farms.canSite(i)) {
 					const value = m.priceFood[i] * FARM_YIELD / FARM_SEASON_SECONDS;
 					if (value > bestValue) { bestValue = value; bestCell = i; bestKind = ECONOMY_FARM; }
 				}
-				if (this.deposit[i] && m.priceCoal[i] > PRICE_GATE * 2) {
+				if (this.deposit[i] && m.priceCoal[i] > 0) {
 					const mineVal = m.priceCoal[i] * SOURCE_RATE - m.priceLabor[i] * SOURCE_RATE * MINE_LABOR * 0.5;
 					if (mineVal > bestValue) { bestValue = mineVal; bestCell = i; bestKind = ECONOMY_MINE; }
 				}
-				if (m.priceCoal[i] > 0.08 && m.priceGoods[i] > 0.25) {
+				if (m.priceCoal[i] > 0 && m.priceGoods[i] > 0) {
 					const facVal = (m.priceGoods[i] * FACTORY_YIELD - m.priceCoal[i] * 1.05) * FACTORY_RATE;
 					if (facVal > bestValue) { bestValue = facVal; bestCell = i; bestKind = ECONOMY_FACTORY; }
 				}
 			}
 		}
 		if (bestCell < 0) return;
+		const founder = this.founderId(bestCell);
+		if (founder < 0) return;
 		actors[bestCell] = bestKind;
+		m.owners.found(bestCell, founder);
 		m.scale[bestCell] = 0.7;
 		m.workLoad[bestCell] = m.profit[bestCell] = 0;
 		this.building[bestCell] = 1;

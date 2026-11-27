@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'gold.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js'];
+const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'owners.js', 'gold.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js'];
 for (const file of SCRIPTS) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 
 function run(model, seconds) {
@@ -38,7 +38,10 @@ test('firm prepays shift wage at entry and erasing firm mid-shift conserves gold
 	const mineCell = economyIndex(14, 14);
 	model.setActor(townCell, ECONOMY_TOWN);
 	model.setActor(mineCell, ECONOMY_MINE);
-	model.money.seedFirm(mineCell);
+	model.money.payOwner(model.owners.ownerAt(mineCell), 12);
+	model.money.seedWorker(24);
+	model.money.payOwner(model.owners.ownerAt(townCell), 12);
+	model.owners.allocate();
 	for (let n = 0; n < 80; n++) model.updatePrices();
 	const w = model.workers.spawn(14.5, 14.5, WORKER_WALK_JOB, 0, 0, 0.9, true);
 	assert.ok(w >= 0);
@@ -47,7 +50,7 @@ test('firm prepays shift wage at entry and erasing firm mid-shift conserves gold
 	assert.ok(model.workers.gold[w] > 0, 'worker should receive prepaid shift wage at entry');
 	const totalBeforeErase = model.money.total();
 	model.setActor(mineCell, 0);
-	assert.equal(model.money.owedWage[mineCell], 0);
+	assert.equal(model.money.wageDebt(mineCell), 0);
 	assert.equal(model.workers.state[w], WORKER_STILL);
 	assert.ok(Math.abs(model.money.total() - totalBeforeErase) < 1e-9, 'erasing firm mid-shift must conserve gold');
 });

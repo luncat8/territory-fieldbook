@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'gold.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js'];
+const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'owners.js', 'gold.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js'];
 for (const file of SCRIPTS) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 
 const sum = values => values.reduce((total, value) => total + value, 0);
@@ -22,8 +22,8 @@ function checkLedgers(model) {
 	const { goodsPool, workers, money } = model;
 	assert.ok(model.coal.every(v => Number.isFinite(v) && v >= 0));
 	assert.ok(model.goods.every(v => Number.isFinite(v) && v >= 0));
-	assert.ok(money.purse.every(v => Number.isFinite(v) && v >= -1e-12));
-	assert.ok(money.owedWage.every(v => Number.isFinite(v) && v >= -1e-12));
+	assert.ok(model.owners.accounts.slice(1).every(a => Number.isFinite(a.cash) && a.cash >= -1e-12));
+	assert.ok(model.owners.accounts.slice(1).every(a => Number.isFinite(a.wageDebt) && a.wageDebt >= -1e-12));
 	assert.ok(Number.isFinite(money.vault) && money.vault >= -1e-12);
 	assert.ok(goodsPool.maxProfitError <= 1e-11, `profit identity error too large: ${goodsPool.maxProfitError}`);
 	for (let p = 0; p < goodsPool.count; p++) {
@@ -53,12 +53,12 @@ function checkLedgers(model) {
 
 test('reference chain sustains particle throughput and conserves mass, people, tired and gold', () => {
 	const model = new PriceEconomy();
-	run(model, 45);
+	run(model, 90);
 	checkLedgers(model);
 	assert.ok(model.producedCoal > 8, `expected coal mined > 8, got ${model.producedCoal}`);
 	assert.ok(model.producedGoods > 4, `expected goods made > 4, got ${model.producedGoods}`);
 	assert.ok(model.consumedGoods > 3, `expected goods eaten > 3, got ${model.consumedGoods}`);
-	assert.ok(model.money.wages > 20, `expected wages > 20, got ${model.money.wages}`);
+	assert.ok(model.money.wages > 4, `expected wages > 4, got ${model.money.wages}`);
 	assert.ok(model.money.transportEarned > 0, 'expected positive Transport Company haul revenue');
 });
 
@@ -101,6 +101,9 @@ test('goods particles pass through a saturated buyer toward a hungry downstream 
 	const sender = economyIndex(19, 12);
 	model.setActor(fullTown, ECONOMY_TOWN);
 	model.setActor(hungryTown, ECONOMY_TOWN);
+	model.money.payOwner(model.owners.ownerAt(hungryTown), 12);
+	model.money.seedWorker(12);
+	model.owners.allocate();
 	model.setActor(sender, ECONOMY_FACTORY);
 	model.goods[fullTown] = model.townGoodsTarget(fullTown) * 2.5;
 	model.producedGoods += model.goods[fullTown];
@@ -122,11 +125,14 @@ test('over-hauled goods particle consigns into a hungry town after CONSIGN_WAIT_
 	const town = economyIndex(24, 14);
 	const sender = economyIndex(22, 14);
 	model.setActor(town, ECONOMY_TOWN);
+	model.money.payOwner(model.owners.ownerAt(town), 12);
+	model.money.seedWorker(12);
+	model.owners.allocate();
 	model.setActor(sender, ECONOMY_FACTORY);
 	for (let n = 0; n < 60; n++) model.updatePrices();
 	assert.equal(model.goodsPool.emit(ITEM_GOODS, town, 0.08, 0.5), true);
 	const p = model.goodsPool.count - 1;
-	model.goodsPool.owner[p] = sender;
+	model.goodsPool.owner[p] = model.owners.ownerAt(sender);
 	model.goodsPool.transportCost[p] = 12;
 	model.producedGoods += 0.08;
 	run(model, 5);

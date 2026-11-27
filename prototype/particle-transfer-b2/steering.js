@@ -31,12 +31,13 @@ class Steering {
 		const g = this.grad, cond = this.conductance, base = i * DEGREE;
 		const here = alt ? field[i] + mix * (alt[i] - field[i]) : field[i];
 		const cut = Math.max(here, floor);
-		let gx = 0, gy = 0, bestSlope = 0, bestPull = 0, bestDir = -1;
+		let gx = 0, gy = 0, bestSlope = 0, bestPull = 0, bestDir = -1, level = Math.max(here, floor);
 		for (let k = 0; k < DEGREE; k++) {
 			const c = cond[base + k];
 			if (c <= 0) continue;
 			const to = NEIGHBORS[base + k];
 			const there = alt ? field[to] + mix * (alt[to] - field[to]) : field[to];
+			level = Math.max(level, there);
 			if (there <= cut) continue;
 			const dir = DIRECTIONS[k];
 			const pull = (there - here) * dir.inv;
@@ -49,12 +50,14 @@ class Steering {
 				bestDir = k;
 			}
 		}
-		g.gx = gx;
-		g.gy = gy;
-		g.bestSlope = bestSlope;
-		g.bestPull = bestPull;
+		// Relative gradients keep a denomination change from changing transport speed.
+		const inv = level > 0 ? 1 / level : 0;
+		g.gx = gx * inv;
+		g.gy = gy * inv;
+		g.bestSlope = bestSlope * inv;
+		g.bestPull = bestPull * inv;
 		g.bestDir = bestDir;
-		return bestSlope;
+		return g.bestSlope;
 	}
 
 	sampleForage(forage, i) {

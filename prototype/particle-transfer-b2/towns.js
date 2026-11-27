@@ -2,6 +2,7 @@
 // Edit for: service prices, input bids and Cheap/Med/Rich strategies; never worker lifecycle.
 'use strict';
 
+const WALLET_PRICE_REFERENCE = 8;
 const BASE_REST_FEE = 1.05;
 const BASE_RATION_FEE = 0.45;
 const ROOM_REST_BASE = 0.22;
@@ -44,7 +45,7 @@ class TownRules {
 	initTown(i) {
 		this.model.food[i] = 0;
 		this.revenueTick[i] = 0;
-		this.model.localWealth[i] = SEED_WORKER_GOLD;
+		this.model.localWealth[i] = this.model.workers.count ? this.walletMean() : WALLET_PRICE_REFERENCE;
 	}
 
 	clearTown(i) {
@@ -58,7 +59,7 @@ class TownRules {
 	}
 
 	observeWallet(i, perWorkerGold) {
-		const cur = this.model.localWealth[i] || SEED_WORKER_GOLD;
+		const cur = this.model.localWealth[i];
 		this.model.localWealth[i] = cur + 0.18 * (perWorkerGold - cur);
 	}
 
@@ -76,7 +77,7 @@ class TownRules {
 	drive(i) {
 		const m = this.model;
 		if (!m.derived) return 0;
-		const ref = Math.max(0.05, this.demandPop(i) * TOWN_GOODS_NEED * Math.max(0.5, m.priceGoods[i]));
+		const ref = Math.max(1e-12, this.demandPop(i) * TOWN_GOODS_NEED * m.priceGoods[i]);
 		return Math.tanh(m.profit[i] / ref);
 	}
 
@@ -93,11 +94,13 @@ class TownRules {
 		return Math.max(0.25, this.popPlan(i) * TOWN_GOODS_NEED * BUFFER_SECONDS);
 	}
 
+	walletMean() {
+		const { workers } = this.model;
+		return workers.count ? workers.totalGold() / workers.totalAmount() : 0;
+	}
+
 	wealthRatio(i) {
-		const m = this.model;
-		if (!m.derived) return 1;
-		const w = m.localWealth[i] > 1e-6 ? m.localWealth[i] : SEED_WORKER_GOLD;
-		return Math.max(0.45, w / SEED_WORKER_GOLD);
+		return this.model.derived ? this.model.localWealth[i] / WALLET_PRICE_REFERENCE : 1;
 	}
 
 	taxRate(i) {
@@ -138,15 +141,15 @@ class TownRules {
 	foodTarget(i) { return Math.max(2, this.demandPop(i) * 0.5); }
 
 	foodFee(i) {
-		return Math.max(BASE_RATION_FEE, this.model.unitCostAt(ITEM_FOOD, i) * 1.15);
+		return BASE_RATION_FEE * this.wealthRatio(i);
 	}
 
 	foodBid(i) {
 		const m = this.model;
 		const target = this.foodTarget(i);
 		const present = m.food[i] + m.goodsPool.buyerQueue[ITEM_FOOD][i];
-		const cool = m.money.townCool(i, target * BASE_RATION_FEE);
-		return optimalBid(BASE_RATION_FEE * 2, present, target, cool, m.suppression);
+		const cool = m.money.townCool(i, target * this.foodFee(i));
+		return optimalBid(this.foodFee(i) * 2, present, target, cool, m.suppression);
 	}
 
 	goodsBid(i) {
@@ -176,7 +179,7 @@ class TownRules {
 		const bid = Number.isFinite(cool)
 			? m.settlements.bidFactor(i) * optimalBid((WOOD_BID_VALUE / WOOD_USE) * tax, m.wood[i] + m.goodsPool.buyerQueue[ITEM_WOOD][i], m.settlements.woodTarget(i), cool, m.suppression, sh)
 			: 0;
-		return m.settlements.isYoungTown(i) ? Math.max(YOUNG_PULL * need, bid) : bid;
+		return m.settlements.isYoungTown(i) ? Math.max(YOUNG_PULL * this.wealthRatio(i) * need, bid) : bid;
 	}
 
 	// Funded workers refill their food bag from the town's food stock; broke workers or unsupplied towns cannot, triggering FORAGE.
@@ -266,14 +269,16 @@ class TownRules {
 			if (cls === WEALTH_CHEAP && waitOcc > 0.6) target = Math.max(target, Math.min(popCap, rooms + 2));
 			target = Math.max(target, rooms);
 		}
-		if (m.vacantTicks[i] > VACANT_SECONDS || m.money.purse[i] < 1e-4) target = Math.min(target, rooms * 0.985);
+		if (m.vacantTicks[i] > VACANT_SECONDS || m.money.cash(i) < 1e-4) target = Math.min(target, rooms * 0.985);
 		return Math.min(popCap, Math.max(POP_BASE, target));
 	}
 
 	adaptTowns() {
 		const m = this.model;
+		const wallets = this.walletMean();
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			if (m.actors[i] !== ECONOMY_TOWN) continue;
+			m.localWealth[i] += this.wealthBlend * (wallets - m.localWealth[i]);
 			m.profit[i] += this.profitBlend * (m.earned[i] - m.profit[i]);
 			const goalRooms = this.roomTarget(i);
 			m.rooms[i] = Math.min(POP_MAX, Math.max(POP_BASE, m.rooms[i] + ECONOMY_DT * POP_RATE * (goalRooms - m.rooms[i])));

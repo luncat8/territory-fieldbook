@@ -25,6 +25,7 @@ class GoodsPool {
 		this.factoryCost = new Float64Array(MAX_GOODS_PARTICLES);
 		this.transportCost = new Float64Array(MAX_GOODS_PARTICLES);
 		this.owner = new Int32Array(MAX_GOODS_PARTICLES);
+		this.facility = new Int32Array(MAX_GOODS_PARTICLES);
 		this.waitTicks = new Uint16Array(MAX_GOODS_PARTICLES);
 		this.arriving = new Uint8Array(MAX_GOODS_PARTICLES);
 		this.spawnAmount = Array.from({ length: 6 }, () => new Float64Array(ECONOMY_SIZE));
@@ -38,6 +39,7 @@ class GoodsPool {
 		this.room = new Float64Array(ECONOMY_SIZE);
 		this.accept = new Float64Array(ECONOMY_SIZE);
 		this.spoiled = new Float64Array(6);
+		this.writtenDown = new Float64Array(6);
 		this.spoilShare = [0, 1 - Math.exp(-ECONOMY_DT * SPOIL_GOODS), 0, 0, 1 - Math.exp(-ECONOMY_DT * 0.012), 0];
 		this.queueBlend = 1 - Math.exp(-ECONOMY_DT * 3);
 		this.maxProfitError = 0;
@@ -55,7 +57,7 @@ class GoodsPool {
 			this.cap[k].fill(0);
 			this.sellFloor[k].fill(0);
 			this.buyerQueue[k].fill(0);
-			this.spoiled[k] = 0;
+			this.spoiled[k] = this.writtenDown[k] = 0;
 		}
 		this.maxProfitError = 0;
 		this.arrivals = 0;
@@ -84,7 +86,7 @@ class GoodsPool {
 		this.spoiled[ITEM_WOOD] += this.model.wood[cell];
 	}
 
-	emit(kind, cell, amt, cost) {
+	emit(kind, cell, amt, cost, source = cell) {
 		if (this.count >= MAX_GOODS_PARTICLES || amt <= 1e-12) {
 			this.spoiled[kind] += amt;
 			return false;
@@ -98,7 +100,8 @@ class GoodsPool {
 		this.amount[idx] = amt;
 		this.factoryCost[idx] = cost;
 		this.transportCost[idx] = 0;
-		this.owner[idx] = cell;
+		this.owner[idx] = this.model.owners.ownerAt(source);
+		this.facility[idx] = this.model.owners.cell[source];
 		this.waitTicks[idx] = 0;
 		this.arriving[idx] = 0;
 		return true;
@@ -116,6 +119,7 @@ class GoodsPool {
 		this.factoryCost[idx] = this.factoryCost[last];
 		this.transportCost[idx] = this.transportCost[last];
 		this.owner[idx] = this.owner[last];
+		this.facility[idx] = this.facility[last];
 		this.waitTicks[idx] = this.waitTicks[last];
 		this.arriving[idx] = this.arriving[last];
 	}
@@ -154,6 +158,9 @@ class GoodsPool {
 		const { steering } = this.model;
 		for (const k of GOODS_ITEMS) {
 			const price = this.model.pricesAt(k);
+			let demand = false;
+			for (let i = 0; i < ECONOMY_SIZE; i++) if (price[i] > 0) { demand = true; break; }
+			if (!demand) continue;
 			const sAmt = this.spawnAmount[k], sCost = this.spawnCost[k], sIdle = this.spawnIdle[k];
 			for (let i = 0; i < ECONOMY_SIZE; i++) {
 				const avail = sAmt[i];
@@ -161,7 +168,7 @@ class GoodsPool {
 				if (sIdle[i] < 60000) sIdle[i]++;
 				const unitCost = sCost[i] / avail;
 				const gate = k === ITEM_WOOD ? SAWMILL_GATE : k === ITEM_COAL ? PRICE_GATE : 0;
-				const floor = this.model.derived ? Math.max(gate, unitCost * (1 + SELL_MARGIN)) : gate;
+				const floor = this.model.derived ? unitCost * (1 + SELL_MARGIN) : gate;
 				this.sellFloor[k][i] = floor;
 				const batch = avail >= SPAWN_UNIT ? SPAWN_UNIT : avail >= SPAWN_DUST && sIdle[i] >= SPAWN_FLUSH_TICKS ? avail : 0;
 				if (batch <= 0 || this.count >= MAX_GOODS_PARTICLES) continue;
@@ -176,7 +183,11 @@ class GoodsPool {
 						if (to >= 0 && price[to] > best) best = price[to];
 					}
 					const over = unitCost - Math.min(unitCost, best);
-					if (over > 0) sCost[i] = Math.max(0, sCost[i] - Math.min(over, COST_RELAX * ECONOMY_DT) * avail);
+					if (over > 0) {
+						const loss = over * (1 - Math.exp(-COST_RELAX * ECONOMY_DT)) * avail;
+						sCost[i] -= loss;
+						this.writtenDown[k] += loss;
+					}
 					continue;
 				}
 				const share = Math.min(1, batch / avail);
@@ -225,7 +236,7 @@ class GoodsPool {
 			const ask = this.model.derived ? this.unitPrice(p) : 0;
 			if (this.isBuyer(k, cell)) {
 				const bid = priceField[cell];
-				const hasRoom = this.cap[k][cell] - this.model.stocks[k][cell] > 1e-9 && this.model.money.purse[cell] > 1e-9;
+				const hasRoom = this.cap[k][cell] - this.model.stocks[k][cell] > 1e-9 && this.model.money.cash(cell) > 1e-9;
 				if (hasRoom && bid + 1e-6 >= ask) {
 					this.arriving[p] = 1;
 					this.waitTicks[p] = 0;
@@ -264,7 +275,7 @@ class GoodsPool {
 		this.y[p] = steering.out.y;
 		this.hx[p] = steering.out.hx;
 		this.hy[p] = steering.out.hy;
-		if (this.model.decay) this.transportCost[p] += HAUL_COST_RATE * this.amount[p] * steering.out.effort;
+		if (this.model.decay) this.transportCost[p] += HAUL_COST_RATE * this.model.pricesAt(this.kind[p])[steering.out.cell] * this.amount[p] * steering.out.effort;
 		this.waitTicks[p] = 0;
 	}
 
@@ -290,7 +301,7 @@ class GoodsPool {
 			}
 			const unitBid = priceField[i];
 			const roomShare = Math.min(1, room[i] / req);
-			const cashShare = unitBid > 1e-12 ? Math.min(1, money.purse[i] / (req * unitBid)) : 1;
+			const cashShare = unitBid > 1e-12 ? Math.min(1, money.cash(i) / (req * unitBid)) : 1;
 			acc[i] = Math.max(0, Math.min(roomShare, cashShare));
 			const rejected = req * (1 - acc[i]);
 			queue[i] += this.queueBlend * (rejected - queue[i]);
@@ -299,7 +310,8 @@ class GoodsPool {
 		while (p < this.count) {
 			if (!this.arriving[p] || this.kind[p] !== kind) { p++; continue; }
 			const cell = economyIndex(Math.floor(this.x[p]), Math.floor(this.y[p]));
-			const share = acc[cell];
+			const bid = priceField[cell];
+			const share = Math.min(acc[cell], bid > 0 ? money.cash(cell) / (this.amount[p] * bid) : 0);
 			if (share <= 1e-12) { p++; continue; }
 			const all = share >= 1 - 1e-11;
 			const accepted = all ? this.amount[p] : this.amount[p] * share;
@@ -307,10 +319,8 @@ class GoodsPool {
 			const trSlice = all ? this.transportCost[p] : this.transportCost[p] * share;
 			const itemUnitPrice = (facSlice + trSlice) / accepted;
 			const buyerUnitPrice = priceField[cell];
-			const buyerPay = Math.min(money.purse[cell], accepted * buyerUnitPrice);
+			const buyerPay = money.spend(cell, accepted * buyerUnitPrice);
 			const effectiveUnitBid = buyerPay / accepted;
-			money.purse[cell] -= buyerPay;
-			if (money.purse[cell] < 1e-14) money.purse[cell] = 0;
 			const transportPaid = Math.min(buyerPay, trSlice);
 			const factoryRevenue = buyerPay - transportPaid;
 			money.payTransport(transportPaid);
@@ -321,7 +331,8 @@ class GoodsPool {
 			if (err > this.maxProfitError) this.maxProfitError = err;
 			if (realizedProfit < -1e-9) this.underwaterLosses++;
 			this.arrivals++;
-			if (this.model.actors[this.owner[p]]) this.model.earned[this.owner[p]] += realizedProfit / ECONOMY_DT;
+			const source = this.model.owners.facilities[this.facility[p]];
+			if (source && source.cell >= 0 && source.owner === this.owner[p]) this.model.earned[source.cell] += realizedProfit / ECONOMY_DT;
 			stock[cell] += accepted;
 			costBuf[cell] += buyerPay;
 			if (all || this.amount[p] - accepted <= 1e-11) {

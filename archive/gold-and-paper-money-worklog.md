@@ -42,3 +42,17 @@
 - decisions: prototype ends at the M.7 end-to-end gate (G1+O2+D1+G2+B0/P1); then port the kernel to `map-money-particle.js`, flip the default, archive the lab.
 - validation: documentation-only change; `git diff --check` on touched Markdown; no runtime changes or simulation reruns.
 - next: run the money prototype to the M.7 gate, then port the kernel to the game.
+
+
+## G1 / O2 foundation / D1 · Gold-only ownership and adaptive quotes, 2026-11-27
+- review: prior design correctly preserved worker IDs but runtime still minted on town placement and keyed debtor/payee identity by reusable cells.
+- changed: particle `owners.js`, `gold.js`, `simulation.js` — stable owner/facility accounts, shared budgets/wage debt, scenario capital (default 1 g/worker), durable claims/estates; no placement grants or on-site bonuses.
+- changed: `actors.js`, `towns.js`, `workforce.js`, `steering.js` — live-wallet quotes without nominal floors, cash-bounded joint bids, employer-quote wages, relative gradients; no starting-gold price peg.
+- changed: `goods.js`, `farms.js`, `founding.js`, `workers.js`, `settlement.js` — durable cargo payees, relative haul/write-down costs, demand-gated depots, cut-site logs, worker proprietors and full initial food.
+- changed: lab controls/diagnostics — reset gold/worker input, shared/retired account totals, owner/facility IDs and copyable allocation/debt rows.
+- changed: `owners-economy.test.js` and existing fixtures — 16 new funding/identity/budget/price-scale/depot tests; fixtures explicitly capitalize sites instead of relying on placement grants.
+- decisions: initial capital is half worker wallets, half starting owner/town accounts; facility-only sales retain seller cash/debts/contracts; absent proprietors retain estates. O2 loans/debt limits and T1 custody remain unimplemented.
+- validation: all lab JS syntax checks; full particle suite 59/59; preview redirect plus 25 local script/style resources HTTP 200; `git diff --check` clean. Visual browser playtest remains manual.
+- evidence: 90 s default run: 24 g initial, coal 17.005, goods 6.325, consumed 6.066; gold error < 2e-12. 0.001 g/worker circulates wages/taxes/deliveries; tiny-settlement tests cover down to 1e-6 g.
+- pitfalls: competing wage signals are not executable employer quotes; price-scale independence also requires relative transport costs/steering (findings).
+- next: finish G2/B0 (mine wood bootstrap, real-gold bank loans, debt caps/service/default), separate T1 transport/custody; paper remains deferred, then port only at the M.7 gate.

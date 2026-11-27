@@ -154,6 +154,12 @@ function bootEconomy() {
 	function toggleRun() { running = !running; syncPlayback(); texts(); }
 
 	function reset() {
+		const capital = Number($('initial-gold').value);
+		if (!Number.isFinite(capital) || capital < 0) {
+			message.textContent = 'Starting gold must be a nonnegative number.';
+			return;
+		}
+		model.goldPerWorker = capital;
 		model.reset(); stats.reset(model); tracked.reset(); syncActors(); clearSelection();
 		accumulator = 0; lastFrame = performance.now();
 		message.textContent = 'Reset · goods and workers run as conserved SoA particles.';

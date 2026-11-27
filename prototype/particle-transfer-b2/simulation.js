@@ -113,7 +113,9 @@ function setMapWrap(wrap) {
 }
 
 class PriceEconomy {
-	constructor() {
+	constructor(goldPerWorker = INITIAL_GOLD_PER_WORKER) {
+		if (!Number.isFinite(goldPerWorker) || goldPerWorker < 0) throw new RangeError('Starting gold must be finite and nonnegative');
+		this.goldPerWorker = goldPerWorker;
 		this.actors = new Uint8Array(ECONOMY_SIZE);
 		this.coal = new Float64Array(ECONOMY_SIZE);
 		this.goods = new Float64Array(ECONOMY_SIZE);
@@ -164,6 +166,7 @@ class PriceEconomy {
 		this.land = new Land(this);
 		this.steering = new Steering(this);
 		this.forage = new ForageSystem(this);
+		this.owners = new OwnerAccounts(this);
 		this.money = new GoldMoney(this);
 		this.goodsPool = new GoodsPool(this);
 		this.workers = new WorkerPool(this);
@@ -227,11 +230,13 @@ class PriceEconomy {
 		this.nextPriceWood.fill(0);
 		this.producedFood = this.consumedFood = 0;
 		this.goodsPool.reset();
+		this.optimizer.laborCost.fill(0);
 		this.workers.reset();
 		this.towns.reset();
 		this.founding.reset();
 		this.money.reset();
 		this.workers.seedReference();
+		this.money.initializeScenario(this.goldPerWorker);
 		this.ticks = this.producedCoal = this.burnedCoal = this.producedGoods = this.consumedGoods = 0;
 		this.workedLabor = this.restedDepleted = 0;
 		this.coalRate = this.goodsRate = this.uptakeRate = 0;
@@ -254,6 +259,7 @@ class PriceEconomy {
 			this.goodsPool.stockCost[ITEM_FOOD][i] = 0;
 			this.goodsPool.stockCost[0][i] = this.goodsPool.stockCost[1][i] = 0;
 			this.goodsPool.stockCost[ITEM_WOOD][i] = 0;
+			this.optimizer.laborCost[i] = 0;
 			this.rooms[i] = this.scale[i] = this.taxMult[i] = this.satCoal[i] = this.satGoods[i] = this.workLoad[i] = this.profit[i] = 0;
 			this.towns.clearTown(i);
 			this.founding.clearSite(i);
@@ -261,6 +267,7 @@ class PriceEconomy {
 			this.vacantTicks[i] = 0;
 		}
 		this.actors[i] = kind;
+		if (kind && kind !== ECONOMY_GARDEN) this.owners.found(i, this.founding.founderId(i));
 		this.settlements.placed(i, kind);
 		if (kind) {
 			this.scale[i] = 1;
@@ -271,9 +278,7 @@ class PriceEconomy {
 			this.taxMult[i] = 1;
 			this.wealthClass[i] = wealthClassFor(i);
 			this.vacantTicks[i] = 0;
-			this.localWealth[i] = SEED_WORKER_GOLD;
 			this.towns.initTown(i);
-			this.money.seedTown(i);
 		} else if (kind === ECONOMY_FARM) {
 			this.farms.init(i);
 		} else if (kind === ECONOMY_GARDEN) {
@@ -350,6 +355,8 @@ class PriceEconomy {
 	}
 
 	updatePrices() {
+		this.owners.allocate();
+		this.workforce.referenceFee = BASE_REST_FEE * this.towns.walletMean() / WALLET_PRICE_REFERENCE;
 		const { actors, optimizer, towns, workforce, founding, priceCoal, priceGoods, priceLabor, priceHome, priceRest, priceWood, nextPriceCoal, nextPriceGoods, nextPriceLabor, nextPriceHome, nextPriceRest, nextPriceWood } = this;
 		const decay = this.decay ? PRICE_DECAY : 0;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {

@@ -72,7 +72,7 @@ class ActorOptimizer {
 		const nominal = recipe.rate * scale * recipe.inputs[recipe.inputs.length - 1].need;
 		const occRatio = Math.min(1, m.workLoad[i] / Math.max(1e-9, nominal));
 		const outPrice = recipe.outItem < 0 ? 1 : (m.derived ? m.pricesAt(recipe.outItem)[i] : START_PRICE);
-		const ref = Math.max(0.02, outPrice * recipe.outYield * recipe.rate * 0.12);
+		const ref = Math.max(1e-12, outPrice * recipe.outYield * recipe.rate * 0.12);
 		const drive = m.derived ? Math.tanh(m.profit[i] / ref) : 0;
 		return Math.min(cap, Math.max(1, (2.0 * scale + 1.4 * occRatio + 0.4 * Math.max(0, drive)) * matReady));
 	}
@@ -100,8 +100,8 @@ class ActorOptimizer {
 		if (!recipe || m.founding.isBuilding(i)) return false;
 		const fallback = recipe.outItem === ITEM_COAL ? START_PRICE * 0.5 : START_PRICE;
 		const outPrice = recipe.outItem < 0 ? 1 : (m.derived ? m.pricesAt(recipe.outItem)[i] : fallback);
-		if (recipe.gate > 0 && outPrice <= recipe.gate) return false;
-		if (recipe.outItem < 0) return m.priceHome[i] + m.priceRest[i] > 0.02 || !m.derived;
+		if (!m.derived && recipe.gate > 0 && outPrice <= recipe.gate) return false;
+		if (recipe.outItem < 0) return true;
 		const outTarget = Math.max(0.25, recipe.rate * (m.scale[i] || 1) * BUFFER_SECONDS);
 		if (m.suppression && m.goodsPool.spawnAmount[recipe.outItem][i] >= outTarget) return false;
 		return outPrice > 0;
@@ -112,10 +112,10 @@ class ActorOptimizer {
 		const { inputs, rate, outItem, outYield, gate } = recipe;
 		const scale = m.scale[i] || 1;
 		const fallback = outItem === ITEM_COAL ? START_PRICE * 0.5 : START_PRICE;
-		const outPrice = outItem < 0 ? (m.priceHome[i] + m.priceRest[i] > 0.02 || !m.derived ? 1 : 0) : (m.derived ? m.pricesAt(outItem)[i] : fallback);
+		const outPrice = outItem < 0 ? 1 : (m.derived ? m.pricesAt(outItem)[i] : fallback);
 		this.bidOut.fill(0);
 		this.maxOut.fill(0);
-		if (gate > 0 && outPrice <= gate) return;
+		if (!m.derived && gate > 0 && outPrice <= gate) return;
 		const outValue = outPrice * outYield;
 		if (outValue <= 0) return;
 		const outTarget = Math.max(0.25, rate * scale * BUFFER_SECONDS);
@@ -123,7 +123,7 @@ class ActorOptimizer {
 		let sellRoom = outItem < 0 || !m.suppression ? 1 : Math.max(0, 1 - outBuffered / outTarget);
 		// Patch firms (sawmill) cannot bid past the surrounding forest: no standing timber, no hiring.
 		if (recipe.patch) sellRoom = Math.min(sellRoom, m.farms.forestRoom(i));
-		const ref = Math.max(0.02, outValue * rate * 0.12);
+		const ref = Math.max(1e-12, outValue * rate * 0.12);
 		const drive = m.derived ? Math.tanh(m.profit[i] / ref) : 0;
 		const cool = m.money.creditCool(i, INPUT_SHARE * outValue * rate * scale * PURSE_SECONDS);
 		if (!Number.isFinite(cool)) return;
@@ -137,7 +137,8 @@ class ActorOptimizer {
 					if (j !== k) otherCost += m.pricesAt(inputs[j].item)[i] * inputs[j].need;
 				}
 			}
-			const remain = Math.max(0, outValue - otherCost);
+			// Fields are competing buyer bids, not binding supplier asks: never let a rival wage veto all joint bidding.
+			const remain = Math.max(0, outValue - Math.min(otherCost, outValue * (1 - 1 / inputs.length)));
 			const isLabor = item === ITEM_LABOR;
 			const share = Math.min(0.82, Math.max(0.32, INPUT_SHARE * (1 + (isLabor ? 0.28 : 0.12) * drive)));
 			const target = isLabor ? this.firmLaborPool(i, recipe) : Math.max(0.18, rate * scale * need * BUFFER_SECONDS);
@@ -150,9 +151,20 @@ class ActorOptimizer {
 		const budgetCap = Math.min(0.85, Math.max(0.42, (inputs.length > 1 ? JOINT_BUDGET_SHARE : 0.82) * (1 + 0.14 * drive))) * outValue * sellRoom;
 		const fit = m.derived && rawSum > budgetCap && rawSum > 0 ? budgetCap / rawSum : 1;
 		for (let k = 0; k < inputs.length; k++) {
-			this.bidOut[k] = (this.rawOut[k] * fit) / (inputs[k].need * cool);
+			const quantity = inputs[k].item === ITEM_LABOR ? this.firmLaborPool(i, recipe) : Math.max(0.18, rate * scale * inputs[k].need * BUFFER_SECONDS);
+			const cashCap = outItem < 0 && inputs[k].item === ITEM_LABOR ? Infinity : m.money.cash(i) / (inputs.length * quantity);
+			this.bidOut[k] = Math.min(cashCap, (this.rawOut[k] * fit) / (inputs[k].need * cool));
 			if (this.bidOut[k] > this.maxOut[k]) this.bidOut[k] = this.maxOut[k];
 		}
+	}
+
+	entryWage(i) {
+		const actor = this.model.actors[i];
+		if (actor === ECONOMY_FARM) return this.model.farms.wageBid(i);
+		const recipe = this.recipes[actor];
+		if (!recipe) return 0;
+		this.firmBids(i, recipe);
+		return this.bidOut[recipe.inputs.length - 1];
 	}
 
 	factoryCoalBid(i) { this.firmBids(i, this.recipes[ECONOMY_FACTORY]); return this.bidOut[0]; }
@@ -239,7 +251,7 @@ class ActorOptimizer {
 		if (outItem >= 0) {
 			const sAmt = m.goodsPool.spawnAmount[outItem][i];
 			const unitCost = sAmt > 1e-9 ? m.goodsPool.spawnCost[outItem][i] / sAmt : 0;
-			m.goodsPool.sellFloor[outItem][i] = m.derived ? Math.max(gate, unitCost * (1 + SELL_MARGIN)) : gate;
+			m.goodsPool.sellFloor[outItem][i] = m.derived ? unitCost * (1 + SELL_MARGIN) : gate;
 		}
 	}
 
@@ -253,14 +265,14 @@ class ActorOptimizer {
 			const { rate, outItem, outYield } = recipe;
 			const outPrice = outItem < 0 ? 1 : m.pricesAt(outItem)[i];
 			const outValue = outPrice * outYield;
-			const ref = Math.max(0.02, outValue * rate * 0.12);
+			const ref = Math.max(1e-12, outValue * rate * 0.12);
 			const drive = Math.tanh(m.profit[i] / ref);
 		const outStock = outItem < 0 ? 0 : m.goodsPool.spawnAmount[outItem][i];
 		const outTarget = Math.max(0.25, rate * m.scale[i] * BUFFER_SECONDS);
 		let sellRoom = outItem < 0 ? 1 : Math.max(0, 1 - outStock / outTarget);
 		// Patch firms (sawmill) also refuse to rescale up without forest room.
 		if (recipe.patch) sellRoom = Math.min(sellRoom, m.farms.forestRoom(i));
-			const solvent = m.money.owedWage[i] <= m.money.purse[i] + Math.max(0.25, outValue * rate * 2.5);
+			const solvent = m.money.wageDebt(i) <= m.money.cash(i) + Math.max(0.25, outValue * rate * 2.5);
 			if (drive > 0.02 && solvent && sellRoom > 0.2) {
 				m.scale[i] = Math.min(SCALE_MAX, m.scale[i] + ECONOMY_DT * SCALE_UP * drive * sellRoom);
 			} else if (drive < -0.02 || !solvent || (outStock > 0.25 && sellRoom < 0.15)) {

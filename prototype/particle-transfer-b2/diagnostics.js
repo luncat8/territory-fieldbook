@@ -144,10 +144,10 @@ class EconomyDiagnostics {
 		const money = m.money;
 		s.goldTotal = money.total();
 		s.townPurse = s.firmPurse = s.firmOwed = 0;
-		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			const a = m.actors[i];
-			if (a === ECONOMY_TOWN) s.townPurse += money.purse[i];
-			else if (a) { s.firmPurse += money.purse[i]; s.firmOwed += money.owedWage[i]; }
+		for (let id = 1; id < m.owners.accounts.length; id++) {
+			const account = m.owners.accounts[id];
+			if (account.municipal) s.townPurse += account.cash;
+			else { s.firmPurse += account.cash; s.firmOwed += account.wageDebt; }
 		}
 		s.vault = money.vault;
 		s.seeded = money.seeded;
@@ -368,12 +368,22 @@ class EconomyDiagnostics {
 
 	actorRows() {
 		const m = this.model, money = m.money;
-		const rows = ['## actors', 'kind  cell    labor depl  queue coal   goods  wageFld coalPx goodsPx purse   owed   profit'];
+		const rows = ['## actors', 'kind  cell    labor depl  queue coal   goods  wageFld coalPx goodsPx budget  ownerOwed   profit'];
 		const f = (v, n = 6, d = 2) => v.toFixed(d).padStart(n);
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			const a = m.actors[i];
 			if (!a) continue;
-			rows.push(`${DIAG_ACTOR_LABELS[a].padEnd(5)} ${placeName(i)} ${f(m.labor[i], 5)} ${f(m.depleted[i], 5)} ${f(m.poolCount[i], 5)} ${f(m.coal[i])} ${f(m.goods[i])} ${f(m.priceLabor[i], 7, 3)} ${f(m.priceCoal[i], 6, 3)} ${f(m.priceGoods[i], 7, 3)} ${f(money.purse[i], 7)} ${f(money.owedWage[i])} ${f(m.profit[i], 6, 3)}`);
+			rows.push(`${DIAG_ACTOR_LABELS[a].padEnd(5)} ${placeName(i)} ${f(m.labor[i], 5)} ${f(m.depleted[i], 5)} ${f(m.poolCount[i], 5)} ${f(m.coal[i])} ${f(m.goods[i])} ${f(m.priceLabor[i], 7, 3)} ${f(m.priceCoal[i], 6, 3)} ${f(m.priceGoods[i], 7, 3)} ${f(money.cash(i), 7)} ${f(money.wageDebt(i))} ${f(m.profit[i], 6, 3)} owner=${m.owners.ownerAt(i)} facility=${m.owners.cell[i]} cash=${f(m.owners.accountAt(i)?.cash || 0)} worker=${m.owners.accountAt(i)?.workerId || '—'}`);
+		}
+		return rows.join('\n');
+	}
+
+	ownerRows() {
+		const { owners } = this.model;
+		const rows = ['## owners (cash and debt counted once; retired sites keep their accounts)', 'owner worker sites cash_g wage_debt_g'];
+		for (let id = 1; id < owners.accounts.length; id++) {
+			const a = owners.accounts[id];
+			rows.push(`${id} ${a.municipal ? 'town' : a.workerId} ${a.sites} ${a.cash.toFixed(6)} ${a.wageDebt.toFixed(6)}`);
 		}
 		return rows.join('\n');
 	}
@@ -414,11 +424,11 @@ class EconomyDiagnostics {
 			'## prices (field = diffused buyer bid, ask = in-flight unit cost + haulage)'
 		];
 		for (const key of ['coal', 'goods', 'food', 'wood']) {
-			lines.push(`${key}: total=${f(s[key + 'Total'], 2)} in_flight=${f(s[key + 'Flight'], 2)} particles=${s[key + 'Particles']} stopped=${s[key + 'Stopped']} field_mean=${f(s[key + 'FieldMean'], 4)} field_max=${f(s[key + 'FieldMax'], 4)} best_buyer=${f(s[key + 'BestBuyer'], 4)} ask=${f(s[key + 'Ask'], 4)} book=${f(s[key + 'BookCost'], 4)} haul=${f(s[key + 'HaulCost'], 4)} spoiled=${f(s[key + 'Spoiled'], 2)}`);
+			lines.push(`${key}: total=${f(s[key + 'Total'], 2)} in_flight=${f(s[key + 'Flight'], 2)} particles=${s[key + 'Particles']} stopped=${s[key + 'Stopped']} field_mean=${f(s[key + 'FieldMean'], 4)} field_max=${f(s[key + 'FieldMax'], 4)} best_buyer=${f(s[key + 'BestBuyer'], 4)} ask=${f(s[key + 'Ask'], 4)} book=${f(s[key + 'BookCost'], 4)} depot_write_down=${f(m.goodsPool.writtenDown[{ coal: ITEM_COAL, goods: ITEM_GOODS, food: ITEM_FOOD, wood: ITEM_WOOD }[key]], 4)} haul=${f(s[key + 'HaulCost'], 4)} spoiled=${f(s[key + 'Spoiled'], 2)}`);
 		}
 		lines.push(`flows: coal_made=${f(s.coalMade, 2)} coal_burned=${f(s.coalBurned, 2)} goods_made=${f(s.goodsMade, 2)} goods_eaten=${f(s.goodsEaten, 2)} food_made=${f(s.foodMade, 2)} food_eaten=${f(s.foodEaten, 2)} wood_made=${f(s.woodMade, 2)} wood_built=${f(s.woodEaten, 2)} deliveries=${s.deliveries} garden_rations=${f(s.gardenFed, 2)} wild_rations=${f(s.wildPicked, 2)}`);
 		for (const entry of watched) lines.push(this.workerText(entry));
-		lines.push(this.actorRows(), this.historyText());
+		lines.push(this.actorRows(), this.ownerRows(), this.historyText());
 		return lines.join('\n');
 	}
 }

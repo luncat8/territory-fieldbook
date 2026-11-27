@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'gold.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js'];
+const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'owners.js', 'gold.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js'];
 for (const file of SCRIPTS) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 
 function run(model, seconds) {
@@ -21,6 +21,7 @@ test('hungry workers survive unsupplied towns by self-foraging and return to wor
 		if (model.actors[i] === ECONOMY_FACTORY) model.setActor(i, 0);
 	}
 	const initialHeadcount = model.workers.totalAmount();
+	for (let w = 0; w < model.workers.count; w++) model.workers.food[w] = FOOD_HUNGRY;
 	run(model, 70);
 	assert.equal(model.workers.totalAmount(), initialHeadcount + model.workers.births, 'workers with reachable food survive this run');
 	assert.ok(model.workers.forageEntries >= initialHeadcount, `expected hungry workers to enter forage mode, got ${model.workers.forageEntries}`);
@@ -37,7 +38,9 @@ test('WORKER_FORAGE mode is undisturbed by firm hiring, town rooms and founding 
 	const townCell = economyIndex(21, 14);
 	model.setActor(mineCell, ECONOMY_MINE);
 	model.setActor(townCell, ECONOMY_TOWN);
-	model.money.seedFirm(mineCell);
+	model.money.payOwner(model.owners.ownerAt(mineCell), 12);
+	model.money.seedWorker(12);
+	model.owners.allocate();
 	for (let n = 0; n < 60; n++) model.updatePrices();
 	const w = model.workers.spawn(19.5, 14.5, WORKER_WALK_JOB, 0, 5, 0.02, true);
 	model.money.seedWorker(5);

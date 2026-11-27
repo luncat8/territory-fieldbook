@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'gold.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js'];
+const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'owners.js', 'gold.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js'];
 for (const file of SCRIPTS) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-8, `${a} !== ${b}`);
 
@@ -131,7 +131,9 @@ test('paid farm crews fully clear random farmland, build from felled wood and ha
 	m.settlements.forest.fill(1);
 	m.priceFood.fill(0.45);
 	m.setActor(c, ECONOMY_FARM);
-	m.money.seedFirm(c);
+	m.money.payOwner(m.owners.ownerAt(c), 12);
+	m.money.seedWorker(12);
+	m.owners.allocate();
 	m.priceLabor[c] = 0.1;
 	for (let n = 0; n < 12; n++) {
 		const w = m.workers.spawn(20.5, 14.5, WORKER_STILL, 0, 8, 1, true);
@@ -192,15 +194,18 @@ test('food particles pay their producer and hauler; workers buy food rather than
 	const m = emptyModel(), c = economyIndex(20, 14), f = economyIndex(24, 14);
 	m.setActor(c, ECONOMY_TOWN);
 	m.setActor(f, ECONOMY_FARM);
+	m.money.payOwner(m.owners.ownerAt(c), 12);
+	m.money.seedWorker(12);
+	m.owners.allocate();
 	m.priceFood[c] = 0.5;
 	m.towns.stepTown(c);
 	m.goodsPool.emit(ITEM_FOOD, c, 1, 0.02);
-	m.goodsPool.owner[0] = f;
+	m.goodsPool.owner[0] = m.owners.ownerAt(f);
 	m.goodsPool.transportCost[0] = 0.01;
 	m.goodsPool.stepMove();
 	m.goodsPool.admitKind(ITEM_FOOD);
 	assert.ok(m.food[c] > 0.9);
-	assert.ok(m.money.purse[f] > 0);
+	assert.ok(m.owners.accountAt(f).cash > 0);
 	assert.ok(m.money.transportEarned > 0);
 	const w = m.workers.spawn(20.5, 14.5, WORKER_STILL, 0, 8, 0, true);
 	m.money.seedWorker(8);
@@ -215,7 +220,9 @@ test('the canonical tick sustains a paid farm-to-bazaar chain with exact food an
 	m.settlements.forest.fill(1);
 	m.setActor(c, ECONOMY_FARM);
 	m.setActor(economyIndex(26, 14), ECONOMY_TOWN);
-	m.money.seedFirm(c);
+	m.money.payOwner(m.owners.ownerAt(c), 12);
+	m.money.seedWorker(12);
+	m.owners.allocate();
 	m.priceFood.fill(0.45);
 	m.priceLabor[c] = 0.1;
 	for (let n = 0; n < 6; n++) {
