@@ -1,5 +1,5 @@
-// Owns: per-worker wage-claim tests — SoA booking at zero-cash entry, FIFO owner settlement to the original hire and custody fallback.
-// Edit for: payEntryWage/settleOwner/claim flows in gold.js and WAGE_CLAIM_CAP behaviour.
+// Owns: gold.js rule tests — wage claims (SoA booking at zero-cash entry, FIFO settlement to the original hire, custody fallback) and the T0/T1 transport/custody drip.
+// Edit for: payEntryWage/settleOwner/claim flows, dripToTowns and WAGE_CLAIM_CAP behaviour.
 'use strict';
 
 const test = require('node:test');
@@ -25,6 +25,8 @@ function bareModel() {
 const conserved = m => Math.abs(m.money.total() - (m.money.initial + m.money.mined));
 const owed = (m, cell) => m.owners.owed[m.owners.ownerAt(cell)];
 const settle = (m, cell) => m.money.settleOwner(m.owners.ownerAt(cell));
+const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) <= eps, `${a} !== ${b}`);
+const dryCell = m => m.actors.findIndex((a, i) => !a && m.land.terrain[i] !== TERRAIN_WATER);
 
 test('a zero-cash owner books the unpaid entry wage on the original worker', () => {
 	const m = bareModel(), firm = economyIndex(10, 10);
@@ -149,4 +151,34 @@ test('settlement pays wage claims in FIFO order', () => {
 	assert.ok(Math.abs(m.workers.gold[ws[2]] - 1) < 1e-12, 'the deferred hire is paid after the rest');
 	assert.equal(m.money.claimCount, 0);
 	assert.ok(conserved(m) < 1e-12);
+});
+
+test('T0 drips transport and custody to towns by population; T1 retains transport while custody still escheats', () => {
+	const m = bareModel();
+	const small = dryCell(m);
+	m.setActor(small, ECONOMY_TOWN);
+	const large = dryCell(m);
+	m.setActor(large, ECONOMY_TOWN);
+	m.pop[small] = 1;
+	m.pop[large] = 3;
+	assert.equal(m.money.transportPreset, 'T0', 'the documented default preset');
+	const share = m.money.dripShare;
+	m.money.payTransport(1);
+	m.money.custody = 0.5;
+	const total = m.money.total();
+	m.money.dripToTowns();
+	near(m.money.purse[small], 1.5 * share / 4);
+	near(m.money.purse[large], 3 * 1.5 * share / 4);
+	near(m.money.transport, 1 - share);
+	near(m.money.custody, 0.5 * (1 - share));
+	near(m.money.total(), total);
+	m.money.transportPreset = 'T1';
+	m.money.payTransport(1);
+	m.money.custody = 0.5;
+	const held = m.money.transport;
+	const totalT1 = m.money.total();
+	m.money.dripToTowns();
+	near(m.money.transport, held);
+	near(m.money.custody, 0.5 * (1 - share));
+	near(m.money.total(), totalT1);
 });
