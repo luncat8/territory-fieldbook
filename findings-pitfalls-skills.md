@@ -566,3 +566,16 @@ Carried over from the particle-transfer lab; these govern the persistent-worker 
 - Clipboard flashes run in a promise `.then`; assert on the copied text, not on the ✓ glyph.
 - Moving a lab to `prototype/archive/` must grep `index.html` for its `<script src>`: the game shared
   `water-humidity/{terrain,simulation}.js` and boot failed with ENOENT until the paths followed the move.
+
+## scenario money level and owner cash waterfall
+
+- Lowering starting money (327 g → 1 g/worker) is not neutral: haulage (`HAUL_COST_RATE`), rest/ration fees,
+  `START_PRICE`, `WALLET_REFERENCE` and the split threshold are nominal gold constants calibrated to the old
+  level, so trade over distance collapses first (coal ask with haul ≫ best bid). Scaling only those six
+  constants by the money ratio did not restore the chain; tests that assert legacy throughput run an explicit
+  funded control (`scenario.goldPerWorker = 14`) instead of hiding the gap.
+- A bonus rule "pay cash above N seconds of cost" drains the scenario capital on tick one, because the cost
+  reserve is ~0 before wage fields form. Pay bonuses only from earnings: never while a loan is open and never
+  below paid-in capital (`owners.capital`).
+- A `money.reset()` that clears only its own arrays leaks gold once balances move to other owners (owner
+  registry, bank): reset must zero every gold balance while keeping identities and facility links.
