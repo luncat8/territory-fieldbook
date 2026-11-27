@@ -11,6 +11,7 @@ const CONSIGN_WAIT_TICKS = 180;
 const SPOIL_COAL = 0;
 const SPOIL_GOODS = 0.0035;
 const COST_RELAX = 0.06;
+const HARVEST_BUNDLE = 0.4;
 
 class GoodsPool {
 	constructor(model) {
@@ -24,7 +25,10 @@ class GoodsPool {
 		this.amount = new Float64Array(MAX_GOODS_PARTICLES);
 		this.factoryCost = new Float64Array(MAX_GOODS_PARTICLES);
 		this.transportCost = new Float64Array(MAX_GOODS_PARTICLES);
-		this.owner = new Int32Array(MAX_GOODS_PARTICLES);
+		// Payee is the stable owner id; origin + originFacility attribute profit only while that facility still exists.
+		this.payee = new Int32Array(MAX_GOODS_PARTICLES);
+		this.origin = new Int32Array(MAX_GOODS_PARTICLES);
+		this.originFacility = new Int32Array(MAX_GOODS_PARTICLES);
 		this.waitTicks = new Uint16Array(MAX_GOODS_PARTICLES);
 		this.arriving = new Uint8Array(MAX_GOODS_PARTICLES);
 		this.spawnAmount = Array.from({ length: 6 }, () => new Float64Array(ECONOMY_SIZE));
@@ -43,6 +47,7 @@ class GoodsPool {
 		this.maxProfitError = 0;
 		this.arrivals = 0;
 		this.underwaterLosses = 0;
+		this.looseWood = new Float64Array(ECONOMY_SIZE);
 	}
 
 	reset() {
@@ -57,6 +62,7 @@ class GoodsPool {
 			this.buyerQueue[k].fill(0);
 			this.spoiled[k] = 0;
 		}
+		this.looseWood.fill(0);
 		this.maxProfitError = 0;
 		this.arrivals = 0;
 		this.underwaterLosses = 0;
@@ -72,7 +78,7 @@ class GoodsPool {
 	flushOwner(cell) {
 		for (const k of GOODS_ITEMS) {
 			const rem = this.spawnAmount[k][cell];
-			if (rem > 1e-12) this.emit(k, cell, rem, this.spawnCost[k][cell]);
+			if (rem > 1e-12) this.emit(k, cell, rem, this.spawnCost[k][cell], cell);
 			else if (rem > 0) this.spoiled[k] += rem;
 			this.spawnAmount[k][cell] = 0;
 			this.spawnCost[k][cell] = 0;
@@ -84,7 +90,7 @@ class GoodsPool {
 		this.spoiled[ITEM_WOOD] += this.model.wood[cell];
 	}
 
-	emit(kind, cell, amt, cost) {
+	emit(kind, cell, amt, cost, origin) {
 		if (this.count >= MAX_GOODS_PARTICLES || amt <= 1e-12) {
 			this.spoiled[kind] += amt;
 			return false;
@@ -98,7 +104,10 @@ class GoodsPool {
 		this.amount[idx] = amt;
 		this.factoryCost[idx] = cost;
 		this.transportCost[idx] = 0;
-		this.owner[idx] = cell;
+		const owners = this.model.owners;
+		this.payee[idx] = owners.ownerAt(origin);
+		this.origin[idx] = origin;
+		this.originFacility[idx] = owners.facilityId[origin];
 		this.waitTicks[idx] = 0;
 		this.arriving[idx] = 0;
 		return true;
@@ -115,7 +124,9 @@ class GoodsPool {
 		this.amount[idx] = this.amount[last];
 		this.factoryCost[idx] = this.factoryCost[last];
 		this.transportCost[idx] = this.transportCost[last];
-		this.owner[idx] = this.owner[last];
+		this.payee[idx] = this.payee[last];
+		this.origin[idx] = this.origin[last];
+		this.originFacility[idx] = this.originFacility[last];
 		this.waitTicks[idx] = this.waitTicks[last];
 		this.arriving[idx] = this.arriving[last];
 	}
@@ -129,7 +140,7 @@ class GoodsPool {
 		const a = this.model.actors[cell];
 		if (!a) return false;
 		// Wood is checked before the isBuilding guard: a farm mid-construction must still receive wood.
-		if (kind === ITEM_WOOD) return a === ECONOMY_TOWN || a === ECONOMY_FARM;
+		if (kind === ITEM_WOOD) return a === ECONOMY_TOWN || a === ECONOMY_FARM || (a === ECONOMY_GOLD && !this.model.founding.isBuilding(cell));
 		if (this.model.founding.isBuilding(cell)) return false;
 		return kind === ITEM_COAL ? a === ECONOMY_FACTORY || a === ECONOMY_TOWN : a === ECONOMY_TOWN;
 	}
@@ -149,7 +160,8 @@ class GoodsPool {
 		return sum;
 	}
 
-	// Emits a batch once accumulated stock reaches SPAWN_UNIT (or flushes idle partial batches) when uphill price clears sellFloor.
+	// Internal depot (plan D1): output waits in spawnAmount and dispatches only when an uphill demand gradient clears
+	// sellFloor, so no transport is computed without a buyer; the fields themselves are always emitted and faded.
 	stepSpawn() {
 		const { steering } = this.model;
 		for (const k of GOODS_ITEMS) {
@@ -188,7 +200,7 @@ class GoodsPool {
 					sAmt[i] = 0;
 					sCost[i] = 0;
 				}
-				this.emit(k, i, batch, batchCost);
+				this.emit(k, i, batch, batchCost, i);
 			}
 		}
 	}
@@ -200,6 +212,26 @@ class GoodsPool {
 		this.admitKind(ITEM_GOODS);
 		this.admitKind(ITEM_FOOD);
 		this.admitKind(ITEM_WOOD);
+		this.countLooseWood();
+	}
+
+	// Felled logs lie on the map, not in a depot; their unsold total still throttles the mill that cut them.
+	countLooseWood() {
+		this.looseWood.fill(0);
+		for (let p = 0; p < this.count; p++) if (this.kind[p] === ITEM_WOOD) this.looseWood[this.origin[p]] += this.amount[p];
+	}
+
+	// Output a producer still holds: its internal depot plus, for wood, its unsold logs on the map.
+	outputHeld(kind, cell) {
+		return kind === ITEM_WOOD ? this.spawnAmount[kind][cell] + this.looseWood[cell] : this.spawnAmount[kind][cell];
+	}
+
+	// Harvest exception: logs are placed on the cut cell in SPAWN_UNIT-scale bundles and move by the demand gradient.
+	placeHarvest(kind, cutCell, made, cost, origin) {
+		const bundles = Math.max(1, Math.ceil(made / HARVEST_BUNDLE));
+		const amt = made / bundles, bundleCost = cost / bundles;
+		for (let b = 0; b < bundles; b++) this.emit(kind, cutCell, amt, bundleCost, origin);
+		this.looseWood[origin] += kind === ITEM_WOOD ? made : 0;
 	}
 
 	// Moves particles uphill, accrues haul cost on effort, handles underwater re-steering/consignment and flags buyer arrivals.
@@ -225,7 +257,7 @@ class GoodsPool {
 			const ask = this.model.derived ? this.unitPrice(p) : 0;
 			if (this.isBuyer(k, cell)) {
 				const bid = priceField[cell];
-				const hasRoom = this.cap[k][cell] - this.model.stocks[k][cell] > 1e-9 && this.model.money.purse[cell] > 1e-9;
+				const hasRoom = this.cap[k][cell] - this.model.stocks[k][cell] > 1e-9 && this.model.money.cashAt(cell) > 1e-9;
 				if (hasRoom && bid + 1e-6 >= ask) {
 					this.arriving[p] = 1;
 					this.waitTicks[p] = 0;
@@ -268,7 +300,7 @@ class GoodsPool {
 		this.waitTicks[p] = 0;
 	}
 
-	// Normalized buyer room + cash admission splits buyerPay across Transport Company vault and owner purse with exact conservation.
+	// Normalized buyer room + cash admission splits buyerPay across the transport account and the payee owner with exact conservation.
 	admitKind(kind) {
 		const { stocks, money } = this.model;
 		const stock = stocks[kind], priceField = this.model.pricesAt(kind);
@@ -290,7 +322,7 @@ class GoodsPool {
 			}
 			const unitBid = priceField[i];
 			const roomShare = Math.min(1, room[i] / req);
-			const cashShare = unitBid > 1e-12 ? Math.min(1, money.purse[i] / (req * unitBid)) : 1;
+			const cashShare = unitBid > 1e-12 ? Math.min(1, money.cashAt(i) / (req * unitBid)) : 1;
 			acc[i] = Math.max(0, Math.min(roomShare, cashShare));
 			const rejected = req * (1 - acc[i]);
 			queue[i] += this.queueBlend * (rejected - queue[i]);
@@ -307,21 +339,21 @@ class GoodsPool {
 			const trSlice = all ? this.transportCost[p] : this.transportCost[p] * share;
 			const itemUnitPrice = (facSlice + trSlice) / accepted;
 			const buyerUnitPrice = priceField[cell];
-			const buyerPay = Math.min(money.purse[cell], accepted * buyerUnitPrice);
+			const buyerPay = Math.min(money.cashAt(cell), accepted * buyerUnitPrice);
 			const effectiveUnitBid = buyerPay / accepted;
-			money.purse[cell] -= buyerPay;
-			if (money.purse[cell] < 1e-14) money.purse[cell] = 0;
+			money.debit(cell, buyerPay);
 			const transportPaid = Math.min(buyerPay, trSlice);
 			const factoryRevenue = buyerPay - transportPaid;
 			money.payTransport(transportPaid);
-			money.payOwner(this.owner[p], factoryRevenue);
+			money.creditOwner(this.payee[p], factoryRevenue);
 			const realizedProfit = factoryRevenue - facSlice - (trSlice - transportPaid);
 			const identityProfit = accepted * (effectiveUnitBid - itemUnitPrice);
 			const err = Math.abs(realizedProfit - identityProfit);
 			if (err > this.maxProfitError) this.maxProfitError = err;
 			if (realizedProfit < -1e-9) this.underwaterLosses++;
 			this.arrivals++;
-			if (this.model.actors[this.owner[p]]) this.model.earned[this.owner[p]] += realizedProfit / ECONOMY_DT;
+			const origin = this.origin[p];
+			if (this.model.owners.facilityId[origin] === this.originFacility[p]) this.model.earned[origin] += realizedProfit / ECONOMY_DT;
 			stock[cell] += accepted;
 			costBuf[cell] += buyerPay;
 			if (all || this.amount[p] - accepted <= 1e-11) {
