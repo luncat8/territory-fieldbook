@@ -269,12 +269,11 @@ class FieldPlot {
 			const priceRef = Math.max(1, START_PRICE * 1.6);
 			for (let p = 0; p < pool.count; p++) {
 				if (pool.kind[p] !== kind) continue;
-				const priceIdx = Math.min(63, Math.max(0, Math.round((pool.unitPrice(p) / priceRef) * 63)));
-				this.drawParticle(pool, p, ITEM_CSS[priceIdx], Math.sqrt(pool.amount[p] / SPAWN_UNIT), vectors);
-			}
-			return;
+			const priceIdx = Math.min(63, Math.max(0, Math.round((pool.unitPrice(p) / priceRef) * 63)));
+			this.drawParticle(pool, p, ITEM_CSS[priceIdx], Math.sqrt(pool.amount[p] / SPAWN_UNIT), vectors);
 		}
-		const { workers } = model;
+	}
+	const { workers } = model;
 		const goldRef = Math.max(1e-12, model.towns.walletMean() * 2.5);
 		for (let w = 0; w < workers.count; w++) {
 			const st = workers.state[w];
