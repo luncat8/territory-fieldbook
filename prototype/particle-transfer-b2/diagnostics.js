@@ -186,17 +186,20 @@ class EconomyDiagnostics {
 	countPrices(s, m) {
 		const P = m.goodsPool;
 		let coalSum = 0, coalMax = 0, coalBest = 0, goodsSum = 0, goodsMax = 0, goodsBest = 0;
+		let foodSum = 0, foodMax = 0, foodBest = 0;
 		let coalTotal = m.goodsPool.spawnBufferTotal(ITEM_COAL) + m.goodsPool.inTransitTotal(ITEM_COAL);
 		let goodsTotal = m.goodsPool.spawnBufferTotal(ITEM_GOODS) + m.goodsPool.inTransitTotal(ITEM_GOODS);
 		let foodTotal = m.goodsPool.spawnBufferTotal(ITEM_FOOD) + m.goodsPool.inTransitTotal(ITEM_FOOD);
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			const pc = m.priceCoal[i], pg = m.priceGoods[i];
-			coalSum += pc; goodsSum += pg;
+			const pc = m.priceCoal[i], pg = m.priceGoods[i], pf = m.priceFood[i];
+			coalSum += pc; goodsSum += pg; foodSum += pf;
 			if (pc > coalMax) coalMax = pc;
 			if (pg > goodsMax) goodsMax = pg;
+			if (pf > foodMax) foodMax = pf;
 			const a = m.actors[i];
 			if ((a === ECONOMY_FACTORY || a === ECONOMY_TOWN) && pc > coalBest) coalBest = pc;
 			if (a === ECONOMY_TOWN && pg > goodsBest) goodsBest = pg;
+			if (a === ECONOMY_TOWN && pf > foodBest) foodBest = pf;
 			coalTotal += m.coal[i];
 			goodsTotal += m.goods[i];
 			foodTotal += m.food[i];
@@ -207,12 +210,17 @@ class EconomyDiagnostics {
 		s.goodsFieldMean = goodsSum / ECONOMY_SIZE;
 		s.goodsFieldMax = goodsMax;
 		s.goodsBestBuyer = goodsBest;
+		s.foodFieldMean = foodSum / ECONOMY_SIZE;
+		s.foodFieldMax = foodMax;
+		s.foodBestBuyer = foodBest;
 		s.coalTotal = coalTotal;
 		s.goodsTotal = goodsTotal;
 		s.foodTotal = foodTotal;
 		s.coalParticles = s.coalStopped = 0;
 		s.goodsParticles = s.goodsStopped = 0;
+		s.foodParticles = s.foodStopped = 0;
 		let coalFly = 0, coalBook = 0, coalHaul = 0, goodsFly = 0, goodsBook = 0, goodsHaul = 0;
+		let foodFly = 0, foodBook = 0, foodHaul = 0;
 		for (let p = 0; p < P.count; p++) {
 			const k = P.kind[p], amt = P.amount[p];
 			const stopped = Math.abs(P.hx[p]) + Math.abs(P.hy[p]) <= DIAG_STOP_SPEED ? 1 : 0;
@@ -224,16 +232,24 @@ class EconomyDiagnostics {
 				s.goodsParticles++;
 				s.goodsStopped += stopped;
 				goodsFly += amt; goodsBook += P.factoryCost[p]; goodsHaul += P.transportCost[p];
+			} else if (k === ITEM_FOOD) {
+				s.foodParticles++;
+				s.foodStopped += stopped;
+				foodFly += amt; foodBook += P.factoryCost[p]; foodHaul += P.transportCost[p];
 			}
 		}
 		s.coalFlight = coalFly;
 		s.goodsFlight = goodsFly;
+		s.foodFlight = foodFly;
 		s.coalAsk = coalFly > 1e-12 ? (coalBook + coalHaul) / coalFly : 0;
 		s.coalBookCost = coalFly > 1e-12 ? coalBook / coalFly : 0;
 		s.coalHaulCost = coalFly > 1e-12 ? coalHaul / coalFly : 0;
 		s.goodsAsk = goodsFly > 1e-12 ? (goodsBook + goodsHaul) / goodsFly : 0;
 		s.goodsBookCost = goodsFly > 1e-12 ? goodsBook / goodsFly : 0;
 		s.goodsHaulCost = goodsFly > 1e-12 ? goodsHaul / goodsFly : 0;
+		s.foodAsk = foodFly > 1e-12 ? (foodBook + foodHaul) / foodFly : 0;
+		s.foodBookCost = foodFly > 1e-12 ? foodBook / foodFly : 0;
+		s.foodHaulCost = foodFly > 1e-12 ? foodHaul / foodFly : 0;
 		s.coalSpoiled = P.spoiled[ITEM_COAL];
 		s.goodsSpoiled = P.spoiled[ITEM_GOODS];
 		s.foodSpoiled = P.spoiled[ITEM_FOOD];
@@ -261,6 +277,7 @@ class EconomyDiagnostics {
 		if (s.towns && s.townPurse < 0.05 * s.goldTotal) out.push(`towns hold ${s.townPurse.toFixed(2)} g of ${s.goldTotal.toFixed(2)} g: town bids for coal and goods collapse`);
 		if (s.coalFlight > 1 && s.coalAsk > s.coalBestBuyer) out.push(`in-flight coal ask ${s.coalAsk.toFixed(3)} g/u > best buyer ${s.coalBestBuyer.toFixed(3)} g/u: ${s.coalFlight.toFixed(1)} coal cannot sell`);
 		if (s.goodsFlight > 1 && s.goodsAsk > s.goodsBestBuyer) out.push(`in-flight goods ask ${s.goodsAsk.toFixed(3)} g/u > best town price ${s.goodsBestBuyer.toFixed(3)} g/u`);
+		if (s.foodFlight > 1 && s.foodAsk > s.foodBestBuyer) out.push(`in-flight food ask ${s.foodAsk.toFixed(3)} g/u > best town bid ${s.foodBestBuyer.toFixed(3)} g/u: ${s.foodFlight.toFixed(1)} food cannot sell`);
 		if (s.firmOwed > s.firmPurse && s.firmOwed > 1) out.push(`firms owe ${s.firmOwed.toFixed(2)} g but hold ${s.firmPurse.toFixed(2)} g (unpaid wage claims ${s.unpaidWages.toFixed(2)} g)`);
 		if (s.bazaarEmpty) out.push(`${s.bazaarEmpty} town bazaar(s) are empty while populated: food bids go dead until a farm delivers`);
 		if (s.idleFarms) out.push(`${s.idleFarms} farm(s) hold fields but no crew on this tick`);
@@ -373,7 +390,7 @@ class EconomyDiagnostics {
 			`wages_paid=${f(s.wagesPaid, 2)} taxes_paid=${f(s.taxesPaid, 2)} wages_rate=${f(s.wageRate, 4)} g/s taxes_rate=${f(s.taxRate, 4)} g/s`,
 			'## prices (field = diffused buyer bid, ask = in-flight unit cost + haulage)'
 		];
-		for (const key of ['coal', 'goods']) {
+		for (const key of ['coal', 'goods', 'food']) {
 			lines.push(`${key}: total=${f(s[key + 'Total'], 2)} in_flight=${f(s[key + 'Flight'], 2)} particles=${s[key + 'Particles']} stopped=${s[key + 'Stopped']} field_mean=${f(s[key + 'FieldMean'], 4)} field_max=${f(s[key + 'FieldMax'], 4)} best_buyer=${f(s[key + 'BestBuyer'], 4)} ask=${f(s[key + 'Ask'], 4)} book=${f(s[key + 'BookCost'], 4)} haul=${f(s[key + 'HaulCost'], 4)} spoiled=${f(s[key + 'Spoiled'], 2)}`);
 		}
 		lines.push(`flows: coal_made=${f(s.coalMade, 2)} coal_burned=${f(s.coalBurned, 2)} goods_made=${f(s.goodsMade, 2)} goods_eaten=${f(s.goodsEaten, 2)} food_made=${f(s.foodMade, 2)} food_eaten=${f(s.foodEaten, 2)} deliveries=${s.deliveries} garden_rations=${f(s.gardenFed, 2)} wild_rations=${f(s.wildPicked, 2)}`);
@@ -427,7 +444,11 @@ const PANEL_ROWS = [
 		['Goods in flight', s => `${s.goodsFlight.toFixed(1)} u`, s => s.goodsStopped > 8],
 		['Goods ask · town', s => `${s.goodsAsk.toFixed(3)} · ${s.goodsBestBuyer.toFixed(3)} g/u`, s => s.goodsFlight > 1 && s.goodsAsk > s.goodsBestBuyer],
 		['Goods field mean/max', s => `${s.goodsFieldMean.toFixed(3)} / ${s.goodsFieldMax.toFixed(3)}`],
-		['Spoiled coal/goods', s => `${s.coalSpoiled.toFixed(2)} · ${s.goodsSpoiled.toFixed(2)} u`],
+		['Food total', s => `${s.foodTotal.toFixed(1)} u`],
+		['Food in flight', s => `${s.foodFlight.toFixed(1)} u`, s => s.foodStopped > 8],
+		['Food ask · town', s => `${s.foodAsk.toFixed(3)} · ${s.foodBestBuyer.toFixed(3)} g/u`, s => s.foodFlight > 1 && s.foodAsk > s.foodBestBuyer],
+		['Food field mean/max', s => `${s.foodFieldMean.toFixed(3)} / ${s.foodFieldMax.toFixed(3)}`],
+		['Spoiled coal/goods/food', s => `${s.coalSpoiled.toFixed(2)} · ${s.goodsSpoiled.toFixed(2)} · ${s.foodSpoiled.toFixed(2)} u`],
 		['Deliveries', s => `${s.deliveries}`]
 	]],
 	['Flow', [

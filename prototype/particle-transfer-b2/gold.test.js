@@ -92,3 +92,60 @@ test('a despawned hire\'s settled claim falls to the vault and erased firms drop
 	assert.equal(m.money.owedWage[firm], 0);
 	assert.ok(Math.abs(m.money.total() - beforeRelease) < 1e-12);
 });
+
+test('the claim table grows past its initial cap without losing an entitlement', () => {
+	const m = bareModel(), firm = economyIndex(10, 10);
+	m.setActor(firm, ECONOMY_MINE);
+	m.money.purse[firm] = 0;
+	m.priceLabor[firm] = 10; // rich wage bid → reserve covers the purse, so no surplus payout muddies the claim assertions
+	const N = WAGE_CLAIM_CAP + 1;
+	for (let n = 0; n < N; n++) {
+		const w = m.workers.spawn(10.5 + (n % 4) * 0.1, 10.5, WORKER_SHIFT, 0, 0, 1, true);
+		m.money.payEntryWage(firm, w, 1);
+	}
+	assert.equal(m.money.claimCount, N, 'every claim is stored, none dropped at the cap');
+	assert.ok(m.money.claimCap >= N, 'the table grew to hold every claim');
+	assert.ok(Math.abs(m.money.owedWage[firm] - N) < 1e-12);
+	let unpaid = 0;
+	for (let w = 0; w < N; w++) unpaid += m.money.unpaidWages(m.workers.id[w]);
+	assert.ok(Math.abs(unpaid - N) < 1e-12, 'all entitlements are represented');
+	m.money.dig(firm, N);
+	m.money.settleFirm(firm, ECONOMY_MINE);
+	for (let w = 0; w < N; w++) {
+		assert.ok(Math.abs(m.workers.gold[w] - 1) < 1e-12, `worker ${w} paid in full`);
+	}
+	assert.equal(m.money.vault, 0, 'no entitlement fell to the vault');
+	assert.equal(m.money.owedWage[firm], 0);
+	assert.equal(m.money.claimCount, 0);
+	assert.ok(conserved(m) < 1e-12);
+});
+
+test('settlement pays wage claims in FIFO order', () => {
+	const m = bareModel(), firm = economyIndex(10, 10);
+	m.setActor(firm, ECONOMY_MINE);
+	m.money.purse[firm] = 0;
+	m.priceLabor[firm] = 10;
+	const ws = [], ids = [];
+	for (let n = 0; n < 3; n++) {
+		const w = m.workers.spawn(10.5 + n * 0.1, 10.5, WORKER_SHIFT, 0, 0, 1, true);
+		ws.push(w);
+		ids.push(m.workers.id[w]);
+		m.money.payEntryWage(firm, w, 1);
+	}
+	m.money.dig(firm, 2);
+	m.money.settleFirm(firm, ECONOMY_MINE);
+	assert.ok(Math.abs(m.workers.gold[ws[0]] - 1) < 1e-12, 'first hire paid first');
+	assert.ok(Math.abs(m.workers.gold[ws[1]] - 1) < 1e-12, 'second hire paid before the third');
+	assert.equal(m.workers.gold[ws[2]], 0, 'third hire waits for the remaining debt');
+	assert.equal(m.money.unpaidWages(ids[0]), 0);
+	assert.equal(m.money.unpaidWages(ids[2]), 1);
+	assert.ok(Math.abs(m.money.owedWage[firm] - 1) < 1e-12);
+	assert.equal(m.money.claimCount, 1);
+	assert.equal(m.money.claimWorkerId[0], ids[2], 'the surviving claim is the oldest unpaid one');
+	assert.ok(conserved(m) < 1e-12);
+	m.money.dig(firm, 1);
+	m.money.settleFirm(firm, ECONOMY_MINE);
+	assert.ok(Math.abs(m.workers.gold[ws[2]] - 1) < 1e-12, 'the deferred hire is paid after the rest');
+	assert.equal(m.money.claimCount, 0);
+	assert.ok(conserved(m) < 1e-12);
+});

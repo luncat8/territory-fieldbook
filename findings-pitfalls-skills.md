@@ -475,6 +475,54 @@ Traps from moving the particle draft's worker rules into `prototype/price-model-
   tiled the map with 8 hamlets. Count only depleted·still, and only where priceHome+priceRest is
   below a reach threshold.
 
+## per-worker state on a cell field, write-time founding and land factors in B2
+
+General cell-engine lessons carried over from the old particle-transfer drafts (still apply to
+`prototype/price-model-b2/` `land.js`, `settlement.js`):
+
+- **Carry per-worker state as a mass-weighted mean, not as mass.** Store `intent[i]` in `[0,1]`, move
+  `intent·amount` on each edge and re-average by stock on arrival. Rest, founding and town intake then remove
+  workers without touching intent; carrying `intent·amount` as mass would need a hook at every removal.
+- **Let writers find the best site.** Ready workers splat their amount into a gather grid; a cell's count only
+  grows within a tick, so the max of `count · site` seen at write time equals the max over final values. No
+  per-candidate radius sum, no periodic scan; clear the grid only after a tick that had writes.
+- **Stamp actor cones on placement, never per tick.** Wasteland and town claim change only when an actor is
+  placed, removed or founded; a full refresh then costs O(actors · reach²) once.
+- **Adding a land factor breaks rule tests silently.** Fixtures placed towns at (24,14), now desert, and three
+  tax/appeal tests failed. Rule checks run on flattened land (`neutralLand`); land behaviour gets its own tests.
+- **A still crowd thins fast.** Depleted dispersal spreads a 3×3 stranding to ~30% at its centre within the 3 s
+  intent build-up, so the founding threshold reads against the settled-down count, not the stranded amount.
+
+## gradient gates, saddles and queue admission
+
+Traps from the particle-transfer lab that apply to any walker/labour field (cell B2 included):
+
+- **A hard `GRADIENT_KNEE` gate strands commuters.** A wage field decays to a slope under the knee a few cells
+  from the firm; with "move only above the knee" the town dock never released and the mine starved. The cell
+  engine moved at `s / (s + knee)` instead. Gate docks at `0.1 · knee` (still > 0.9) and let speed scale.
+- **The blended gradient cancels between two equal buyers.** A town midway between a mine and a factory launched
+  walkers with heading ≈ 0 and they never left. Launch along the steepest edge; the smoothed heading then carries
+  the walker off the saddle.
+- **A queue must cool the bid, not the admission cap.** Counting queued walkers in `need` zeroed the bid, the
+  zero bid set `cap = stock`, and an emptied pool admitted nobody: 65 walkers parked forever at a cell boundary.
+  Call `firmBids(i, recipe, false)` for the cap decision.
+- **Partial admission hides a queue.** Walkers admitted at a tiny normalized share each tick never "hover", so a
+  queue counted only from hovering walkers stayed zero. Count the post-admission remainder too.
+
+## persistent worker identity, wallet ownership and conservation counters
+
+Carried over from the particle-transfer lab; these govern the persistent-worker model generally:
+
+- Continuous labor/rest recipes must change a worker's fresh/tired portions, not clamp his physical amount to
+  aggregate stocks. Clamping silently dissolves identities; flipping whole units against fractional stock targets
+  can immediately flip them back. Store fixed `amount` plus `tired` and reconcile births only from unowned stock.
+- A wallet's pool backing changing state is not income/expenditure. Never redistribute savings as a wage pool,
+  bank a commuter during rest, or pay an employer's old wage debt to its current replacement workers.
+- Accumulate walking recovery once per tick before updating global conservation counters: thousands of tiny
+  per-worker additions to large totals can drift beyond the mass tolerance despite locally conservative moves.
+- Tests of aggregate profit at a single timestamp or town growth can accidentally require confiscated commuter
+  savings. Keep conservation strict; assert actual persistent lifecycles and real cash transactions independently.
+
 ## household harvest, build ladder and consumption litter in B2
 
 - **Household harvest is not paid work.** Booking a resident's harvest as tiring labor queues it for

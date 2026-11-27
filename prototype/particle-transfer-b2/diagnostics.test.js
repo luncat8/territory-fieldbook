@@ -52,6 +52,27 @@ test('snapshot partitions gold and workers exactly', () => {
 	assert.equal(diagnostics.rows, 3, 'ten-second strides over thirty seconds');
 });
 
+test('food gets the full in-flight price diagnostics counterpart', () => {
+	const model = new PriceEconomy();
+	const diagnostics = new EconomyDiagnostics(model);
+	run(model, diagnostics, 30);
+	// Clear any particles the run accumulated so the food counters are deterministic.
+	model.goodsPool.reset();
+	const town = economyIndex(10, 10);
+	model.setActor(town, ECONOMY_TOWN);
+	model.priceFood.fill(0);
+	model.priceFood[town] = 0.4;
+	model.goodsPool.emit(ITEM_FOOD, town, 2, 0.3);
+	const s = diagnostics.snapshot();
+	assert.equal(s.foodParticles, 1);
+	assert.ok(Math.abs(s.foodFlight - 2) < 1e-12, 'food flight total is reported');
+	assert.ok(Math.abs(s.foodBestBuyer - 0.4) < 1e-12, 'food best buyer is the town bid');
+	assert.ok(Math.abs(s.foodAsk - 0.15) < 1e-12, 'food ask carries the book cost per unit');
+	assert.ok(s.foodAsk >= s.foodBookCost, 'ask carries the book cost plus haulage');
+	const text = diagnostics.text(model.tracker.list);
+	assert.ok(text.includes('food: total='), 'copy text carries the food price line');
+});
+
 test('copy text carries every section and a reason for the watched worker', () => {
 	const model = new PriceEconomy();
 	const diagnostics = new EconomyDiagnostics(model);

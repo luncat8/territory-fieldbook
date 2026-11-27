@@ -25,3 +25,15 @@ decisions: town services never own worker creation/removal/routing; founding cre
 decisions: split shares gold/food/tired; starvation returns wallet to vault and books removed tired mass
 decisions: 45s personal split cooldown plus current needs/food/wealth gates; 120s empty-bag starvation grace
 next: manual farm/worker checklist in plan-particle-transfer.md, then particle game-port sizing
+
+plan: archive/20261126-branch-comparison-report.md — finish the d198120 carryover picks (follow-up review)
+changed: prototype/particle-transfer-b2/gold.js — claim table grows in place (growClaims) and settlement/release compact order-preserving (dropClaim, removeClaimsFor): no cap-silent loss, FIFO preserved (fix)
+changed: prototype/particle-transfer-b2/{gold,diagnostics}.test.js — 129-hire overflow regression, FIFO-order regression, food in-flight diagnostics test (test)
+changed: prototype/particle-transfer-b2/diagnostics.js — full food counterpart of coal/goods asks: field mean/max/best buyer, particles, flight, ask/book/haul, underwater flag, copy line, inspector rows (feature)
+changed: prototype/particle-transfer-b2/index.html — restore 16× playback option, 1× default kept (feature)
+changed: findings-pitfalls-skills.md — merge still-applicable general lessons from old d198120 (mass-weighted per-worker state, write-time founding, placement cones, neutral-land fixtures, gradient-gate/saddle/queue traps, wallet ownership, batched conservation counters)
+changed: AGENTS.md, prototype/notes.md, archive/20261126-branch-comparison-report.md — ownership/test counts, remediation ledger, resolution section; tag archive/d198120-old-main preserves old main (doc)
+validation: `node --test` particle-transfer-b2 41/41, price-model-b2 72/72; `node --check` on edited JS
+decisions: the fixed claim cap was replaced with growth rather than a larger constant — a larger cap only postpones the silent entitlement loss
+decisions: FIFO is a documented settlement contract, so removals compact in place instead of swap-removing the newest claim ahead of older ones
+next: none outstanding from the branch-comparison pick list; the obsolete particle-transfer engine stays archived, not restored

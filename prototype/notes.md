@@ -9,9 +9,9 @@ cell-lab adapter in `prototype/price-model-b2`, with a shared GUI extracted to
 | Stage | What | Verification |
 |-------|------|--------------|
 | 1 | Torus wrap across sim/steering/forage/land/settlement/founding/farms/workers/app | `wrap.test` 3/3 |
-| 2 | Wage-claims (SoA `claims`) + cost relaxation `COST_RELAX=0.06` | `gold.test` 3/3 → 32/32 |
+| 2 | Wage-claims (SoA `claims`) + cost relaxation `COST_RELAX=0.06` | `gold.test` 5/5 (adds claim-overflow + FIFO regression) |
 | 3 | Rendering: triangle/points/large shapes + gold value-flux vectors | `render.test` 3/3 → 35/35 |
-| 4 | `diagnostics.js` + `track.js`/`tracked.js` Watched Workers audit + shared `EconomyPanel` | particle suite 38/38 |
+| 4 | `diagnostics.js` + `track.js`/`tracked.js` Watched Workers audit + shared `EconomyPanel` | particle suite 41/41 (adds food in-flight diagnostics) |
 | 4f | Cell-lab diagnostics adapter (`price-model-b2/diagnostics.js`) + wiring | cell suite 72/72 |
 | 5 | Shared GUI extraction (`lab.css`, `lab-ui.js`, `economy-panel.js`) | both suites green |
 | 6 | Archive old B1 labs; docs; this L0/L1/L2 inventory | see below |
@@ -35,13 +35,37 @@ pass `node --check`. (Run: `for f in $(ls prototype/*/*.js prototype/shared/*.js
 
 ## L2 — full suite + boot (shared/boot files touched)
 
-- `node --test` in `particle-transfer-b2/` → **38/38** (10 files: conservation, diagnostics,
+- `node --test` in `particle-transfer-b2/` → **41/41** (10 files: conservation, diagnostics,
   food-life, forage, founding, gold, render, ui, workers, wrap).
 - `node --test` in `price-model-b2/` → **72/72** (farms + harvest + settlement +
   simulation + worker-money + new `diagnostics.test.js`).
 - Boot/UI gates run under stub DOM (particle `ui.test.js` boots all 22 script tags, head
   shows `Watched worker #1`; cell `farms.test.js` boots 14 script tags incl. the shared
   pair and exercises tools / topology switch / cell tooltip).
+
+## Remediation — 2026-11-27 (branch-comparison follow-up)
+
+Resolved the open picks from `archive/20261126-branch-comparison-report.md`:
+
+- **Wage-claim overflow (P1).** `gold.js` claim table now grows in place (`growClaims`, doubling
+  from `WAGE_CLAIM_CAP`) instead of silently dropping entries at the cap. No entitlement is lost while
+  `owedWage` still carries the debt. Regression: 129 simultaneous zero-purse hires all settle to their
+  original wallets with zero vault leakage.
+- **Wage-claim FIFO (P2).** `payWageClaims`/`release` compact with order-preserving drops
+  (`dropClaim`, `removeClaimsFor`) instead of swap-removal, so an older claim is never leapfrogged.
+  Regression: three 1 g claims funded with 2 g pay the first two hires and defer the third.
+- **Food diagnostics (P2).** `diagnostics.js` now carries the full food counterpart of coal/goods:
+  `foodFieldMean/Max/BestBuyer`, `foodParticles/Stopped`, `foodFlight`, `foodAsk/BookCost/HaulCost`,
+  an underwater food-ask stall flag, the copy-text price line and the inspector price rows.
+- **Particle `16×` speed (P3).** `particle-transfer-b2/index.html` regains the `16×` playback option
+  (`1×` stays the default); the cell B2 lab already had it.
+- **Findings carryover (P2).** The still-applicable general lessons from old `d198120` were merged back
+  into `findings-pitfalls-skills.md` (per-worker mass-weighted state, write-time founding, placement-time
+  actor cones, `neutralLand` fixtures, gradient-gate/saddle/queue traps, wallet ownership, batched
+  conservation counters). The obsolete "particles only while walking" rule and old town-minting
+  prescriptions were left out.
+
+Validation rerun: particle suite 41/41, cell suite 72/72.
 
 ## Ledger invariants preserved
 

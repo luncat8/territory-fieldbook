@@ -155,3 +155,43 @@ Compared the fetched `origin/main` (`d1981200cf3cd1511c93377fedc96238ebb66c3f`, 
 Validation: fetched remote refs, inspected tree/blob diffs and port source/tests, ran two direct wage-booking/settlement probes (no simulation steps; combined under one second). **No test suites or long simulations rerun.**
 
 Next: correct claim overflow/order first; finish findings/speed carryover, then decide whether to complete or explicitly defer food diagnostics before the branch migration.
+
+---
+
+## Resolution — 2026-11-27
+
+**Branch state.** The current branch is now `main` (`arena/30204744-territory-fieldbook` at `7f0dc12`,
+also `origin/main`). The pre-migration `main` is `d1981200cf3cd1511c93377fedc96238ebb66c3f`, now retained
+durably as the tag **`archive/d198120-old-main`** (fetched from `origin`, then annotated locally). All
+picks below are implemented on the current `main`; nothing from the obsolete engine was restored.
+
+**Implemented.**
+
+1. **Wage-claim overflow (P1) — fixed.** `prototype/particle-transfer-b2/gold.js` claim table now grows in
+   place (`growClaims`, doubling from `WAGE_CLAIM_CAP`) instead of silently dropping entries at the cap, so
+   `owedWage` and the stored claims can never disagree. Regression test: 129 simultaneous zero-purse hires
+   all settle to their original wallets with zero vault leakage.
+2. **Wage-claim FIFO (P2) — fixed.** `payWageClaims` and `release` compact with order-preserving drops
+   (`dropClaim`, `removeClaimsFor`) rather than swap-removal. Regression test: three 1 g claims funded with
+   2 g pay the first two hires and defer the third.
+3. **Findings carryover (P2) — merged.** The still-applicable general lessons from old `d198120` were merged
+   back into `findings-pitfalls-skills.md` with explicit cell/particle scope: mass-weighted per-worker cell
+   state, write-time founding aggregation, placement-time actor cones, `neutralLand` fixtures,
+   shallow-gradient/symmetric-saddle traps, admission-versus-queue cooling, wallet ownership and batched
+   conservation counters. The obsolete "particles only while walking" rule and old town-minting prescriptions
+   were left out.
+4. **Food diagnostics (P2) — completed.** `prototype/particle-transfer-b2/diagnostics.js` now reports the full
+   food counterpart of coal/goods: `foodFieldMean/Max/BestBuyer`, `foodParticles/Stopped`, `foodFlight`,
+   `foodAsk/BookCost/HaulCost`, an underwater food-ask stall flag, the copy-text price line and the inspector
+   price rows. Test added in `diagnostics.test.js`.
+5. **Particle `16×` speed (P3) — restored.** `prototype/particle-transfer-b2/index.html` regains the `16×`
+   playback option (`1×` remains the default); the cell B2 lab already had it.
+
+**Validation rerun.** `node --test` in `prototype/particle-transfer-b2/` → **41/41**; in
+`prototype/price-model-b2/` → **72/72**. Docs updated: `AGENTS.md`, `prototype/notes.md`
+(stage ledger + a remediation section) and `archive/particle-transfer-b2-worklog.md`.
+
+**Still open / intentionally not done.** The obsolete `d198120:prototype/particle-transfer/` engine was
+correctly not restored as a second prototype. No remaining critical item from the original pick list is
+outstanding; the only historical observations dropped (old town-minting collapse narrative) are obsolete
+for the current engine.

@@ -19,6 +19,7 @@ class GoldMoney {
 		this.claimFirm = new Int32Array(WAGE_CLAIM_CAP);
 		this.claimWorkerId = new Int32Array(WAGE_CLAIM_CAP);
 		this.claimAmount = new Float64Array(WAGE_CLAIM_CAP);
+		this.claimCap = WAGE_CLAIM_CAP;
 		this.claimCount = 0;
 		this.vault = 0;
 		this.startTaxPerPop = START_PRICE / (INPUT_SHARE * (GOODS_COMFORT / TOWN_GOODS_NEED));
@@ -61,12 +62,43 @@ class GoldMoney {
 		this.purse[i] = 0;
 		this.owedWage[i] = 0;
 		// Erasing a firm forgives its wage promises: they were liabilities, never minted gold.
-		for (let k = 0; k < this.claimCount;) {
-			if (this.claimFirm[k] !== i) { k++; continue; }
-			const last = --this.claimCount;
-			this.claimFirm[k] = this.claimFirm[last];
-			this.claimWorkerId[k] = this.claimWorkerId[last];
-			this.claimAmount[k] = this.claimAmount[last];
+		this.removeClaimsFor(i);
+	}
+
+	// Grows the SoA claim table in place; a fixed cap that silently drops an entry would lose a
+	// worker's entitlement while `owedWage` still carried the debt.
+	growClaims() {
+		const cap = Math.max(16, this.claimCap * 2);
+		const firm = new Int32Array(cap), worker = new Int32Array(cap), amount = new Float64Array(cap);
+		firm.set(this.claimFirm);
+		worker.set(this.claimWorkerId);
+		amount.set(this.claimAmount);
+		this.claimFirm = firm;
+		this.claimWorkerId = worker;
+		this.claimAmount = amount;
+		this.claimCap = cap;
+	}
+
+	// Drops every claim for a firm, compacting the table while preserving the survivors' FIFO order.
+	removeClaimsFor(firm) {
+		let w = 0;
+		for (let k = 0; k < this.claimCount; k++) {
+			if (this.claimFirm[k] === firm) continue;
+			this.claimFirm[w] = this.claimFirm[k];
+			this.claimWorkerId[w] = this.claimWorkerId[k];
+			this.claimAmount[w] = this.claimAmount[k];
+			w++;
+		}
+		this.claimCount = w;
+	}
+
+	// Removes the claim at k, shifting later entries down so settlement keeps FIFO order.
+	dropClaim(k) {
+		const last = --this.claimCount;
+		for (let j = k; j < last; j++) {
+			this.claimFirm[j] = this.claimFirm[j + 1];
+			this.claimWorkerId[j] = this.claimWorkerId[j + 1];
+			this.claimAmount[j] = this.claimAmount[j + 1];
 		}
 	}
 
@@ -109,7 +141,7 @@ class GoldMoney {
 			this.claimAmount[k] += amount;
 			return;
 		}
-		if (this.claimCount >= WAGE_CLAIM_CAP) return;
+		if (this.claimCount >= this.claimCap) this.growClaims();
 		const k = this.claimCount++;
 		this.claimFirm[k] = firm;
 		this.claimWorkerId[k] = workerId;
@@ -136,12 +168,8 @@ class GoldMoney {
 			} else this.vault += pay;
 			this.claimAmount[k] -= pay;
 			left -= pay;
-			if (this.claimAmount[k] <= 1e-15) {
-				const last = --this.claimCount;
-				this.claimFirm[k] = this.claimFirm[last];
-				this.claimWorkerId[k] = this.claimWorkerId[last];
-				this.claimAmount[k] = this.claimAmount[last];
-			} else k++;
+			if (this.claimAmount[k] <= 1e-15) this.dropClaim(k);
+			else k++;
 		}
 		// The purse already debited the whole budget; unclaimable fp dust keeps the books exact via the vault.
 		if (left > 0) this.vault += left;
