@@ -1,4 +1,4 @@
-// Owns: economy inspector snapshot — worker states, gold breakdown, wages, prices, stall flags, history and copy text.
+// Owns: economy inspector snapshot — worker states, gold breakdown, owners & bank, wages, prices, stall flags, history and copy text.
 // Edit for: inspector metrics, stall-flag thresholds, worker "why" reasons, history columns and the pasteable stats text.
 'use strict';
 
@@ -67,6 +67,7 @@ class EconomyDiagnostics {
 		this.countActors(s, m);
 		this.countWorkers(s, m);
 		this.countGold(s, m);
+		this.countOwners(s, m);
 		this.countWages(s, m);
 		this.countPrices(s, m);
 		s.flags = this.flags(s);
@@ -138,20 +139,20 @@ class EconomyDiagnostics {
 		s.rested = m.restedDepleted;
 	}
 
-	// The buckets partition money.total() exactly: town purses, firm purses, worker wallets and the haul vault.
-	// Owed wages and claims are liabilities and stay outside the sum.
+	// The buckets partition money.total() exactly (plan M.6): town purses, owner cash, bank reserve, transport,
+	// custody and worker wallets. Owed wages and claims are liabilities and stay outside the sum.
 	countGold(s, m) {
 		const money = m.money;
 		s.goldTotal = money.total();
-		s.townPurse = s.firmPurse = s.firmOwed = 0;
-		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			const a = m.actors[i];
-			if (a === ECONOMY_TOWN) s.townPurse += money.purse[i];
-			else if (a) { s.firmPurse += money.purse[i]; s.firmOwed += money.owedWage[i]; }
-		}
-		s.vault = money.vault;
-		s.seeded = money.seeded;
+		s.townPurse = money.townTotal();
+		s.firmPurse = m.owners.totalCash();
+		s.firmOwed = m.owners.totalOwed();
+		s.bankReserve = m.bank.reserve;
+		s.transport = money.transport;
+		s.custody = money.custody;
+		s.initial = money.initial;
 		s.mined = money.mined;
+		s.goldError = s.goldTotal - s.initial - s.mined;
 		s.walletShare = s.goldTotal > 1e-9 ? s.wallets / s.goldTotal : 0;
 		s.walletMean = s.workers ? s.wallets / s.workers : 0;
 		const sorted = this.walletSort.subarray(0, s.workers);
@@ -164,6 +165,25 @@ class EconomyDiagnostics {
 		let unpaid = 0;
 		for (let k = 0; k < money.claimCount; k++) unpaid += money.claimAmount[k];
 		s.unpaidWages = unpaid;
+	}
+
+	countOwners(s, m) {
+		const { owners, bank } = m;
+		s.owners = owners.count - 1;
+		s.debt = bank.loanAssets();
+		s.bankEquity = bank.equity();
+		s.bankCapital = bank.capital;
+		s.lent = bank.lent;
+		s.repaid = bank.repaid;
+		s.interest = bank.interest;
+		s.writtenOff = bank.writtenOff;
+		s.loans = bank.loans;
+		s.cleared = bank.cleared;
+		s.defaults = bank.defaults;
+		s.refusals = bank.refusals;
+		s.bonuses = m.money.bonuses;
+		s.depot = 0;
+		for (const k of GOODS_ITEMS) s.depot += m.goodsPool.spawnBufferTotal(k);
 	}
 
 	countWages(s, m) {
@@ -301,7 +321,9 @@ class EconomyDiagnostics {
 		if (s.coalFlight > 1 && s.coalAsk > s.coalBestBuyer) out.push(`in-flight coal ask ${s.coalAsk.toFixed(3)} g/u > best buyer ${s.coalBestBuyer.toFixed(3)} g/u: ${s.coalFlight.toFixed(1)} coal cannot sell`);
 		if (s.goodsFlight > 1 && s.goodsAsk > s.goodsBestBuyer) out.push(`in-flight goods ask ${s.goodsAsk.toFixed(3)} g/u > best town price ${s.goodsBestBuyer.toFixed(3)} g/u`);
 		if (s.foodFlight > 1 && s.foodAsk > s.foodBestBuyer) out.push(`in-flight food ask ${s.foodAsk.toFixed(3)} g/u > best town bid ${s.foodBestBuyer.toFixed(3)} g/u: ${s.foodFlight.toFixed(1)} food cannot sell`);
-		if (s.firmOwed > s.firmPurse && s.firmOwed > 1) out.push(`firms owe ${s.firmOwed.toFixed(2)} g but hold ${s.firmPurse.toFixed(2)} g (unpaid wage claims ${s.unpaidWages.toFixed(2)} g)`);
+		if (s.firmOwed > s.firmPurse && s.firmOwed > 1) out.push(`owners owe ${s.firmOwed.toFixed(2)} g but hold ${s.firmPurse.toFixed(2)} g (unpaid wage claims ${s.unpaidWages.toFixed(2)} g)`);
+		if (s.defaults) out.push(`${s.defaults} bank loan(s) defaulted: ${s.writtenOff.toFixed(2)} g written off bank equity; borrowers' cash and wage claims are untouched`);
+		if (Math.abs(s.goldError) > 1e-6) out.push(`gold ledger off by ${s.goldError.toExponential(2)} g: initial + mined must equal every bucket`);
 		if (s.bazaarEmpty) out.push(`${s.bazaarEmpty} town bazaar(s) are empty while populated: food bids go dead until a farm delivers`);
 		if (s.idleFarms) out.push(`${s.idleFarms} farm(s) hold fields but no crew on this tick`);
 		return out;
@@ -366,14 +388,25 @@ class EconomyDiagnostics {
 		return lines.join('\n');
 	}
 
+	ownerRows() {
+		const { owners, bank } = this.model;
+		const f = (v, n = 7, d = 2) => v.toFixed(d).padStart(n);
+		const rows = ['owner worker sites    cash    owed    debt overdue state'];
+		for (let o = 1; o < owners.count; o++) {
+			const state = bank.defaulted[o] ? 'default' : bank.principal[o] > 0 ? 'loan' : '-';
+			rows.push(`${String(o).padStart(5)} ${String(owners.workerId[o]).padStart(6)} ${String(owners.facilities[o]).padStart(5)} ${f(owners.cash[o])} ${f(owners.owed[o])} ${f(bank.principal[o])} ${f(bank.overdue[o], 7, 1)} ${state}`);
+		}
+		return rows.join('\n');
+	}
+
 	actorRows() {
 		const m = this.model, money = m.money;
-		const rows = ['## actors', 'kind  cell    labor depl  queue coal   goods  wageFld coalPx goodsPx purse   owed   profit'];
+		const rows = ['## actors', 'kind  cell    owner labor depl  queue coal   goods  wageFld coalPx goodsPx budget  owed   profit'];
 		const f = (v, n = 6, d = 2) => v.toFixed(d).padStart(n);
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			const a = m.actors[i];
 			if (!a) continue;
-			rows.push(`${DIAG_ACTOR_LABELS[a].padEnd(5)} ${placeName(i)} ${f(m.labor[i], 5)} ${f(m.depleted[i], 5)} ${f(m.poolCount[i], 5)} ${f(m.coal[i])} ${f(m.goods[i])} ${f(m.priceLabor[i], 7, 3)} ${f(m.priceCoal[i], 6, 3)} ${f(m.priceGoods[i], 7, 3)} ${f(money.purse[i], 7)} ${f(money.owedWage[i])} ${f(m.profit[i], 6, 3)}`);
+			rows.push(`${DIAG_ACTOR_LABELS[a].padEnd(5)} ${placeName(i)} ${String(m.owners.ownerAt(i)).padStart(5)} ${f(m.labor[i], 5)} ${f(m.depleted[i], 5)} ${f(m.poolCount[i], 5)} ${f(m.coal[i])} ${f(m.goods[i])} ${f(m.priceLabor[i], 7, 3)} ${f(m.priceCoal[i], 6, 3)} ${f(m.priceGoods[i], 7, 3)} ${f(money.cashAt(i), 7)} ${f(m.owners.owedAt(i))} ${f(m.profit[i], 6, 3)}`);
 		}
 		return rows.join('\n');
 	}
@@ -406,8 +439,11 @@ class EconomyDiagnostics {
 			`count=${s.workers}/${s.workerCap} walk_job=${s.walkJob} pool=${s.pool} shift=${s.shift} walk_home=${s.walkHome} wait=${s.wait} room=${s.room} still=${s.still} forage=${s.forage} walking=${s.walking} stalled=${s.stalled} hungry=${s.hungry}`,
 			`labor_worked=${f(s.worked, 2)} rested=${f(s.rested, 2)} births=${s.births} starved=${s.starved}`,
 			'## gold',
-			`total=${f(s.goldTotal)} seeded=${f(s.seeded)} mined=${f(s.mined)} town_purse=${f(s.townPurse)} firm_purse=${f(s.firmPurse)} wallets=${f(s.wallets)} haul_vault=${f(s.vault)}`,
+			`total=${f(s.goldTotal)} initial=${f(s.initial)} mined=${f(s.mined)} error=${s.goldError.toExponential(1)} town_purse=${f(s.townPurse)} owner_cash=${f(s.firmPurse)} bank_reserve=${f(s.bankReserve)} transport=${f(s.transport)} custody=${f(s.custody)} wallets=${f(s.wallets)}`,
 			`wallet_share=${f(s.walletShare * 100, 1)}% wallet_mean=${f(s.walletMean, 4)} wallet_median=${f(s.walletMedian, 4)} wallet_max=${f(s.walletMax)} broke_workers=${s.walletBroke} firm_owed=${f(s.firmOwed)} unpaid_wage_claims=${f(s.unpaidWages)}`,
+			'## owners & bank',
+			`owners=${s.owners} debt=${f(s.debt)} lent=${f(s.lent)} repaid=${f(s.repaid)} interest=${f(s.interest)} written_off=${f(s.writtenOff)} loans=${s.loans} cleared=${s.cleared} defaults=${s.defaults} refusals=${s.refusals} bank_capital=${f(s.bankCapital)} bank_equity=${f(s.bankEquity)} bonuses=${f(s.bonuses)} depot=${f(s.depot)}`,
+			this.ownerRows(),
 			'## wages & taxes',
 			`wage_field_at_firms=${f(s.wageAtFirms, 4)} wage_field_max=${f(s.wageFieldMax, 4)} entry_wage_per_worker=${f(s.entryWage, 4)} pay_per_labor_unit=${f(s.payPerLabor, 4)}`,
 			`wages_paid=${f(s.wagesPaid, 2)} taxes_paid=${f(s.taxesPaid, 2)} wages_rate=${f(s.wageRate, 4)} g/s taxes_rate=${f(s.taxRate, 4)} g/s`,
@@ -438,16 +474,29 @@ const PANEL_ROWS = [
 	['Gold', [
 		['Total', s => `${s.goldTotal.toFixed(1)} g`],
 		['Town purse', s => `${s.townPurse.toFixed(1)} g`],
-		['Firm purses', s => `${s.firmPurse.toFixed(1)} g`],
+		['Owner cash', s => `${s.firmPurse.toFixed(1)} g`],
+		['Bank reserve', s => `${s.bankReserve.toFixed(1)} g`],
 		['Worker wallets', s => `${s.wallets.toFixed(1)} g`],
 		['Wallet share', s => `${(s.walletShare * 100).toFixed(0)}%`, s => s.walletShare > 0.5],
 		['Wallet mean/median', s => `${s.walletMean.toFixed(3)} / ${s.walletMedian.toFixed(3)} g`],
 		['Wallet max', s => `${s.walletMax.toFixed(2)} g`],
 		['Broke workers', s => `${s.walletBroke}`, s => s.walletBroke > 0],
-		['Haul vault', s => `${s.vault.toFixed(1)} g`],
+		['Transport · custody', s => `${s.transport.toFixed(1)} · ${s.custody.toFixed(1)} g`],
 		['Unpaid wages', s => `${s.unpaidWages.toFixed(2)} g`, s => s.unpaidWages > 1e-6],
-		['Owed by firms', s => `${s.firmOwed.toFixed(2)} g`, s => s.firmOwed > s.firmPurse && s.firmOwed > 1],
-		['Seeded / mined', s => `${s.seeded.toFixed(1)} / ${s.mined.toFixed(1)} g`]
+		['Owed by owners', s => `${s.firmOwed.toFixed(2)} g`, s => s.firmOwed > s.firmPurse && s.firmOwed > 1],
+		['Initial / mined', s => `${s.initial.toFixed(1)} / ${s.mined.toFixed(1)} g`],
+		['Ledger error', s => s.goldError.toExponential(1), s => Math.abs(s.goldError) > 1e-6]
+	]],
+	['Owners & bank', [
+		['Owners · debt', s => `${s.owners} · ${s.debt.toFixed(2)} g`],
+		['Lent · repaid', s => `${s.lent.toFixed(2)} · ${s.repaid.toFixed(2)} g`],
+		['Interest earned', s => `${s.interest.toFixed(3)} g`],
+		['Loans · repaid · defaults', s => `${s.loans} · ${s.cleared} · ${s.defaults}`, s => s.defaults > 0],
+		['Written off', s => `${s.writtenOff.toFixed(2)} g`, s => s.writtenOff > 0],
+		['Refused requests', s => `${s.refusals}`],
+		['Bank capital · equity', s => `${s.bankCapital.toFixed(1)} · ${s.bankEquity.toFixed(1)} g`],
+		['Earned-work bonuses', s => `${s.bonuses.toFixed(2)} g`],
+		['Depot stock', s => `${s.depot.toFixed(2)} u`]
 	]],
 	['Wages', [
 		['Wage at firms', s => `${s.wageAtFirms.toFixed(3)} g/u`, s => s.workers > 0 && s.wageAtFirms < 1e-6],
