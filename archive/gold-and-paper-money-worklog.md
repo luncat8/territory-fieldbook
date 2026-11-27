@@ -70,3 +70,14 @@
 - evidence: zero-start mine wood 1.5→0 at t≈60 with inputs 0 — no wood supplier is capitalized there (sawmill needs owner cash or a bank loan); diagnosed via the timber-out flag, not subsidized.
 - pitfalls: labor must stay last in the recipe (`bidOut[0]` would bid wood as the wage); `near()`'s epsilon must be numeric; real-asset sink counters live on the model, not in `money.reset` (findings).
 - next: paper money (P0–P1) or port — only at the M.7 end-to-end gate; by hand, Fund the bank from the mine owner then Borrow to a sawmill to exercise the zero-start wood loop.
+
+## P1 credit notes + M.7 end-to-end gate · particle lab, 2026-11-27
+- changed: particle `currencies.js` — rewritten to an owner-id settlement core (`ownerBalance/Issue/Retire/ToBank/ToWorker/WorkerToOwner` + cell wrappers); per-issuer `issued − retired = heldSum` identity, custody absorbs despawned workers' notes.
+- changed: particle `banks.js` — note loans with a notes-first waterfall (interest→bank-held then gold; principal→retire then funded parity exchange, atomic in-block), grace default = equity write-down, per-town auto-redemption drip, `suspended = queue > 1e-9` recomputed each step, `equity()` identity; exports `NOTE_PROJECT_LIMIT`/`NOTE_REDEEM_RATE`.
+- changed: particle `gold.js`/`workers.js`/`towns.js` — notes-first payment paths: entry wages, room check-in (affordability probe before tender), rations; `wageNotes`/`taxNotes`/`rationNotes` counters.
+- changed: particle `conservation.test.js` — per-issuer note identity enforced in `checkLedgers`; `credit-notes.test.js` (new, 10 acceptance tests) and `end-to-end.test.js` (new, 2: the M.7 first scenario through 150 s real ticks; reserve-exhaustion suspension toggle).
+- changed: engine fixes found by the suite — `workerToOwner` grew accounts (silent OOB write), `checkInRoom` tendered notes before the gold-affordability check, `redeemNotes` never paid the redeemer.
+- validation: node --test particle-transfer-b2 90/90; 150 s note scene: gold conserved, note identity < 2e-14, note wages 1.6 n, town fees 0.46 n, redemption retired notes, principal repaid 1.9 n + 1.7 g funded exchange, interest 0.48 n to bank-held notes.
+- decisions: cell-keyed note settlement is a dead end — everything goes through owner-id primitives keyed by `loan.owner`; the funded exchange must be atomic in-block or the notes-first waterfall retires its own issue; suspension blocks origination only, existing notes stay spendable.
+- pitfalls: `tryAdmitTown` charges only from inside the town cell; the rest fee is 1.05×tired so one seeded note cannot check in; explicit test cash grants must book `money.seeded`.
+- next: P2 competing issuers/FX and P3 bankruptcy remain optional; port the validated kernel to `map-money-particle.js` per M.10.

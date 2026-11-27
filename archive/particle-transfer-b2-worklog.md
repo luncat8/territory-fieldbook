@@ -63,3 +63,12 @@ validation: node --test particle-transfer-b2 68/68 (67 prior + 1 new); stashing 
 decisions: in-flight relaxation is accounting-only (no gold moves) and writes transportCost before factoryCost, so the profit identity and conservation are untouched; workers are a persistent mobility layer, like actor markers
 pitfalls: the write-down asymptotes toward the local best price, so a particle parked at the single highest buyer clears only as the diffused field fluctuates — do not expect instant clearance from the relaxation alone
 next: browser playtest of the preview to confirm steady coal flow and visible commuters
+
+plan: gold-and-paper P0 — note ledger + creditMoney switch (feature)
+changed: prototype/particle-transfer-b2/currencies.js, settings.js (new) — per-issuer note ledger (issued/retired/bank-held/custody) with invariantError; settings adopt() ignores malformed values
+changed: prototype/particle-transfer-b2/{simulation,workers,banks,worker-life,towns}.js — spawn/remove/split hooks, creditMoney flag + syncIssuer, town note-consent stamps
+changed: prototype/particle-transfer-b2/{index.html,app.js,diagnostics.js} — credit-money checkbox, persisted lab setting, note metrics; ui/vm harness script lists 24→26
+validation: node --test particle-transfer-b2 78/78 at P0; currencies.test.js 10/10 (adoption, compaction, identity)
+decisions: notes are per-issuer custody ledgers, not particles; the checkbox flips settlement rules, never the gold map
+pitfalls: compaction emulation must pair currencies.onWorkerRemoved with workers.count--; adopt() coerces nothing
+next: P1 credit notes landed separately (see gold-and-paper-money worklog); port stays post-gate per M.10
