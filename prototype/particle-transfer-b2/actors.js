@@ -42,6 +42,20 @@ class ActorOptimizer {
 		};
 	}
 
+	reset() {
+		this.laborCost.fill(0);
+	}
+
+	itemGate(item, i) {
+		const m = this.model;
+		if (!m.derived) return item === ITEM_WOOD ? SAWMILL_GATE : item === ITEM_COAL ? PRICE_GATE : 0;
+		if (item === ITEM_WOOD) return 0.15 * m.priceLabor[i] * SAWMILL_LABOR;
+		if (item === ITEM_COAL) return 4 * HAUL_LABOR * m.priceLabor[i];
+		if (item === ITEM_FOOD) return 8 * HAUL_LABOR * m.priceLabor[i];
+		if (item === ITEM_GOODS) return 4 * HAUL_LABOR * m.priceLabor[i];
+		return 0;
+	}
+
 	sellPrice(i) {
 		const m = this.model, actor = m.actors[i];
 		if (actor === ECONOMY_MINE) return m.goodsPool.sellFloor[ITEM_COAL][i];
@@ -75,13 +89,13 @@ class ActorOptimizer {
 		let matReady = 1;
 		for (let k = 0; k < recipe.inputs.length; k++) {
 			const inp = recipe.inputs[k];
-			if (inp.item !== ITEM_LABOR) matReady = Math.min(matReady, 0.3 + 0.7 * Math.min(1, m.stocks[inp.item][i] / 0.08));
+			if (inp.item !== ITEM_LABOR) matReady = Math.min(matReady, 0.2 + 0.8 * Math.min(1, m.stocks[inp.item][i] / SPAWN_UNIT));
 		}
 		const nominal = recipe.rate * scale * recipe.inputs[recipe.inputs.length - 1].need;
 		const occRatio = Math.min(1, m.workLoad[i] / Math.max(1e-9, nominal));
 		const outPrice = recipe.outItem < 0 ? 1 : (m.derived ? m.pricesAt(recipe.outItem)[i] : START_PRICE);
-		const ref = Math.max(0.02, outPrice * recipe.outYield * recipe.rate * 0.12);
-		const drive = m.derived ? Math.tanh(m.profit[i] / ref) : 0;
+		const ref = outPrice * recipe.outYield * recipe.rate * 0.12;
+		const drive = m.derived && ref > 0 ? Math.tanh(m.profit[i] / ref) : 0;
 		return Math.min(cap, Math.max(1, (2.0 * scale + 1.4 * occRatio + 0.4 * Math.max(0, drive)) * matReady));
 	}
 
@@ -108,7 +122,8 @@ class ActorOptimizer {
 		if (!recipe || m.founding.isBuilding(i)) return false;
 		const fallback = recipe.outItem === ITEM_COAL ? START_PRICE * 0.5 : START_PRICE;
 		const outPrice = recipe.outItem < 0 ? 1 : (m.derived ? m.pricesAt(recipe.outItem)[i] : fallback);
-		if (recipe.gate > 0 && outPrice <= recipe.gate) return false;
+		const gate = recipe.outItem >= 0 ? this.itemGate(recipe.outItem, i) : 0;
+		if (gate > 0 && outPrice <= gate) return false;
 		if (recipe.outItem < 0) return m.priceHome[i] + m.priceRest[i] > 0.02 || !m.derived;
 		const outTarget = Math.max(0.25, recipe.rate * (m.scale[i] || 1) * BUFFER_SECONDS);
 		if (m.suppression && m.goodsPool.outputHeld(recipe.outItem, i) >= outTarget) return false;
@@ -117,12 +132,13 @@ class ActorOptimizer {
 
 	firmBids(i, recipe) {
 		const m = this.model;
-		const { inputs, rate, outItem, outYield, gate } = recipe;
+		const { inputs, rate, outItem, outYield } = recipe;
 		const scale = m.scale[i] || 1;
 		const fallback = outItem === ITEM_COAL ? START_PRICE * 0.5 : START_PRICE;
 		const outPrice = outItem < 0 ? (m.priceHome[i] + m.priceRest[i] > 0.02 || !m.derived ? 1 : 0) : (m.derived ? m.pricesAt(outItem)[i] : fallback);
 		this.bidOut.fill(0);
 		this.maxOut.fill(0);
+		const gate = outItem >= 0 ? this.itemGate(outItem, i) : 0;
 		if (gate > 0 && outPrice <= gate) return;
 		const outValue = outPrice * outYield;
 		if (outValue <= 0) return;
@@ -131,8 +147,8 @@ class ActorOptimizer {
 		let sellRoom = outItem < 0 || !m.suppression ? 1 : Math.max(0, 1 - outBuffered / outTarget);
 		// Patch firms (sawmill) cannot bid past the surrounding forest: no standing timber, no hiring.
 		if (recipe.patch) sellRoom = Math.min(sellRoom, m.farms.forestRoom(i));
-		const ref = Math.max(0.02, outValue * rate * 0.12);
-		const drive = m.derived ? Math.tanh(m.profit[i] / ref) : 0;
+		const ref = outValue * rate * 0.12;
+		const drive = m.derived && ref > 0 ? Math.tanh(m.profit[i] / ref) : 0;
 		const cool = m.money.creditCool(i, INPUT_SHARE * outValue * rate * scale * PURSE_SECONDS);
 		if (!Number.isFinite(cool)) return;
 
@@ -238,7 +254,7 @@ class ActorOptimizer {
 		m.workLoad[i] += this.occBlend * (usedLabor / ECONOMY_DT - m.workLoad[i]);
 		this.firmBids(i, recipe);
 		for (let k = 0; k < inputs.length; k++) {
-			const { item, need } = inputs[k];
+			const { item } = inputs[k];
 			if (item === ITEM_LABOR) continue;
 			const stock = m.stocks[item][i];
 			const target = inputTarget(recipe, k, scale);
@@ -248,6 +264,7 @@ class ActorOptimizer {
 		if (outItem >= 0) {
 			const sAmt = m.goodsPool.spawnAmount[outItem][i];
 			const unitCost = sAmt > 1e-9 ? m.goodsPool.spawnCost[outItem][i] / sAmt : 0;
+			const gate = this.itemGate(outItem, i);
 			m.goodsPool.sellFloor[outItem][i] = m.derived ? Math.max(gate, unitCost * (1 + SELL_MARGIN)) : gate;
 		}
 	}
@@ -262,14 +279,14 @@ class ActorOptimizer {
 			const { rate, outItem, outYield } = recipe;
 			const outPrice = outItem < 0 ? 1 : m.pricesAt(outItem)[i];
 			const outValue = outPrice * outYield;
-			const ref = Math.max(0.02, outValue * rate * 0.12);
-			const drive = Math.tanh(m.profit[i] / ref);
-		const outStock = outItem < 0 ? 0 : m.goodsPool.outputHeld(outItem, i);
-		const outTarget = Math.max(0.25, rate * m.scale[i] * BUFFER_SECONDS);
-		let sellRoom = outItem < 0 ? 1 : Math.max(0, 1 - outStock / outTarget);
-		// Patch firms (sawmill) also refuse to rescale up without forest room.
-		if (recipe.patch) sellRoom = Math.min(sellRoom, m.farms.forestRoom(i));
-			const solvent = m.owners.owedAt(i) <= m.money.cashAt(i) + Math.max(0.25, outValue * rate * 2.5);
+			const ref = outValue * rate * 0.12;
+			const drive = ref > 0 ? Math.tanh(m.profit[i] / ref) : 0;
+			const outStock = outItem < 0 ? 0 : m.goodsPool.outputHeld(outItem, i);
+			const outTarget = Math.max(0.25, rate * m.scale[i] * BUFFER_SECONDS);
+			let sellRoom = outItem < 0 ? 1 : Math.max(0, 1 - outStock / outTarget);
+			// Patch firms (sawmill) also refuse to rescale up without forest room.
+			if (recipe.patch) sellRoom = Math.min(sellRoom, m.farms.forestRoom(i));
+			const solvent = m.owners.owedAt(i) <= m.money.cashAt(i) + outValue * rate * 2.5;
 			if (drive > 0.02 && solvent && sellRoom > 0.2) {
 				m.scale[i] = Math.min(SCALE_MAX, m.scale[i] + ECONOMY_DT * SCALE_UP * drive * sellRoom);
 			} else if (drive < -0.02 || !solvent || (outStock > 0.25 && sellRoom < 0.15)) {

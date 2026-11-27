@@ -5,7 +5,7 @@
 const PURSE_SECONDS = 15;
 const RESERVE_SECONDS = 4;
 const RESERVE_HORIZON_SECONDS = 16;
-const BONUS_BATCH = 0.5;
+const BONUS_BATCH = 0.2;
 const START_GOLD_PER_WORKER = 1;
 // Scenario allocation of starting gold; shares sum to 1 and every bucket is recorded once as initial gold.
 const START_SHARES = { bank: 0.25, owners: 0.35, towns: 0.2, wallets: 0.2 };
@@ -51,8 +51,13 @@ class GoldMoney {
 		const ownerEach = named ? total * shares.owners / named : 0;
 		const townEach = towns ? total * shares.towns / towns : 0;
 		const walletEach = workers.count ? total * shares.wallets / workers.count : 0;
+		const walletSeed = walletEach > 0 ? walletEach : perWorker * 0.2;
 		for (let o = 1; o < owners.count; o++) this.fundOwner(o, ownerEach);
-		for (let i = 0; i < ECONOMY_SIZE; i++) if (actors[i] === ECONOMY_TOWN) this.fund(i, townEach);
+		for (let i = 0; i < ECONOMY_SIZE; i++) {
+			if (actors[i] !== ECONOMY_TOWN) continue;
+			this.fund(i, townEach);
+			m.localWealth[i] = walletSeed;
+		}
 		for (let w = 0; w < workers.count; w++) this.fundWorker(w, walletEach);
 		this.fundBank(total - ownerEach * named - townEach * towns - walletEach * workers.count);
 	}
@@ -76,6 +81,17 @@ class GoldMoney {
 	// Books gold a caller already placed in a wallet (debug grants, test spawns) as initial funding.
 	recordFunding(amount) {
 		this.initial += amount;
+	}
+
+	unitScale() {
+		const count = this.model.workers.count;
+		if (count <= 0) return 1;
+		const supply = this.initial + this.mined;
+		return (supply > 0 ? supply : this.model.workers.totalGold()) / count;
+	}
+
+	eps() {
+		return Math.max(1e-30, (this.initial + this.mined) * 1e-12);
 	}
 
 	// Explicit scenario capital for the account behind a cell; recorded as initial gold, never a placement side effect.
@@ -148,12 +164,15 @@ class GoldMoney {
 	}
 
 	creditCool(i, budget) {
-		return 1 + this.model.owners.owedAt(i) / (budget + 1e-9);
+		const owed = this.model.owners.owedAt(i);
+		if (owed <= 0) return 1;
+		return budget > 0 ? 1 + owed / budget : Infinity;
 	}
 
 	townCool(i, budget) {
 		const cash = this.purse[i];
-		if (cash <= 1e-9) return Infinity;
+		if (cash <= 0) return Infinity;
+		if (budget <= 0) return 1;
 		return (cash >= budget ? 1 : budget / cash) * this.creditCool(i, budget);
 	}
 
@@ -161,14 +180,14 @@ class GoldMoney {
 	// in favour of the original worker, settled FIFO from later owner cash.
 	payEntryWage(firmCell, workerIdx, bill) {
 		if (bill <= 0) return 0;
-		const m = this.model, owners = m.owners, o = owners.ownerAt(firmCell);
+		const m = this.model, owners = m.owners, o = owners.ownerAt(firmCell), eps = this.eps();
 		const paid = Math.min(bill, owners.budgetAt(firmCell));
 		owners.cash[o] = Math.max(0, owners.cash[o] - paid);
 		m.workers.gold[workerIdx] += paid;
 		if (paid > 0) m.tracker.income(workerIdx, paid, m.workers.cell[workerIdx]);
 		this.wages += paid;
 		const owed = bill - paid;
-		if (owed > 1e-15) {
+		if (owed > eps) {
 			owners.owed[o] += owed;
 			this.addWageClaim(o, m.workers.id[workerIdx], owed);
 		}
@@ -196,9 +215,9 @@ class GoldMoney {
 
 	// Pays an owner's wage claims FIFO to the original hires; despawned workers' shares go to custody.
 	payWageClaims(o, budget) {
-		const workers = this.model.workers;
+		const workers = this.model.workers, eps = this.eps() * 1e-3;
 		let left = budget;
-		for (let k = 0; k < this.claimCount && left > 1e-15;) {
+		for (let k = 0; k < this.claimCount && left > eps;) {
 			if (this.claimOwner[k] !== o) { k++; continue; }
 			const pay = Math.min(left, this.claimAmount[k]);
 			const w = workers.indexOfId(this.claimWorkerId[k]);
@@ -208,7 +227,7 @@ class GoldMoney {
 			} else this.custody += pay;
 			this.claimAmount[k] -= pay;
 			left -= pay;
-			if (this.claimAmount[k] <= 1e-15) this.dropClaim(k);
+			if (this.claimAmount[k] <= eps) this.dropClaim(k);
 			else k++;
 		}
 		// The owner already debited the whole budget; unclaimable fp dust keeps the books exact via custody.
@@ -271,7 +290,7 @@ class GoldMoney {
 		const fromTransport = this.transportPreset === 'T0' ? this.transport * this.dripShare : 0;
 		const fromCustody = this.custody * this.dripShare;
 		const drip = fromTransport + fromCustody;
-		if (drip <= 1e-12) return;
+		if (drip <= this.eps()) return;
 		this.transport -= fromTransport;
 		this.custody -= fromCustody;
 		this.redistributed += drip;
@@ -294,8 +313,8 @@ class GoldMoney {
 	// Bonuses come only from earnings: never while a loan is open and never out of paid-in working capital,
 	// otherwise a cold-start reserve near zero pays the scenario capital straight out as bonuses.
 	settleOwner(o) {
-		const m = this.model, owners = m.owners;
-		if (owners.owed[o] > 1e-12 && owners.cash[o] > 1e-12) {
+		const m = this.model, owners = m.owners, eps = this.eps();
+		if (owners.owed[o] > eps && owners.cash[o] > eps) {
 			const pay = Math.min(owners.cash[o], owners.owed[o]);
 			owners.cash[o] -= pay;
 			owners.owed[o] -= pay;
@@ -303,11 +322,12 @@ class GoldMoney {
 			this.wages += pay;
 		}
 		const reserve = owners.reserve[o];
-		if (!owners.extracts[o] && reserve > 1e-9 && owners.cash[o] < reserve) m.bank.request(o, reserve / RESERVE_SECONDS);
+		if (!owners.extracts[o] && reserve > eps && owners.cash[o] < reserve) m.bank.request(o, reserve / RESERVE_SECONDS);
 		m.bank.service(o, owners.cash[o] - reserve);
-		if (m.bank.principal[o] > 1e-12) return;
+		if (m.bank.principal[o] > eps) return;
 		const surplus = owners.cash[o] - Math.max(owners.capital[o], reserve * (RESERVE_HORIZON_SECONDS / RESERVE_SECONDS));
-		if (surplus < BONUS_BATCH) return;
+		const batch = BONUS_BATCH * this.unitScale();
+		if (surplus <= eps || surplus < batch) return;
 		const paid = m.workers.payCredited(o, surplus);
 		owners.cash[o] -= paid;
 		this.wages += paid;

@@ -90,15 +90,20 @@ class FarmSystem {
 
 	crewTarget(i) {
 		const m = this.model;
-		return Math.min(25, Math.max(1, Math.ceil(m.priceFood[i] / BASE_RATION_FEE * 12)));
+		if (!m.derived) return Math.min(25, Math.max(1, Math.ceil(m.priceFood[i] / BASE_RATION_FEE * 12)));
+		const wage = m.priceLabor[i] > 0 ? m.priceLabor[i] : Math.max(m.towns.refRestFee(), m.money.unitScale() * 0.45) / 4.5;
+		if (wage <= 0) return 1;
+		return Math.min(12, Math.max(1, Math.ceil(Math.max(0, m.priceFood[i] / wage - 1.5) * 4)));
 	}
 
 	wageBid(i) {
 		const m = this.model;
 		const presence = m.shiftCount[i] + m.poolCount[i];
 		const room = Math.max(0, 1 - presence / (this.crewTarget(i) + 1));
-		const cool = m.money.creditCool(i, Math.max(1, m.priceFood[i] * FARM_YIELD));
-		return m.priceFood[i] * FARM_YIELD / (FARM_SEASON_SECONDS * WORK_RATE) * INPUT_SHARE * room / cool;
+		const depotCap = FARM_YIELD * 1.5;
+		const sellRoom = m.suppression ? Math.max(0, 1 - m.goodsPool.outputHeld(ITEM_FOOD, i) / depotCap) : 1;
+		const cool = m.money.creditCool(i, m.priceFood[i] * FARM_YIELD);
+		return m.priceFood[i] * FARM_YIELD / (FARM_SEASON_SECONDS * WORK_RATE) * INPUT_SHARE * room * sellRoom / cool;
 	}
 
 	// Farms bid for construction wood only while their founding build is unfinished; cooling follows wage discipline.
@@ -106,8 +111,9 @@ class FarmSystem {
 		const m = this.model;
 		const need = Math.max(0, FARM_BUILD_WOOD - this.buildWood[i]);
 		if (need <= 0 || !m.founding.isBuilding(i)) return 0;
-		const cool = m.money.creditCool(i, Math.max(1, m.priceFood[i] * FARM_YIELD));
-		return optimalBid(START_PRICE, m.wood[i] + m.goodsPool.buyerQueue[ITEM_WOOD][i], FARM_BUILD_WOOD, cool, m.suppression, INPUT_SHARE);
+		const val = m.derived ? Math.max(m.priceFood[i] * FARM_YIELD, m.priceWood[i] * 1.2) : START_PRICE;
+		const cool = m.money.creditCool(i, val);
+		return optimalBid(val, m.wood[i] + m.goodsPool.buyerQueue[ITEM_WOOD][i], FARM_BUILD_WOOD, cool, m.suppression, INPUT_SHARE);
 	}
 
 	forestShare(i) {
@@ -123,8 +129,9 @@ class FarmSystem {
 	stepSawmill(i, recipe) {
 		const m = this.model;
 		const scale = m.scale[i] || 1;
+		const gate = m.optimizer.itemGate(ITEM_WOOD, i);
 		const outCap = Math.max(0.35, recipe.rate * scale * BUFFER_SECONDS * 1.5);
-		const canCut = m.priceWood[i] > recipe.gate && m.goodsPool.outputHeld(recipe.outItem, i) < outCap && this.forestShare(i) > 0.02;
+		const canCut = m.priceWood[i] > gate && m.goodsPool.outputHeld(recipe.outItem, i) < outCap && this.forestShare(i) > 0.02;
 		const used = canCut ? Math.min(m.shiftAvail[i], recipe.rate * SAWMILL_LABOR * scale * ECONOMY_DT) : 0;
 		if (used > 0) {
 			const onSiteFresh = Math.max(used, m.labor[i]);
@@ -137,7 +144,7 @@ class FarmSystem {
 			if (this.sawAcc[i] >= SAWMILL_SEARCH_WORK) this.fellVisit(i);
 		}
 		m.workLoad[i] += m.optimizer.occBlend * (used / ECONOMY_DT - m.workLoad[i]);
-		m.goodsPool.sellFloor[recipe.outItem][i] = recipe.gate;
+		m.goodsPool.sellFloor[recipe.outItem][i] = gate;
 	}
 
 	// One felling visit: a random wrapped cell in radius; logs land on the cut cell, payable to the mill's owner.
@@ -164,7 +171,8 @@ class FarmSystem {
 		const m = this.model;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			if (m.actors[i] !== ECONOMY_FARM) continue;
-			const work = m.shiftAvail[i];
+			const barnFull = m.suppression && !m.founding.isBuilding(i) && m.goodsPool.outputHeld(ITEM_FOOD, i) >= FARM_YIELD * 1.5;
+			const work = barnFull ? 0 : m.shiftAvail[i];
 			if (work > 0) {
 				const share = Math.min(1, work / Math.max(work, m.labor[i]));
 				const cost = m.optimizer.laborCost[i] * share;

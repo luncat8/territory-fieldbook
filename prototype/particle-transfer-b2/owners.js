@@ -88,7 +88,8 @@ class OwnerRegistry {
 	}
 
 	debtHeadroom(o) {
-		return Math.max(0, this.debtLimit[o] - this.model.bank.principal[o]);
+		const scale = this.model.money ? this.model.money.unitScale() : 1;
+		return Math.max(0, this.debtLimit[o] * scale - this.model.bank.principal[o]);
 	}
 
 	totalCash() {

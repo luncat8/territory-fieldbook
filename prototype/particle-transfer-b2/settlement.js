@@ -178,7 +178,7 @@ class Settlements {
 		m.vacantTicks[c] = 0;
 		m.satCoal[c] = m.satGoods[c] = m.workLoad[c] = m.profit[c] = 0;
 		m.towns.initTown(c);
-		if (settlers > 0) m.localWealth[c] = Math.max(0.5, wealthSum / settlers);
+		if (settlers > 0) m.localWealth[c] = wealthSum / settlers;
 		m.rooms[c] = Math.min(this.popCap(c), Math.max(POP_BASE, settlers + 2));
 		this.lastFound = this.ticks;
 		m.land.refresh();

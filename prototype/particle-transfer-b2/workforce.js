@@ -10,7 +10,8 @@ const SPACE_COMFORT = 0.25;
 function walletWeight(gold, amount, refFee) {
 	if (amount <= 1e-12) return 0.5;
 	const perWorker = gold / amount;
-	return perWorker / (perWorker + refFee * HOME_FEE_TRIPS);
+	const denom = perWorker + refFee * HOME_FEE_TRIPS;
+	return denom > 0 ? perWorker / denom : 0.5;
 }
 
 class WorkerPolicy {
@@ -46,7 +47,9 @@ class WorkerPolicy {
 	homeValueBid(i) {
 		const m = this.model;
 		if (m.rooms[i] <= 0) return 0;
-		return START_PRICE * this.shelterAt(i) * BASE_REST_FEE / Math.max(1e-6, m.towns.restTax(i));
+		const fee = m.towns.restTax(i), ref = m.towns.refRestFee();
+		const ratio = fee > 0 && ref > 0 ? Math.min(4, ref / fee) : 1;
+		return START_PRICE * this.shelterAt(i) * ratio;
 	}
 
 	homeScore(i, weight) {

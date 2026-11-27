@@ -112,9 +112,12 @@ funding and any fallback price are independent inputs. Bids and fees after start
 budgets, earnings, costs and need; a contraction in holdings must allow prices to fall as well as rise.
 
 The goal is monetary scale invariance: changing a positive initial gold amount must not disable the real
-loop merely because its nominal prices are lower. Compare 0.5 / 1 / 2 g with identical seed, real assets,
-actors and no new extraction first; assess conservation, finite adaptive prices and sustained real trades.
-Use paired extraction/no-extraction controls at the same initial gold to test inflation. No regression may
+loop merely because its nominal prices are lower. Compare 0.5 / 1 / 2 g (and micro/macro scales `1e-6 .. 1e6` g in
+`gold-seeding.test.js`) with identical seed, real assets, actors and no new extraction first; assess conservation,
+finite adaptive prices and invariant real trades. In derived mode, haulage quotes, item gates, gradient knees/dock
+slopes, town rest/ration fees, town-purse reserve rebates, unpaid-claim caps and worker split thresholds scale with
+live prices, worker wallets or `money.unitScale()` rather than nominal `[g^1]` constants or fixed `1e-6`/`1e-9` gold
+epsilons. Use paired extraction/no-extraction controls at the same initial gold to test inflation. No regression may
 require goods prices to remain above the arbitrary preset `4`. Exact redenomination tests must also scale
 all gold-denominated stocks, claims and future extraction; changing initial gold alone while keeping mine
 yield in grams fixed is a different monetary path, not an exact symmetry. Zero-start is a separate bootstrap

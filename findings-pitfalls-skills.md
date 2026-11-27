@@ -569,11 +569,14 @@ Carried over from the particle-transfer lab; these govern the persistent-worker 
 
 ## scenario money level and owner cash waterfall
 
-- Lowering starting money (327 g → 1 g/worker) is not neutral: haulage (`HAUL_COST_RATE`), rest/ration fees,
-  `START_PRICE`, `WALLET_REFERENCE` and the split threshold are nominal gold constants calibrated to the old
-  level, so trade over distance collapses first (coal ask with haul ≫ best bid). Scaling only those six
-  constants by the money ratio did not restore the chain; tests that assert legacy throughput run an explicit
-  funded control (`scenario.goldPerWorker = 14`) instead of hiding the gap.
+- Lowering starting money (327 g → 1 g/worker) exposes every `[g^1]` nominal constant, gate and epsilon:
+  per-cell haulage (`HAUL_COST_RATE`) exceeding spatial price decay `κ · p` strands coal/food particles across 8+ cells;
+  nominal gates (`SAWMILL_GATE`, `PRICE_GATE`, `FARM_MIN_PRICE`, `wealthRatio ≥ 0.45`, `BASE_REST_FEE`, `BASE_RATION_FEE`,
+  `START_PRICE · 1.5`, `WORKER_SPLIT_GOLD`) and fixed `[g^1]` epsilons (`GRADIENT_KNEE`, `DOCK_SLOPE`, `gLen > 1e-9`,
+  `bid + 1e-6 ≥ ask`, `1e-9` wallet/cash checks) break micro-scale trade; unrebated town purses sterilize >40% of gold;
+  and proportional `room / req` particle shaving in `admitKind` splits large queues into hundreds of unsellable crumbs.
+  Expressing haulage, gates, knees, fees, town-reserve rebates and epsilons relative to live prices/wallets/`unitScale()`
+  plus sequential whole-particle FIFO admission restores exact 15-digit closed-economy invariance across `1e-6 .. 1e6` g/worker.
 - A bonus rule "pay cash above N seconds of cost" drains the scenario capital on tick one, because the cost
   reserve is ~0 before wage fields form. Pay bonuses only from earnings: never while a loan is open and never
   below paid-in capital (`owners.capital`).

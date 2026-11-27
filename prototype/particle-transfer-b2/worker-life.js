@@ -4,6 +4,7 @@
 
 const WORKER_SPLIT_SECONDS = 45;
 const WORKER_SPLIT_GOLD = 16;
+const SPLIT_GOLD_SHARE = 0.5;
 const WORKER_SPLIT_FOOD = 0.9;
 const WORKER_SPLIT_NEEDS = 0.75;
 const WORKER_STARVE_SECONDS = 120;
@@ -15,7 +16,7 @@ class WorkerLife {
 		this.splitAge = new Float64Array(MAX_WORKERS);
 		this.hunger = new Float64Array(MAX_WORKERS);
 		this.columns = [this.needs, this.splitAge, this.hunger];
-		this.blend = 1 - Math.exp(-ECONOMY_DT / 12);
+		this.blend = 1 - Math.exp(-ECONOMY_DT / 5);
 	}
 
 	reset() {
@@ -39,8 +40,9 @@ class WorkerLife {
 				this.remove(w);
 				continue;
 			}
+			const minGold = m.derived ? SPLIT_GOLD_SHARE * m.money.unitScale() : WORKER_SPLIT_GOLD;
 			const eligible = this.needs[w] >= WORKER_SPLIT_NEEDS && pool.food[w] >= WORKER_SPLIT_FOOD
-				&& pool.gold[w] >= WORKER_SPLIT_GOLD && pool.tired[w] <= 0.3 * pool.amount[w];
+				&& pool.gold[w] >= minGold && pool.tired[w] <= 0.3 * pool.amount[w];
 			this.splitAge[w] += ECONOMY_DT;
 			if (eligible && this.splitAge[w] >= WORKER_SPLIT_SECONDS) this.split(w);
 		}

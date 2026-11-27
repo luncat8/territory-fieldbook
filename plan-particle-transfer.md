@@ -84,17 +84,20 @@ back to the individual workers of that cell. A rule never writes the view.
 
 ## Goods particles
 
-- **Spawn:** each producer cell accumulates `(spawnAmount[i], spawnCost[i])`; at `≥ SPAWN_UNIT` it emits one
+- **Spawn:** each producer cell accumulates `(spawnAmount[i], spawnCost[i])`; at `≥ SPAWN_UNIT` (`0.06`) it emits one
   particle with proportional cost, only if the uphill price gradient clears the sell floor
-  `selfPrice = (factoryCost / amount) · (1 + SELL_MARGIN)`. Idle flush: a partial batch above the dust floor is
-  emitted after ~2.5 s without additions, so a closing mine never traps stock.
-- **In transit:** climbs its kind's price field. `transportCost` accrues per distance hauled
-  (`haulCostRate · amount · ds / conductance`; zero while held). Spoilage `amount *= exp(−spoilRate · dt)`
-  (goods slow, coal none) is booked as `spoiled`.
+  `max(itemGate, (factoryCost / amount) · (1 + SELL_MARGIN))`, where derived `itemGate` scales with local labor/haulage
+  cost (`4–8 · HAUL_LABOR · priceLabor`, `0.15 · priceLabor · SAWMILL_LABOR` for wood) so barns hold inventory rather
+  than dumping underwater batches into full markets. Idle flush: a partial batch above the dust floor is emitted after
+  ~2.5 s without additions, so a closing mine never traps stock.
+- **In transit:** climbs its kind's price field. `transportCost` accrues per distance hauled from local labor/price
+  (`max(HAUL_LABOR · priceLabor, HAUL_VALUE_FLOOR · priceKind) · amount · ds / conductance` in derived mode; zero while
+  held). Spoilage `amount *= exp(−spoilRate · dt)` (goods slow, coal none) is booked as `spoiled`.
 - **Derived price:** `item.price = (factoryCost + transportCost) / amount`, never stored. Rendered colour.
-- **Arrival:** a buyer admits up to `cap − stock` (and available buyer cash), normalized across all particles
-  arriving that tick; the rejected remainder counts as that buyer's queue (cools its bid, never its cap). On
-  admission:
+- **Arrival:** a buyer admits particles in sequential FIFO order up to `cap − stock` and live `money.cashAt(buyer)`,
+  splitting only the boundary particle when remaining room or cash is smaller than its batch (preventing proportional
+  crumb shaving across large queues and multi-site cash double-spends); the unaccepted remainder counts as that buyer's
+  queue (cools its bid, never its cap). On admission:
   1. buyer pays `buyerPay = amount · priceKind[buyer]` from its purse;
   2. `transportPaid = min(buyerPay, transportCost)` → map-wide **transport account** (T0 drips it back to active
      towns by population; T1 retains it);
@@ -167,8 +170,12 @@ the next job — same `id`, same `amount` throughout.
   shrink slowly only when long vacant or broke.
 - Town rules never create or remove workers, change their wallets except through explicit purchases, or
   relocate them. Empty rooms, comfort, taxes and town wealth affect services, not headcount.
+- Rest fee derives in derived mode from observed worker wallet wealth (`REST_WALLET_SHARE = 0.24` of local wallet
+  average) with no permanent nominal `BASE_REST_FEE` floor; excess town purse above operating reserve
+  (`max(4, pop) · 1.5 · refRestFee`) rebates to resting workers so towns circulate rather than sterilize gold.
 - Bazaar food target `max(2, demandPop · 0.5)`; bids cool with stock, incoming queues and available gold.
-  Rations cost `max(0.45, delivered food cost · 1.15)` per unit. Sales remove food cost basis proportionally.
+  Rations cost `max(0.18 · restTax, delivered food cost · 1.15)` per unit in derived mode (`0.45` legacy). Sales
+  remove food cost basis proportionally.
 - Gold: the scenario's starting gold is the only non-mined gold; placement, founding, erase and reset mint
   nothing. Splitting shares wallets; the gold mine is the only source. Holdings: town purses, owner cash, bank
   reserve, transport account, custody (estates of the dead and of erased towns, dripped back to towns), wallets.
@@ -208,19 +215,22 @@ B2 `Settlements` / `Land`, per worker:
 
 ## Commercial food farms (`farms.js`)
 
-- High food bid (`> 0.12`) plus at least three idle fresh workers in a radius-two area enables farm founding.
-  The same value scan compares food output value with mines/factories. No town initiates a worker spawn.
+- Food bid clearing the labor break-even gate plus at least three idle fresh workers in a radius-two area enables
+  farm founding (`FARM_SPACING = 22`). The same value scan compares food output value with mines/factories/sawmills
+  (`SAWMILL_SPACING = 12`). No town initiates a worker spawn.
 - A site needs at least three legal cells, mean humidity quality ≥ 0.35, and either one unit of forest in
-  radius two or one unit of local wood. Wood is a local construction stock; a general wood market is deferred.
+  radius two or one unit of local wood. Wood is a bought/local construction stock traded from sawmills.
 - Construction and production use the same paid shift crews. Every 0.25 worker units spent permits a random
   clearing visit in the 5×5 area (misses count). Cut all forest in that cell to zero, keep felled wood, and
   establish exclusive farmland. Construction consumes one wood; it cannot finish without a field.
-- One worker per field cell; food price determines desired crew/field count (`ceil(priceFood / 0.45 · 12)`,
-  bounded 1…25). More crew allows more cells. Full output buffers do not stop production or harvests.
+- One worker per field cell; in derived mode the dimensionless food-to-wage ratio sets desired crew/field count
+  (`ceil(max(0, priceFood / wage − 1.5) · 4)`, bounded 1…12; `ceil(priceFood / 0.45 · 12)`, 1…25 legacy). When
+  output suppression is active, full output barns (`outputHeld ≥ 1.5 · FARM_YIELD`) cool wage bids and pause
+  seasonal field work until grain dispatches.
 - Harvest every seven simulation seconds, all fields together. Staffed share is accumulated crew-seconds /
   season / plot count, capped at one. Each fully staffed cell yields six food times humidity quality
   `max(0, 1 − ((moisture − 0.6) / 0.3)²) · (1 − waste)`, sampled only at harvest.
-- Wage bid uses food output value per worker unit, pool vacancy and owed-wage cooling. Wage cost accumulates
+- Wage bid uses food output value per worker unit, pool vacancy, barn room and owed-wage cooling. Wage cost accumulates
   into the next harvest cost basis. Food batches use the standard particle transport, spoilage and payment split.
 - Each harvest sends `0.0004 · food` waste to one uniformly random in-map cell at Chebyshev distance three.
   Neighboring farmland is not exempt. Farm waste persists across land refresh; clearing claims block forest
@@ -228,11 +238,12 @@ B2 `Settlements` / `Land`, per worker:
 
 ## Worker-owned lifecycle (`worker-life.js`)
 
-- Each worker tracks comfort history (12-second smoothing), personal split cooldown and time without
+- Each worker tracks comfort history (5-second smoothing), personal split cooldown and time without
   food. History samples town coal/goods comfort and is retained while away; it belongs to the worker, not town.
 - A worker at least 45 seconds old (or 45 seconds since its last split) may split when needs ≥ 0.75,
-  bag ≥ 0.9, wallet ≥ 16 gold and tired portion ≤ 30%. The cooldown measures age, not uninterrupted
-  prosperity: otherwise ordinary eating/refill cycles prevent reproduction. No vacant room is required.
+  bag ≥ 0.9, wallet ≥ `0.5 · money.unitScale()` in derived mode (`16` gold legacy) and tired portion ≤ 30%. The
+  cooldown measures age, not uninterrupted prosperity: otherwise ordinary eating/refill cycles prevent reproduction.
+  No vacant room is required.
 - Parent keeps its identity. Child receives a new ID in `STILL` at the parent's location. Gold, food and tired
   amount are divided equally, never minted. Both must qualify again. A full pool leaves the parent unchanged.
 - Foraging is the first response to hunger. Only 120 continuous seconds with an empty personal food bag
@@ -245,8 +256,10 @@ B2 `Settlements` / `Land`, per worker:
 - Terrain speeds: meadow `1`, desert `0.85`, forest `0.75`, water `0` (impassable). Edge conductance is the
   harmonic mean of endpoint speeds; haul effort per unit `∝ 1 / conductance`.
 - Smoothed heading `STEERING_BLEND = dt / (0.18 + dt)`; launch from a dock along the steepest uphill edge.
-- Speed `∝ c · s / (s + GRADIENT_KNEE)`. Job/home walkers dock as `STILL` below `DOCK_SLOPE = 0.1 · GRADIENT_KNEE`.
-  Goods 6 cells/s, workers 11 cells/s at full slope.
+- Speed `∝ c · s / (s + knee)` where `knee` and dock thresholds scale with the live field peak (`REL_KNEE · peak`,
+  `2.5e-3 · peakLabor` for jobs, `REL_DOCK · peak` for goods, `DOCK_SLOPE` for dimensionless home/rest fields) and
+  neighbor tie-breakers are relative (`1e-12 · |here|`), keeping trajectories invariant under redenomination.
+  Goods 5 cells/s, workers 7 cells/s at full slope.
 - Arrival tests are cell-based (particle enters the buyer/firm/town/garden cell), never distance-to-centre.
 
 ## Conservation ledgers (checked every test tick)

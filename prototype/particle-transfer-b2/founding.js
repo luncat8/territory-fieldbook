@@ -9,7 +9,8 @@ const FIRM_SEARCH_RADIUS = 6;
 const FIRM_FOUNDERS = 3;
 const FIRM_BUILD_WORK = 1.0;
 const FOUNDER_BUILD_RATE = 0.45;
-const SAWMILL_SPACING = 2 * SAWMILL_RADIUS + 1;
+const SAWMILL_SPACING = 12;
+const FARM_SPACING = 22;
 
 class FirmFounding {
 	constructor(model) {
@@ -181,7 +182,8 @@ class FirmFounding {
 	scanAndFound(anchor) {
 		const m = this.model, { actors, land, forage } = m;
 		const ax = anchor % ECONOMY_WIDTH, ay = Math.floor(anchor / ECONOMY_WIDTH);
-		let bestCell = -1, bestKind = 0, bestValue = 0.03;
+		const wageRef = Math.max(m.priceLabor[anchor], m.workers.meanGold() * WORK_RATE * 0.1);
+		let bestCell = -1, bestKind = 0, bestValue = wageRef * WORK_RATE * 0.2;
 		for (let y = ay - FIRM_SEARCH_RADIUS, yEnd = ay + FIRM_SEARCH_RADIUS; y <= yEnd; y++) {
 			const wy = MAP_WRAP ? wrapY(y) : y;
 			if (wy < 0 || wy >= ECONOMY_HEIGHT) continue;
@@ -191,19 +193,21 @@ class FirmFounding {
 				const i = economyIndex(wx, wy);
 				if (actors[i] || land.terrain[i] === TERRAIN_WATER || forage.plotOwner[i] || m.farms.plotOwner[i]) continue;
 				if (land.claim[i] > 0.72) continue;
-				if (m.priceFood[i] > FARM_MIN_PRICE && m.farms.canSite(i)) {
-					const value = m.priceFood[i] * FARM_YIELD / FARM_SEASON_SECONDS;
+				const farmYield = FARM_YIELD * Math.min(1, Math.max(0.4, m.farms.quality(i) * 1.6));
+				const farmGate = Math.max(m.priceLabor[i] * WORK_RATE * FARM_SEASON_SECONDS / farmYield, wageRef * 0.15);
+				if (m.priceFood[i] > farmGate && m.farms.canSite(i) && !this.hasNear(i, ECONOMY_FARM, FARM_SPACING)) {
+					const value = m.priceFood[i] * farmYield / FARM_SEASON_SECONDS - m.priceLabor[i] * WORK_RATE;
 					if (value > bestValue) { bestValue = value; bestCell = i; bestKind = ECONOMY_FARM; }
 				}
-				if (this.deposit[i] && m.priceCoal[i] > PRICE_GATE * 2) {
-					const mineVal = m.priceCoal[i] * SOURCE_RATE - m.priceLabor[i] * SOURCE_RATE * MINE_LABOR * 0.5;
+				if (this.deposit[i] && m.priceCoal[i] > m.optimizer.itemGate(ITEM_COAL, i) * 2) {
+					const mineVal = (m.priceCoal[i] - m.priceLabor[i] * MINE_LABOR * 0.5) * SOURCE_RATE;
 					if (mineVal > bestValue) { bestValue = mineVal; bestCell = i; bestKind = ECONOMY_MINE; }
 				}
-				if (m.priceCoal[i] > 0.08 && m.priceGoods[i] > 0.25) {
-					const facVal = (m.priceGoods[i] * FACTORY_YIELD - m.priceCoal[i] * 1.05) * FACTORY_RATE;
+				if (m.priceCoal[i] > 0 && m.priceGoods[i] > m.priceCoal[i] * 1.15) {
+					const facVal = (m.priceGoods[i] * FACTORY_YIELD - m.priceCoal[i] * 1.05 - m.priceLabor[i] * FACTORY_LABOR * FACTORY_YIELD * 0.5) * FACTORY_RATE;
 					if (facVal > bestValue) { bestValue = facVal; bestCell = i; bestKind = ECONOMY_FACTORY; }
 				}
-				if (m.priceWood[i] > SAWMILL_GATE * 1.5 && m.farms.forestShare(i) > 0.3 && !this.hasNear(i, ECONOMY_SAWMILL, SAWMILL_SPACING)) {
+				if (m.priceWood[i] > m.optimizer.itemGate(ITEM_WOOD, i) * 1.5 && m.farms.forestShare(i) > 0.3 && !this.hasNear(i, ECONOMY_SAWMILL, SAWMILL_SPACING)) {
 					const sawVal = (m.priceWood[i] - m.priceLabor[i] * SAWMILL_LABOR) * SAWMILL_RATE;
 					if (sawVal > bestValue) { bestValue = sawVal; bestCell = i; bestKind = ECONOMY_SAWMILL; }
 				}

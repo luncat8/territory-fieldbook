@@ -152,7 +152,7 @@ class FieldPlot {
 	}
 
 	readActors(actors) {
-		const counts = [0, 0, 0, 0, 0, 0, 0];
+		const counts = new Int32Array(ACTOR_TAGS.length);
 		this.markers.length = 0;
 		for (let i = 0; i < actors.length; i++) {
 			const kind = actors[i];
@@ -164,7 +164,8 @@ class FieldPlot {
 	fieldFor(model) {
 		const v = this.view;
 		if (this.resource === 'gold') {
-			for (let i = 0; i < ECONOMY_SIZE; i++) v[i] = this.isStock ? model.money.held(i) : model.priceHome[i] * 0.5 + model.priceLabor[i];
+			const homeScale = 0.25 * model.money.unitScale();
+			for (let i = 0; i < ECONOMY_SIZE; i++) v[i] = this.isStock ? model.money.held(i) : model.priceHome[i] * homeScale + model.priceLabor[i];
 			return v;
 		}
 		if (this.resource === 'forage') return this.isStock ? model.forage.buildStockView() : model.forage.buildGradientView();
@@ -189,19 +190,21 @@ class FieldPlot {
 
 	intensity(value) {
 		if (!this.isStock || this.resource === 'land' || this.resource === 'forage') return Math.min(1, value / this.scale);
-		if (this.resource === 'gold' || this.resource === 'labor' || this.resource === 'depleted') return Math.log1p(value) / Math.log1p(this.scale);
+		if (this.resource === 'gold') return Math.log1p(4 * value / this.scale) / Math.log1p(4);
+		if (this.resource === 'labor' || this.resource === 'depleted') return Math.log1p(value) / Math.log1p(this.scale);
 		return Math.log1p(STOCK_EXPOSURE * value) / STOCK_LOG;
 	}
 
 	rescale(data) {
-		let peak = this.isStock ? SCALE_FLOOR.gold : SCALE_FLOOR.price;
+		let peak = 0;
 		for (let i = 0; i < ECONOMY_SIZE; i++) peak = Math.max(peak, data[i]);
-		this.scale = niceCeil(peak);
+		if (this.isStock && this.resource !== 'gold') peak = Math.max(peak, SCALE_FLOOR.gold);
+		this.scale = peak > 0 ? niceCeil(peak) : (this.isStock ? SCALE_FLOOR.gold : SCALE_FLOOR.price);
 		const key = `${this.isStock ? 'S' : 'P'}:${this.resource}:${this.scale}`;
 		if (key !== this.legendKey) {
 			this.legendKey = key;
-			const unit = this.resource === 'gold' && this.isStock ? ' g' : (!this.isStock && (this.resource === 'coal' || this.resource === 'food' || this.resource === 'goods' || this.resource === 'labor')) ? ' g/u' : '';
-			this.scaleLabel.innerHTML = `${this.isStock && this.resource !== 'land' && this.resource !== 'forage' ? 'Log' : 'Linear'} scale <b>0 – ${this.scale}${unit}</b>`;
+			const unit = this.resource === 'gold' && this.isStock ? ' g' : (!this.isStock && (this.resource === 'coal' || this.resource === 'wood' || this.resource === 'food' || this.resource === 'goods' || this.resource === 'labor')) ? ' g/u' : '';
+			this.scaleLabel.innerHTML = `${this.isStock && this.resource !== 'land' && this.resource !== 'forage' ? 'Log' : 'Linear'} scale <b>0 – ${Number(this.scale.toPrecision(2))}${unit}</b>`;
 		}
 	}
 
@@ -266,7 +269,8 @@ class FieldPlot {
 		if (this.resource === 'coal' || this.resource === 'wood' || this.resource === 'food' || this.resource === 'goods') {
 			const kind = this.resource === 'coal' ? ITEM_COAL : this.resource === 'wood' ? ITEM_WOOD : this.resource === 'food' ? ITEM_FOOD : ITEM_GOODS;
 			const pool = model.goodsPool;
-			const priceRef = Math.max(1, START_PRICE * 1.6);
+			const fieldPeak = model.peakFor(model.pricesAt(kind));
+			const priceRef = fieldPeak > 0 ? fieldPeak * 1.25 : Math.max(1e-30, this.scale || 1);
 			for (let p = 0; p < pool.count; p++) {
 				if (pool.kind[p] !== kind) continue;
 				const priceIdx = Math.min(63, Math.max(0, Math.round((pool.unitPrice(p) / priceRef) * 63)));
@@ -275,7 +279,7 @@ class FieldPlot {
 			return;
 		}
 		const { workers } = model;
-		const goldRef = WALLET_REFERENCE * 2.5;
+		const goldRef = Math.max(1e-30, model.money.unitScale() * 2.5);
 		for (let w = 0; w < workers.count; w++) {
 			const st = workers.state[w];
 			if (!workers.isWalking(st)) continue;
@@ -537,8 +541,9 @@ class FieldRelief {
 		if (!this.w) return;
 		const { ctx: g, x, y, base, cols, rows } = this;
 		g.clearRect(0, 0, this.w, this.h);
-		let peak = START_PRICE;
+		let peak = 0;
 		for (let i = 0; i < x.length; i++) peak = Math.max(peak, field[this.cells[i]]);
+		if (peak <= 0) peak = 1;
 		const gain = this.h * 0.56 / peak;
 		for (let i = 0; i < x.length; i++) y[i] = base[i] - gain * field[this.cells[i]];
 		g.lineWidth = 0.8; g.strokeStyle = this.ink; g.fillStyle = '#19171e';

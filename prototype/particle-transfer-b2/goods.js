@@ -3,14 +3,16 @@
 'use strict';
 
 const MAX_GOODS_PARTICLES = 2048;
-const SPAWN_UNIT = 0.08;
-const SPAWN_DUST = 0.008;
+const SPAWN_UNIT = 0.06;
+const SPAWN_DUST = 0.006;
 const SPAWN_FLUSH_TICKS = 150;
 const HAUL_COST_RATE = 0.032;
+const HAUL_LABOR = 0.016;
+const HAUL_VALUE_FLOOR = 0.008;
 const CONSIGN_WAIT_TICKS = 180;
 const SPOIL_COAL = 0;
 const SPOIL_GOODS = 0.0035;
-const COST_RELAX = 0.06;
+const COST_RELAX_RATE = 0.35;
 const HARVEST_BUNDLE = 0.4;
 
 class GoodsPool {
@@ -163,7 +165,8 @@ class GoodsPool {
 	// Internal depot (plan D1): output waits in spawnAmount and dispatches only when an uphill demand gradient clears
 	// sellFloor, so no transport is computed without a buyer; the fields themselves are always emitted and faded.
 	stepSpawn() {
-		const { steering } = this.model;
+		const { steering, optimizer } = this.model;
+		const relax = 1 - Math.exp(-ECONOMY_DT * COST_RELAX_RATE);
 		for (const k of GOODS_ITEMS) {
 			const price = this.model.pricesAt(k);
 			const sAmt = this.spawnAmount[k], sCost = this.spawnCost[k], sIdle = this.spawnIdle[k];
@@ -172,7 +175,7 @@ class GoodsPool {
 				if (avail <= 1e-12) continue;
 				if (sIdle[i] < 60000) sIdle[i]++;
 				const unitCost = sCost[i] / avail;
-				const gate = k === ITEM_WOOD ? SAWMILL_GATE : k === ITEM_COAL ? PRICE_GATE : 0;
+				const gate = optimizer.itemGate(k, i);
 				const floor = this.model.derived ? Math.max(gate, unitCost * (1 + SELL_MARGIN)) : gate;
 				this.sellFloor[k][i] = floor;
 				const batch = avail >= SPAWN_UNIT ? SPAWN_UNIT : avail >= SPAWN_DUST && sIdle[i] >= SPAWN_FLUSH_TICKS ? avail : 0;
@@ -180,15 +183,14 @@ class GoodsPool {
 				if (steering.sampleField(price, null, 0, i, floor) <= 0) {
 					// No road pays this batch's floor: relax the book toward the best price the road can see, so
 					// inventory that outran its buyers cannot wedge the site's buffers forever.
-					// Accounting only — no gold moves, conservation is untouched.
 					let best = price[i];
 					const base = i * DEGREE;
-					for (let k = 0; k < DEGREE; k++) {
-						const to = NEIGHBORS[base + k];
+					for (let d = 0; d < DEGREE; d++) {
+						const to = NEIGHBORS[base + d];
 						if (to >= 0 && price[to] > best) best = price[to];
 					}
 					const over = unitCost - Math.min(unitCost, best);
-					if (over > 0) sCost[i] = Math.max(0, sCost[i] - Math.min(over, COST_RELAX * ECONOMY_DT) * avail);
+					if (over > 0) sCost[i] = Math.max(0, sCost[i] - over * relax * avail);
 					continue;
 				}
 				const share = Math.min(1, batch / avail);
@@ -256,9 +258,9 @@ class GoodsPool {
 			const priceField = this.model.pricesAt(k);
 			const ask = this.model.derived ? this.unitPrice(p) : 0;
 			if (this.isBuyer(k, cell)) {
-				const bid = priceField[cell];
-				const hasRoom = this.cap[k][cell] - this.model.stocks[k][cell] > 1e-9 && this.model.money.cashAt(cell) > 1e-9;
-				if (hasRoom && bid + 1e-6 >= ask) {
+				const bid = priceField[cell], eps = this.model.money.eps();
+				const hasRoom = this.cap[k][cell] - this.model.stocks[k][cell] > 1e-9 && (this.model.money.cashAt(cell) > eps || bid <= 0);
+				if (hasRoom && bid >= ask * (1 - 1e-9)) {
 					this.arriving[p] = 1;
 					this.waitTicks[p] = 0;
 					p++;
@@ -269,9 +271,10 @@ class GoodsPool {
 					p++;
 					continue;
 				}
-				// At a local maximum while underwater: coal waits in consignment; perishable goods spot-sell before rotting.
+				// At a local maximum while underwater: non-perishables hold twice as long before clearing at spot bid.
 				if (this.waitTicks[p] < 60000) this.waitTicks[p]++;
-				if (k !== ITEM_COAL && hasRoom && bid > 0 && this.waitTicks[p] >= CONSIGN_WAIT_TICKS) {
+				const holdTicks = k === ITEM_COAL || k === ITEM_WOOD ? CONSIGN_WAIT_TICKS * 2 : CONSIGN_WAIT_TICKS;
+				if (hasRoom && bid > 0 && this.waitTicks[p] >= holdTicks) {
 					this.arriving[p] = 1;
 				}
 				this.hx[p] = 0;
@@ -296,7 +299,11 @@ class GoodsPool {
 		this.y[p] = steering.out.y;
 		this.hx[p] = steering.out.hx;
 		this.hy[p] = steering.out.hy;
-		if (this.model.decay) this.transportCost[p] += HAUL_COST_RATE * this.amount[p] * steering.out.effort;
+		if (this.model.decay) {
+			const m = this.model, cell = steering.out.cell, k = this.kind[p];
+			const rate = m.derived ? Math.max(m.priceLabor[cell] * HAUL_LABOR, m.pricesAt(k)[cell] * HAUL_VALUE_FLOOR) : HAUL_COST_RATE;
+			this.transportCost[p] += rate * this.amount[p] * steering.out.effort;
+		}
 		this.waitTicks[p] = 0;
 	}
 
@@ -321,25 +328,30 @@ class GoodsPool {
 				continue;
 			}
 			const unitBid = priceField[i];
-			const roomShare = Math.min(1, room[i] / req);
-			const cashShare = unitBid > 1e-12 ? Math.min(1, money.cashAt(i) / (req * unitBid)) : 1;
-			acc[i] = Math.max(0, Math.min(roomShare, cashShare));
-			const rejected = req * (1 - acc[i]);
+			const maxCash = unitBid > 0 ? money.cashAt(i) / unitBid : req;
+			const rejected = Math.max(0, req - Math.min(req, room[i], maxCash));
 			queue[i] += this.queueBlend * (rejected - queue[i]);
 		}
 		let p = 0;
 		while (p < this.count) {
 			if (!this.arriving[p] || this.kind[p] !== kind) { p++; continue; }
 			const cell = economyIndex(Math.floor(this.x[p]), Math.floor(this.y[p]));
-			const share = acc[cell];
-			if (share <= 1e-12) { p++; continue; }
-			const all = share >= 1 - 1e-11;
-			const accepted = all ? this.amount[p] : this.amount[p] * share;
+			const availRoom = room[cell];
+			if (availRoom <= 1e-9) { p++; continue; }
+			const buyerUnitPrice = priceField[cell];
+			const availCash = money.cashAt(cell);
+			if (buyerUnitPrice > 0 && availCash <= money.eps()) { p++; continue; }
+			const maxByCash = buyerUnitPrice > 0 ? availCash / buyerUnitPrice : this.amount[p];
+			const take = Math.min(this.amount[p], availRoom, maxByCash);
+			const all = take >= this.amount[p] - 1e-11;
+			if (take <= 1e-11 || (!all && stock[cell] > 0 && take < SPAWN_DUST)) { p++; continue; }
+			const share = all ? 1 : take / this.amount[p];
+			const accepted = all ? this.amount[p] : take;
+			room[cell] = Math.max(0, availRoom - accepted);
 			const facSlice = all ? this.factoryCost[p] : this.factoryCost[p] * share;
 			const trSlice = all ? this.transportCost[p] : this.transportCost[p] * share;
 			const itemUnitPrice = (facSlice + trSlice) / accepted;
-			const buyerUnitPrice = priceField[cell];
-			const buyerPay = Math.min(money.cashAt(cell), accepted * buyerUnitPrice);
+			const buyerPay = Math.min(availCash, accepted * buyerUnitPrice);
 			const effectiveUnitBid = buyerPay / accepted;
 			money.debit(cell, buyerPay);
 			const transportPaid = Math.min(buyerPay, trSlice);
@@ -350,7 +362,7 @@ class GoodsPool {
 			const identityProfit = accepted * (effectiveUnitBid - itemUnitPrice);
 			const err = Math.abs(realizedProfit - identityProfit);
 			if (err > this.maxProfitError) this.maxProfitError = err;
-			if (realizedProfit < -1e-9) this.underwaterLosses++;
+			if (realizedProfit < -Math.max(money.eps(), accepted * itemUnitPrice * 1e-9)) this.underwaterLosses++;
 			this.arrivals++;
 			const origin = this.origin[p];
 			if (this.model.owners.facilityId[origin] === this.originFacility[p]) this.model.earned[origin] += realizedProfit / ECONOMY_DT;

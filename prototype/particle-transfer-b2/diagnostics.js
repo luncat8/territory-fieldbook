@@ -312,7 +312,7 @@ class EconomyDiagnostics {
 		const pct = v => `${Math.round(v * 100)}%`;
 		if (s.towns && !s.workers) out.push('no workers are alive: everyone starved, so towns have nobody to feed, rest or tax');
 		if (s.workers >= s.workerCap) out.push(`worker pool at cap ${s.workers}/${s.workerCap}: splits pause until workers leave or starve`);
-		if (s.walking > 8 && s.stalled / s.walking > 0.3) out.push(`${pct(s.stalled / s.walking)} of walkers are stopped (${s.stalled}/${s.walking}): no price pull clears the dock gate ${DOCK_SLOPE.toExponential(1)}`);
+		if (s.walking > 8 && s.stalled / s.walking > 0.3) out.push(`${pct(s.stalled / s.walking)} of walkers are stopped (${s.stalled}/${s.walking}): no price pull clears the dock gate ${this.model.fieldDock(this.model.priceLabor).toExponential(1)}`);
 		if (s.queuedFirm > 20) out.push(`${s.queuedFirm} workers queued in firm pools; pools fill faster than shifts open, so entry-wage bids cool`);
 		if (s.queuedTown > 20) out.push(`${s.queuedTown} workers waiting for town rooms at ${s.restTax.toFixed(3)} g rest tax`);
 		if (s.hungry > 0) out.push(`${s.hungry} worker(s) below the hunger gate — they drop work for FORAGE mode`);
@@ -321,9 +321,9 @@ class EconomyDiagnostics {
 		if (s.coalFlight > 1 && s.coalAsk > s.coalBestBuyer) out.push(`in-flight coal ask ${s.coalAsk.toFixed(3)} g/u > best buyer ${s.coalBestBuyer.toFixed(3)} g/u: ${s.coalFlight.toFixed(1)} coal cannot sell`);
 		if (s.goodsFlight > 1 && s.goodsAsk > s.goodsBestBuyer) out.push(`in-flight goods ask ${s.goodsAsk.toFixed(3)} g/u > best town price ${s.goodsBestBuyer.toFixed(3)} g/u`);
 		if (s.foodFlight > 1 && s.foodAsk > s.foodBestBuyer) out.push(`in-flight food ask ${s.foodAsk.toFixed(3)} g/u > best town bid ${s.foodBestBuyer.toFixed(3)} g/u: ${s.foodFlight.toFixed(1)} food cannot sell`);
-		if (s.firmOwed > s.firmPurse && s.firmOwed > 1) out.push(`owners owe ${s.firmOwed.toFixed(2)} g but hold ${s.firmPurse.toFixed(2)} g (unpaid wage claims ${s.unpaidWages.toFixed(2)} g)`);
+		if (s.firmOwed > s.firmPurse && s.firmOwed > this.model.money.unitScale()) out.push(`owners owe ${s.firmOwed.toFixed(2)} g but hold ${s.firmPurse.toFixed(2)} g (unpaid wage claims ${s.unpaidWages.toFixed(2)} g)`);
 		if (s.defaults) out.push(`${s.defaults} bank loan(s) defaulted: ${s.writtenOff.toFixed(2)} g written off bank equity; borrowers' cash and wage claims are untouched`);
-		if (Math.abs(s.goldError) > 1e-6) out.push(`gold ledger off by ${s.goldError.toExponential(2)} g: initial + mined must equal every bucket`);
+		if (Math.abs(s.goldError) > Math.max(1e-9, s.goldTotal * 1e-8)) out.push(`gold ledger off by ${s.goldError.toExponential(2)} g: initial + mined must equal every bucket`);
 		if (s.bazaarEmpty) out.push(`${s.bazaarEmpty} town bazaar(s) are empty while populated: food bids go dead until a farm delivers`);
 		if (s.idleFarms) out.push(`${s.idleFarms} farm(s) hold fields but no crew on this tick`);
 		return out;
@@ -332,27 +332,27 @@ class EconomyDiagnostics {
 	// Mirrors the release/admission rules in workers.js in words, so a stalled worker explains its own stall.
 	workerReason(w) {
 		const m = this.model, pool = m.workers;
-		const st = pool.state[w], c = pool.cell[w], gate = DOCK_SLOPE;
+		const st = pool.state[w], c = pool.cell[w], jobGate = m.fieldDock(m.priceLabor);
 		const pct = v => `${Math.round(v * 100)}%`;
 		if (st === WORKER_WALK_JOB) {
 			m.steering.sampleField(m.priceLabor, null, 0, c, 0);
 			const slope = m.steering.grad.bestPull;
 			const hiring = m.optimizer.isHiringFirm(c) ? '' : ' · no hiring firm here';
-			return slope < gate
-				? `walking to work, stalled: wage slope ${slope.toExponential(1)} below gate ${gate.toExponential(1)}${hiring}`
+			return m.steering.grad.bestSlope <= 0 || slope < jobGate
+				? `walking to work, stalled: wage slope ${slope.toExponential(1)} below gate ${jobGate.toExponential(1)}${hiring}`
 				: `walking to a job: wage slope ${slope.toExponential(1)}${hiring}`;
 		}
 		if (st === WORKER_FIRM_POOL) {
-			const places = m.optimizer.shiftSlots(c) + m.optimizer.poolSlots(c);
+			const places = Math.max(1, Math.ceil(m.optimizer.poolTarget(c)));
 			return `queued in the firm pool: ${m.poolCount[c].toFixed(1)}/${places} places · wage ${m.priceLabor[c].toFixed(3)} g/u`;
 		}
 		if (st === WORKER_SHIFT) return `working a shift: tired ${pct(pool.tired[w])} · wage ${m.priceLabor[c].toFixed(3)} g/u`;
 		if (st === WORKER_WALK_HOME) {
-			const wMix = walletWeight(pool.gold[w], pool.amount[w], BASE_REST_FEE);
+			const wMix = walletWeight(pool.gold[w], pool.amount[w], m.towns.refRestFee());
 			m.steering.sampleField(m.priceHome, m.priceRest, wMix, c, 0);
 			const slope = m.steering.grad.bestPull;
-			return slope < gate
-				? `walking home, stalled: home slope ${slope.toExponential(1)} below gate ${gate.toExponential(1)}`
+			return m.steering.grad.bestSlope <= 0 || slope < DOCK_SLOPE
+				? `walking home, stalled: home slope ${slope.toExponential(1)} below gate ${DOCK_SLOPE.toExponential(1)}`
 				: `walking home: home slope ${slope.toExponential(1)}`;
 		}
 		if (st === WORKER_TOWN_WAIT) return `waiting for a room: ${m.waitCount[c].toFixed(1)}/${m.towns.waitCap(c).toFixed(1)} · fee ${m.towns.restTax(c).toFixed(3)} g · wallet ${pool.gold[w].toFixed(2)} g`;
@@ -364,8 +364,8 @@ class EconomyDiagnostics {
 		if (pool.tired[w] > 1e-6) return `shelter-resting: tired ${pct(pool.tired[w] / Math.max(1e-9, pool.amount[w]))} · rest pace ×${m.land.rest[c].toFixed(2)}`;
 		m.steering.sampleField(m.priceLabor, null, 0, c, 0);
 		const slope = m.steering.grad.bestPull;
-		return slope < gate
-			? `idle: wage slope ${slope.toExponential(1)} below gate ${gate.toExponential(1)} — no job pull`
+		return m.steering.grad.bestSlope <= 0 || slope < jobGate
+			? `idle: wage slope ${slope.toExponential(1)} below gate ${jobGate.toExponential(1)} — no job pull`
 			: `idle, ready: wage slope ${slope.toExponential(1)} — job available`;
 	}
 
@@ -499,7 +499,7 @@ const PANEL_ROWS = [
 		['Depot stock', s => `${s.depot.toFixed(2)} u`]
 	]],
 	['Wages', [
-		['Wage at firms', s => `${s.wageAtFirms.toFixed(3)} g/u`, s => s.workers > 0 && s.wageAtFirms < 1e-6],
+		['Wage at firms', s => `${s.wageAtFirms.toFixed(3)} g/u`, s => s.workers > 0 && s.goldTotal > 0 && s.wageAtFirms <= 0],
 		['Wage field max', s => `${s.wageFieldMax.toFixed(3)} g/u`],
 		['Entry wage / worker', s => `${s.entryWage.toFixed(3)} g`],
 		['Wages paid', s => `${s.wagesPaid.toFixed(1)} g`],
@@ -538,7 +538,7 @@ const PANEL_ROWS = [
 		['Towns · young', s => `${s.towns} · ${s.young}`],
 		['Population · rooms', s => `${s.pop.toFixed(0)} · ${s.rooms.toFixed(0)}`],
 		['Wait · comfort', s => `${s.wait.toFixed(0)} · ${s.comfort.toFixed(2)}`],
-		['Rest tax', s => `${s.restTax.toFixed(3)} g`, s => s.restTax > 2],
+		['Rest tax', s => `${s.restTax.toFixed(3)} g`, s => s.walletMean > 0 && s.restTax > s.walletMean * 1.5],
 		['Empty bazaars', s => `${s.bazaarEmpty}`, s => s.bazaarEmpty > 0],
 		['Farms · idle crews', s => `${s.farms} · ${s.idleFarms}`, s => s.idleFarms > 0]
 	]]

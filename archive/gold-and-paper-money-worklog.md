@@ -62,3 +62,11 @@
 - decisions: no starting-money → preset-price coupling. Main/cell allocation still uses their existing population proxy; particle scenario funding already uses actual headcount.
 - pitfalls: decoupled seeding is not full scale invariance. Particle taxes/fee floors and nominal transport/affordability constants remain to audit; low-gold cell throughput differs from the historical fixture.
 - next: remove persistent nominal anchors using current-budget/earning signals; compare normalized real throughput across gold amounts, including the particle lab, without raising scenario funding to mask stalls.
+
+## Particle-transfer B2 · Arbitrary-scale invariance & flow stabilization, 2026-11-27
+- changed: `prototype/particle-transfer-b2/{simulation,steering,gold,owners,banks,towns,workforce,settlement,goods,actors,farms,founding,workers,worker-life,fields,track,diagnostics}.js` — audited and replaced all `[g^1]` nominal floors/knees/epsilons, labor-relative haulage (`HAUL_LABOR`), town reserve rebates, sequential FIFO `admitKind`, barn-full farm throttling, `SNaN` sawmill tag, and adaptive field ramps.
+- changed: `prototype/particle-transfer-b2/{gold-seeding.test,ui.test}.js`, `plan-particle-transfer.md`, `plan-gold-and-paper-money.md`, `findings-pitfalls-skills.md` — 12-decade closed-economy invariance, zero-gold, 1 g/worker open-economy health, and canvas `fillText` NaN tests.
+- decisions: haulage, item gates, gradient knees/dock slopes, rest/ration fees, unpaid-claim caps and split thresholds derive from live prices/wallets/`unitScale()`; `admitKind` admits whole FIFO particles against live `cashAt` instead of proportional crumb shaving.
+- evidence: closed-economy 35 s / 55 s runs at `goldPerWorker ∈ {1e-6, 0.5, 1, 2, 14, 1e6}` match to 15 digits across coal, goods, wood, food, labor, `wages/gpw` and `taxes/gpw`; default 1 g/worker 5201-tick & 7200-tick runs sustain all 4 chains, births = 4, defaults = 0, gold error `< 5e-12`.
+- validation: `node --check prototype/particle-transfer-b2/*.js` and all 12 `*.test.js` suites (`52/52` subtests) pass with zero edits to existing test assertions.
+- next: proceed to credit notes (P1) or port validated particle money kernel to `map-money-particle.js` per M.10.

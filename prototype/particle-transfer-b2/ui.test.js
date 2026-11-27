@@ -25,7 +25,7 @@ function makeCtx() {
 		moveTo(x, y) { finiteAll(x, y); },
 		lineTo(x, y) { finiteAll(x, y); },
 		arc(x, y, r, s, e) { finiteAll(x, y, r, s, e); assert.ok(r >= 0); },
-		fillText(txt, x, y) { assert.equal(typeof txt, 'string'); finiteAll(x, y); },
+		fillText(txt, x, y) { assert.equal(typeof txt, 'string'); assert.ok(!txt.includes('NaN'), `NaN in fillText: ${txt}`); finiteAll(x, y); },
 		drawImage(_img, x, y, w, h) { finiteAll(x, y, w, h); },
 		putImageData() {},
 		createImageData(w, h) { return { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }; },

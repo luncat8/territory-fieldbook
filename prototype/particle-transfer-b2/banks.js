@@ -6,7 +6,7 @@ const LOAN_RATE = 0.002;
 const LOAN_TERM_SECONDS = 90;
 const LOAN_GRACE_SECONDS = 30;
 const LOAN_COVER_SECONDS = 24;
-const LOAN_MIN = 0.25;
+const LOAN_MIN = 0.08;
 const LOAN_SLACK_SECONDS = 4;
 const LOAN_RETRY_SECONDS = 5;
 
@@ -50,15 +50,23 @@ class GoldBank {
 		return this.reserve + this.loanAssets();
 	}
 
+	eps() {
+		const mEps = this.model.money ? this.model.money.eps() : 1e-12;
+		return Math.max(mEps, this.capital * 1e-12);
+	}
+
 	// Sized to cover the owner's operating cost for LOAN_COVER_SECONDS, capped by debt headroom and actual reserve.
 	request(o, costRate) {
-		const now = this.model.ticks * ECONOMY_DT;
-		if (this.defaulted[o] || this.principal[o] > 1e-9 || now < this.retryAt[o]) return 0;
+		const now = this.model.ticks * ECONOMY_DT, eps = this.eps();
+		if (this.defaulted[o] || this.principal[o] > eps || now < this.retryAt[o]) return 0;
 		const owners = this.model.owners;
+		const minLoan = LOAN_MIN * (this.model.money ? this.model.money.unitScale() : 1);
 		const amount = Math.min(costRate * LOAN_COVER_SECONDS, owners.debtHeadroom(o));
-		if (amount < LOAN_MIN || amount > this.reserve) {
-			this.refusals++;
-			this.retryAt[o] = now + LOAN_RETRY_SECONDS;
+		if (amount <= eps || amount < minLoan || amount > this.reserve) {
+			if (amount >= minLoan) {
+				this.refusals++;
+				this.retryAt[o] = now + LOAN_RETRY_SECONDS;
+			}
 			return 0;
 		}
 		this.reserve -= amount;
@@ -72,7 +80,8 @@ class GoldBank {
 
 	// Accrues one tick of interest and installment, pays interest before principal, and defaults after the grace period.
 	service(o, spendable) {
-		if (this.principal[o] <= 1e-12) return 0;
+		const eps = this.eps();
+		if (this.principal[o] <= eps) return 0;
 		const owners = this.model.owners;
 		const installment = this.original[o] / LOAN_TERM_SECONDS;
 		this.interestDue[o] += this.principal[o] * LOAN_RATE * ECONOMY_DT;
@@ -89,7 +98,7 @@ class GoldBank {
 		this.principal[o] -= principal;
 		this.interest += interest;
 		this.repaid += principal;
-		if (this.principal[o] <= 1e-12) {
+		if (this.principal[o] <= eps) {
 			this.repaid += this.principal[o];
 			this.principal[o] = this.principalDue[o] = 0;
 			this.interestDue[o] = 0;

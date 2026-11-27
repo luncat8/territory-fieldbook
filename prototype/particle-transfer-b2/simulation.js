@@ -52,6 +52,8 @@ const PRICE_GATE = 0.01;
 const NEED_RESPONSE = 2;
 const GRADIENT_KNEE = 0.006;
 const DOCK_SLOPE = 0.0006;
+const REL_KNEE = GRADIENT_KNEE / START_PRICE;
+const REL_DOCK = DOCK_SLOPE / START_PRICE;
 const STEERING_BLEND = ECONOMY_DT / (0.18 + ECONOMY_DT);
 const economyIndex = (x, y) => y * ECONOMY_WIDTH + x;
 
@@ -187,6 +189,26 @@ class PriceEconomy {
 		return item === ITEM_FOOD ? this.priceFood : item === ITEM_COAL ? this.priceCoal : item === ITEM_GOODS ? this.priceGoods : item === ITEM_LABOR ? this.priceLabor : item === ITEM_WOOD ? this.priceWood : this.priceHome;
 	}
 
+	peakFor(field) {
+		if (field === this.priceCoal) return this.peakCoal;
+		if (field === this.priceGoods) return this.peakGoods;
+		if (field === this.priceFood) return this.peakFood;
+		if (field === this.priceWood) return this.peakWood;
+		if (field === this.priceLabor) return this.peakLabor;
+		return 0;
+	}
+
+	fieldKnee(field) {
+		if (!this.derived || field === this.priceHome || field === this.priceRest) return GRADIENT_KNEE;
+		return REL_KNEE * this.peakFor(field);
+	}
+
+	fieldDock(field) {
+		if (!this.derived || field === this.priceHome || field === this.priceRest) return DOCK_SLOPE;
+		if (field === this.priceLabor) return 2.5e-3 * this.peakLabor;
+		return REL_DOCK * this.peakFor(field);
+	}
+
 	unitCostAt(item, i) {
 		const stock = this.stocks[item][i];
 		return stock > 1e-9 ? this.goodsPool.stockCost[item][i] / stock : 0;
@@ -230,8 +252,10 @@ class PriceEconomy {
 		this.nextPriceFood.fill(0);
 		this.priceWood.fill(0);
 		this.nextPriceWood.fill(0);
+		this.peakCoal = this.peakGoods = this.peakFood = this.peakWood = this.peakLabor = 0;
 		this.producedFood = this.consumedFood = 0;
 		this.goodsPool.reset();
+		this.optimizer.reset();
 		this.workers.reset();
 		this.towns.reset();
 		this.founding.reset();
@@ -290,7 +314,6 @@ class PriceEconomy {
 			this.taxMult[i] = 1;
 			this.wealthClass[i] = wealthClassFor(i);
 			this.vacantTicks[i] = 0;
-			this.localWealth[i] = WALLET_REFERENCE;
 			this.towns.initTown(i);
 		} else if (kind === ECONOMY_GARDEN) {
 			this.forage.claimPlots(i);
@@ -371,6 +394,7 @@ class PriceEconomy {
 	updatePrices() {
 		const { actors, optimizer, towns, workforce, founding, priceCoal, priceGoods, priceLabor, priceHome, priceRest, priceWood, nextPriceCoal, nextPriceGoods, nextPriceLabor, nextPriceHome, nextPriceRest, nextPriceWood } = this;
 		const decay = this.decay ? PRICE_DECAY : 0;
+		let peakCoal = 0, peakGoods = 0, peakFood = 0, peakWood = 0, peakLabor = 0;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			const a = actors[i];
 			let bCoal = -1, bGoods = -1, bLabor = -1, bHome = -1, bRest = -1, bFood = -1, bWood = -1;
@@ -394,14 +418,29 @@ class PriceEconomy {
 					else if (item === ITEM_WOOD) bWood = optimizer.bidOut[m];
 				}
 			}
-			this.nextPriceFood[i] = stepBid(this.priceFood, i, this.priceFood[i], bFood, decay);
-			nextPriceCoal[i] = stepBid(priceCoal, i, priceCoal[i], bCoal, decay);
-			nextPriceGoods[i] = stepBid(priceGoods, i, priceGoods[i], bGoods, decay);
-			nextPriceLabor[i] = stepBid(priceLabor, i, priceLabor[i], bLabor, decay);
+			const nFood = stepBid(this.priceFood, i, this.priceFood[i], bFood, decay);
+			const nCoal = stepBid(priceCoal, i, priceCoal[i], bCoal, decay);
+			const nGoods = stepBid(priceGoods, i, priceGoods[i], bGoods, decay);
+			const nLabor = stepBid(priceLabor, i, priceLabor[i], bLabor, decay);
+			const nWood = stepBid(priceWood, i, priceWood[i], bWood, decay);
+			this.nextPriceFood[i] = nFood;
+			nextPriceCoal[i] = nCoal;
+			nextPriceGoods[i] = nGoods;
+			nextPriceLabor[i] = nLabor;
 			nextPriceHome[i] = stepBid(priceHome, i, priceHome[i], bHome, decay);
 			nextPriceRest[i] = stepBid(priceRest, i, priceRest[i], bRest, decay);
-			nextPriceWood[i] = stepBid(priceWood, i, priceWood[i], bWood, decay);
+			nextPriceWood[i] = nWood;
+			if (nCoal > peakCoal) peakCoal = nCoal;
+			if (nGoods > peakGoods) peakGoods = nGoods;
+			if (nFood > peakFood) peakFood = nFood;
+			if (nWood > peakWood) peakWood = nWood;
+			if (nLabor > peakLabor) peakLabor = nLabor;
 		}
+		this.peakCoal = peakCoal;
+		this.peakGoods = peakGoods;
+		this.peakFood = peakFood;
+		this.peakWood = peakWood;
+		this.peakLabor = peakLabor;
 		const foodSwap = this.priceFood;
 		this.priceFood = this.nextPriceFood;
 		this.nextPriceFood = foodSwap;
