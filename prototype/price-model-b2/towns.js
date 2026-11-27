@@ -92,8 +92,7 @@ class TownPolicy {
 		const m = this.model;
 		if (!m.derived) return START_TAX_PER_POP;
 		const crowd = this.townCrowdMult(i);
-		const mult = (m.taxMult[i] || 1) * crowd;
-		return Math.max(START_TAX_PER_POP * mult, this.townTaxRate(i) * crowd) * m.settlements.taxFactor(i);
+		return this.townTaxRate(i) * crowd * m.settlements.taxFactor(i);
 	}
 
 	townShare(i) {

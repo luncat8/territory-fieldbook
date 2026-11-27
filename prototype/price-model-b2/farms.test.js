@@ -240,6 +240,8 @@ test('plot clearing conserves forest: a full wood cell holds felling and the plo
 
 test('mixed wild forage and commercial farm food only bill gold on the commercial share', () => {
 	const model = emptyMap(TERRAIN_MEADOW, FOREST_TERRAIN);
+	// Hold historical financing fixed so this isolates mixed-food billing, not low-gold farm startup.
+	model.money.startGoldPerWorker = 5.165384615384615;
 	model.land.moisture.fill(0.58);
 	const town = economyIndex(20, 14), farm = economyIndex(24, 14);
 	assert.equal(model.setActor(town, ECONOMY_TOWN), true);

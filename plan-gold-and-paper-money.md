@@ -86,8 +86,7 @@ travel, an unpaid wage claim, worker splitting, founding, ordinary actor placeme
 
 ### Starting gold is a scenario amount, not a hardcoded grant
 
-Starting gold is derived from a reasonable daily amount rather than a fixed constant, so the opening
-transient is not distorted. Default: **1 gold per worker** (`START_GOLD_PER_WORKER`), recorded once at
+Starting gold is an independent scenario quantity, never back-solved from a target goods price. Default: **1 gold per worker** (`START_GOLD_PER_WORKER`), recorded once at
 scenario initialization as `initialHistoricalGold` and allocated to named starting owners and the bank
 capital account. It is historical funding, never recurring income, never per-placement minting.
 
@@ -98,11 +97,38 @@ capital account. It is historical funding, never recurring income, never per-pla
   cycle: each seeded worker begins with a full `food` bag, so the first job/walk/rest cycle is not spent
   foraging or starving. Food is a real stock, not money; funding the bag is a scenario real-asset grant,
   recorded in the real-asset ledger, not a gold issuance.
-- The amount is a comparison knob (0.5 / 1 / 2 g per worker) tested against startup transients: too low
-  starves the first firms before extraction pays, too high distorts early prices.
+- The amount is a comparison knob (0.5 / 1 / 2 g per worker), not a minimum financing requirement at a
+  fixed nominal price. Compare startup delay, real throughput, hunger and conservation while prices adapt.
+  A low-gold stall caused by a permanent nominal fee/floor is a pricing defect, not evidence to add gold.
 - A strict zero-start scene remains available as a diagnostic: all accounts at zero, founders contribute
   sweat equity and locally gathered construction wood, or the scene starts with one built mine. Even there,
   seeded workers begin with full food so the bootstrap measures work/financing, not hunger.
+
+### Nominal prices adapt to circulating gold
+
+Initial/preset prices are transient numerical guards only (zero division and opening spikes). They are not
+an equilibrium target, permanent fee floor or a price-level setting multiplied by starting gold. Scenario
+funding and any fallback price are independent inputs. Bids and fees after startup derive from current
+budgets, earnings, costs and need; a contraction in holdings must allow prices to fall as well as rise.
+
+The goal is monetary scale invariance: changing a positive initial gold amount must not disable the real
+loop merely because its nominal prices are lower. Compare 0.5 / 1 / 2 g with identical seed, real assets,
+actors and no new extraction first; assess conservation, finite adaptive prices and sustained real trades.
+Use paired extraction/no-extraction controls at the same initial gold to test inflation. No regression may
+require goods prices to remain above the arbitrary preset `4`. Exact redenomination tests must also scale
+all gold-denominated stocks, claims and future extraction; changing initial gold alone while keeping mine
+yield in grams fixed is a different monetary path, not an exact symmetry. Zero-start is a separate bootstrap
+diagnostic, not a promise of positive paid trade before extraction.
+
+Legacy main/cell engines use their existing population proxy for seed allocation (`pop` / `START_POP`),
+not particle headcount. Their default is 1 g per proxy unit, split by worker/municipal budget horizons;
+this split must not set the total from a target price. The particle engine uses actual worker count and
+its explicit owner/bank/town/wallet shares.
+
+Validation gate: inspect permanent nominal rest/food fees, wealth floors, credit epsilons, transport knees
+and affordability thresholds. Positive trade at three amounts is a smoke gate, not proof of arbitrary-scale
+invariance. The particle lab's `startTaxPerPop`, `wealthRatio` floor, base service fees and wallet reference
+need this audit before claiming that stronger property. Its independent scenario funding alone is insufficient.
 
 ### Mine funds and payouts
 
@@ -590,7 +616,7 @@ named existing owners. Do not give banking scenes extra gold or wood.
 |-------------|------------|-----------------|
 | Two sites, one profitable/one failing | O2 shared vs O1 isolated with equal total starting wealth | Productive reinvestment versus contagion; shared cash never spent twice. |
 | New mine/project funding | F0 vs F1, then F3 | Who funds construction, wages and inputs; actual principal/interest repayment; unfunded projects remain unfunded. |
-| Starting gold amount | 0.5 / 1 / 2 g per worker | Startup transient: starvation before first extraction vs distorted early prices. |
+| Starting gold amount | 0.5 / 1 / 2 g per worker | Adaptive nominal prices, real throughput, hunger and conservation; no permanent preset-price floor or minimum-gold requirement. |
 | Zero gradient, then demand appears | D0 vs D1 | Dispatch latency, idle cargo, depot saturation and trade; zero goods duplication. |
 | Demand field with stored items | Item transport skipped vs demand field still faded | Cost prediction by cell interpolation works even when items are not moving. |
 | Remote/reserved stock near proposed consumer | Availability query vs global count | Inaccessible or committed stock cannot justify consumption/construction. |
@@ -677,7 +703,8 @@ that draft and are no longer open:
    purse and owner-level debt, with bounded per-facility budgets. O1 isolated is a comparison control only.
    Owners are workers; any worker with money can buy or found a firm.
 2. **Funding/bootstrap:** starting gold is not hardcoded; it comes from a reasonable daily amount, default
-   1 gold per worker, recorded once as scenario initial capital. No placement minting. Workers start with
+   1 gold per worker, independent of preset prices and recorded once as scenario initial capital. Prices
+   adapt to current holdings; preset prices are transient guards only. No placement minting. Workers start with
    full food in the particle engine. Loans rather than per-firm grants.
 3. **Output:** internal depot by default (D1), speculative map output (D0) as comparison. Directed/reserved
    buyer dispatch (D2) is not supported by the cell and particle transport engines and is not planned.

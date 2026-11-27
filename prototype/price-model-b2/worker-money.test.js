@@ -37,8 +37,16 @@ function neutralLand(model) {
 	model.settlements.forest.fill(FOREST_TERRAIN);
 }
 
-function clearedMap() {
+// Historical high-funding fixture keeps existing throughput gates independent of the new scenario default.
+function referenceModel() {
 	const model = new PriceEconomy();
+	model.money.startGoldPerWorker = 5.165384615384615;
+	model.reset();
+	return model;
+}
+
+function clearedMap() {
+	const model = referenceModel();
 	model.actors.fill(0);
 	model.pop.fill(0);
 	model.scale.fill(0);
@@ -274,8 +282,9 @@ test('towns increase living taxes and cool home appeal when their wait pool to l
 	}
 	assert.ok(model.poolOccupancy(crowded) > model.poolOccupancy(calm) + 0.35);
 	assert.ok(model.taxMult[crowded] > model.taxMult[calm] + 0.25);
-	assert.ok(model.townRestTax(crowded) > model.townRestTax(calm) * 1.5);
-	assert.ok(model.workforce.homeValueBid(crowded) < model.workforce.homeValueBid(calm) * 0.7);
+	const calmBase = model.townTaxRate(calm), crowdedBase = model.townTaxRate(crowded);
+	assert.ok(model.townRestTax(crowded) / crowdedBase > model.townRestTax(calm) / calmBase * 1.5);
+	assert.ok(model.workforce.homeValueBid(crowded) * crowdedBase < model.workforce.homeValueBid(calm) * calmBase * 0.7);
 	checkLedger(model);
 });
 

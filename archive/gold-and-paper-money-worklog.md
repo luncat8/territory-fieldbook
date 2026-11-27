@@ -52,3 +52,13 @@
 - evidence: start-gold knob 0.5/1/2/14 → coal 17/19/22/38, goods eaten 2/3/6/11; nominal constants are calibrated to the old money level.
 - validation: `node --test` in the lab → 49/49 (L1); new `banks.test.js` covers loan repay, default, limits, portfolios, wood-gated gold and the M.7 scenario.
 - next: scale nominal price constants with the scenario money level (or a price-level knob), then add credit notes (P1).
+
+## Independent seed / adaptive nominal prices
+- changed: `map-money-gold.js` — independent 1 g/population-proxy scenario seed; optional setup amount; horizon split preserved, target-price calibration removed.
+- changed: `prototype/price-model-b2/gold.js`, `towns.js` — independent scenario amount; adaptive rest fee no longer has a permanent starting-tax floor.
+- changed: cell regressions — historical throughput/billing fixtures explicitly retain 5.165384615384615 g/proxy unit; default low-gold circulation tested separately; extraction inflation uses a same-gold no-extraction control; crowd fee checks isolate crowding from changed resident wealth.
+- changed: both money plans — preset prices are transient guards, not equilibrium targets; monetary-scale acceptance and zero-start/redenomination distinctions.
+- validation: syntax checks pass; main seed/price/full-tick tests 4/4; new cell funding/circulation tests 2/2 (0.5/1/2 g, 30 s without extraction); cell existing tests 72/72 across scoped runs (42 + 2 revised, 27 + 1 revised).
+- decisions: no starting-money → preset-price coupling. Main/cell allocation still uses their existing population proxy; particle scenario funding already uses actual headcount.
+- pitfalls: decoupled seeding is not full scale invariance. Particle taxes/fee floors and nominal transport/affordability constants remain to audit; low-gold cell throughput differs from the historical fixture.
+- next: remove persistent nominal anchors using current-budget/earning signals; compare normalized real throughput across gold amounts, including the particle lab, without raising scenario funding to mask stalls.

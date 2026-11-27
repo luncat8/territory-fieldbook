@@ -14,7 +14,8 @@ The lift-only (`Math.max(relaxed, ambient)` / `ambient > here && ambient > relax
 - **On a torus the reflecting-edge echo is muted, but the interior halo drain still happens.** This is proven empirically: removing the clamp in the prototype dropped the suite from 26/26 to 19/26 (7 failures). So this is **not only a hard-border artifact** — it is load-bearing for interior price dynamics. That is why a blind removal is rejected.
 
 ## Why the naive smoothing failed before
-Toggle c (low-pass the bid) was attempted in `price-model-b2` and reverted: smoothing the bid kept the town paying *above* its raw need, draining the resident purse and dropping the gold-mine goods-price regression below `START_PRICE`. Root issue: the smoothed bid was applied to **both** field steering **and** seller payment.
+Toggle c (low-pass the bid) was attempted in `price-model-b2` and reverted: smoothing the bid kept the town paying *above* its raw need, draining the resident purse and dropping the historical gold-mine goods-price regression below `START_PRICE`. That absolute threshold
+was a nominal calibration, not an economic invariant; use the same-gold controls below instead. Root issue: the smoothed bid was applied to **both** field steering **and** seller payment.
 
 ## Principled fix candidates (clamp the signal, not the result)
 1. **Split steering bid from payment bid (preferred).** Field relaxation uses a smoothed / rate-limited bid; seller payment uses the instantaneous raw-need bid. This is the toggle-c idea *minus* the purse drain. Most promising.
@@ -24,7 +25,10 @@ Toggle c (low-pass the bid) was attempted in `price-model-b2` and reverted: smoo
 
 ## Acceptance
 - Remove the lift-only clamp in `stepBid` (prototype) **and** `goldStepBid` (main game); the 7 previously-broken tests pass **without** it.
-- No purse drain: resident-gold / gold-mine goods-price regression stays `≥ START_PRICE`.
+- No purse drain: compare resident holdings, real throughput and paid trade against the clamp-on control
+  at the same initial gold and real assets, repeated at 0.5 / 1 / 2 g per worker. Inflation from extraction
+  is tested against a matched no-extraction run, not `price ≥ START_PRICE`. Prices may settle below any
+  initial guard; neither seed nor preset price may be calibrated to force the other.
 - Torus default stays clean; when hard borders are re-enabled later, re-check edge echo using the signal fix **alone** (no result clamp).
 
 ## Affected regression tests (prototype, currently protected by the clamp)

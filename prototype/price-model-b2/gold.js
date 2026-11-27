@@ -2,7 +2,9 @@
 // Edit for: starting gold calibration, wage-at-entry handoff, living/rest tax collection and payment streams.
 'use strict';
 
+// Fixed-price mode uses this reference; scenario funding does not.
 const START_PRICE = 4;
+const START_GOLD_PER_WORKER = 1;
 const PURSE_SECONDS = 15;
 const WORKER_SECONDS = 10;
 const RESERVE_SECONDS = 4;
@@ -33,6 +35,7 @@ function makeStream(receiver) {
 class GoldMoney {
 	constructor(model) {
 		this.model = model;
+		this.startGoldPerWorker = START_GOLD_PER_WORKER;
 		this.purse = new Float64Array(ECONOMY_SIZE);
 		this.workerPurse = new Float64Array(ECONOMY_SIZE);
 		this.streams = [makeStream(ECONOMY_MINE), makeStream(ECONOMY_FACTORY), makeStream(ECONOMY_TOWN), makeStream(ECONOMY_SAWMILL), makeStream(ECONOMY_FARM)];
@@ -68,8 +71,9 @@ class GoldMoney {
 	}
 
 	seed(i) {
-		const workerGold = START_POP * START_TAX_PER_POP * WORKER_SECONDS;
-		const townGold = START_POP * START_TAX_PER_POP * INPUT_SHARE * PURSE_SECONDS;
+		const total = START_POP * this.startGoldPerWorker;
+		const workerGold = total * WORKER_SECONDS / (WORKER_SECONDS + INPUT_SHARE * PURSE_SECONDS);
+		const townGold = total - workerGold;
 		this.workerPurse[i] += workerGold;
 		this.purse[i] += townGold;
 		this.seeded += workerGold + townGold;
