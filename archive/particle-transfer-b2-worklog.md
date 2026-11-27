@@ -37,3 +37,20 @@ validation: `node --test` particle-transfer-b2 41/41, price-model-b2 72/72; `nod
 decisions: the fixed claim cap was replaced with growth rather than a larger constant — a larger cap only postpones the silent entitlement loss
 decisions: FIFO is a documented settlement contract, so removals compact in place instead of swap-removing the newest claim ahead of older ones
 next: none outstanding from the branch-comparison pick list; the obsolete particle-transfer engine stays archived, not restored
+
+plan: draft/company/all.md — general wood market: sawmills fell forest into tradable wood; towns and farms buy delivered wood to build (feature)
+changed: prototype/particle-transfer-b2/simulation.js — ITEM_WOOD/priceWood/nextPriceWood fields, REFERENCE_SAWMILLS seed, erase zeroes wood stockCost, updatePrices wires town/farm wood bids (feature)
+changed: prototype/particle-transfer-b2/goods.js — 6th item slot (buffers/spoiled/flushOwner), admitKind wood, sawmill spawn gate, farms count as wood buyers before the isBuilding guard (feature)
+changed: prototype/particle-transfer-b2/actors.js — sawmill recipe (patch:true), sellPrice wood floor, forest-room clamps in firmBids/adaptFirms, stepFirms dispatches sawmills to farms.stepSawmill (feature)
+changed: prototype/particle-transfer-b2/towns.js — woodBid for young towns (WOOD_BID_VALUE 0.14, share trim 0.35, YOUNG_PULL 0.05) and wood stock cap (feature)
+changed: prototype/particle-transfer-b2/settlement.js — woodTarget/needWood, tier build draws delivered m.wood with cost drawdown; dead local fellAround removed (fix)
+changed: prototype/particle-transfer-b2/farms.js — stepSawmill/fellVisit felling shifts, forestShare/forestRoom, farm construction woodBid+cap, ledger credits in clearVisit and consumedWood on build draws (feature)
+changed: prototype/particle-transfer-b2/gold.js — settleFirm sawmill arm uses SAWMILL_RATE/SAWMILL_LABOR for the wage surplus reserve (fix)
+changed: prototype/particle-transfer-b2/{app,fields,diagnostics,telemetry}.js + index.html + styles.css — Sawmill tool (triangle icon/ink #f2ba7a), Wood resource tab, wood price/flow stats, wood ledger balance line, S actor count (feature)
+changed: prototype/particle-transfer-b2/conservation.test.js — wood ledger identity in checkLedgers; young-town market test forcing REFERENCE_TOWNS[0] to tier 0 over 60s (test)
+validation: node --check on all 12 touched files; full particle-transfer-b2 suite 43/43 (42 prior + 1 new); behavioral probe: 60s run fells 11.2u forest, 8.5u wood in flight, town reaches wood target 1.0, tier 0→0.62, spoiled 0
+decisions: sawmill output books at the mill cell (pool owner = spawn cell) because felled cells may be empty and revenue would misroute
+decisions: cap[ITEM_WOOD] is never zeroed in stepFirms — farms rewrite it in farms.step (after goodsPool.step) and it persists one tick; towns rewrite theirs in stepTowns before the pool steps
+decisions: town demand is the negative feedback — when the young town matures (tier ≥ 0.5) bids stop, priceWood collapses below the sawmill gate and felling idles
+pitfalls: isBuyer wood arm must precede the isBuilding guard or farms mid-construction refuse their own deliveries; vm.load order makes SAWMILL_* usable from farms.js before actors.js defines the recipe
+next: browser playtest of the preview (place sawmills, watch wood flow), then Phase 4 game port stays deferred per plan

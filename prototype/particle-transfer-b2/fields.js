@@ -11,8 +11,8 @@ const ISO_EDGES = [[],[3,0],[0,1],[3,1],[1,2],[3,0,1,2],[0,2],[3,2],[2,3],[0,2],
 const STOCK_EXPOSURE = 800;
 const STOCK_LOG = Math.log1p(STOCK_EXPOSURE);
 const SCALE_FLOOR = { price: 0.5, gold: 1 };
-const ACTOR_NAMES = ['Cell', 'Mine', 'Factory', 'Town', 'Gold mine', 'Monastery garden', 'Food farm'];
-const ACTOR_TAGS = ['', 'M', 'F', 'T', 'G', 'A', 'H'];
+const ACTOR_NAMES = ['Cell', 'Mine', 'Factory', 'Town', 'Gold mine', 'Monastery garden', 'Food farm', 'Sawmill'];
+const ACTOR_TAGS = ['', 'M', 'F', 'T', 'G', 'A', 'H', 'S'];
 const ACTOR_INK = [
 	[],
 	['#77512c', '#ffdb9f', '#ffd69b'],
@@ -20,7 +20,8 @@ const ACTOR_INK = [
 	['#514065', '#e6d3ff', '#e2cff4'],
 	['#5c4a12', '#f7d65a', '#f7dc78'],
 	['#2f4a2c', '#b9f09b', '#ccf5b5'],
-	['#544821', '#f1dc83', '#f4e9a7']
+	['#544821', '#f1dc83', '#f4e9a7'],
+	['#8a4a32', '#ffb59a', '#ffc7b2']
 ];
 const cellName = i => `${String(i % ECONOMY_WIDTH).padStart(2, '0')}, ${String(Math.floor(i / ECONOMY_WIDTH)).padStart(2, '0')}`;
 
@@ -178,12 +179,12 @@ class FieldPlot {
 		}
 		if (this.resource === 'labor') return this.isStock ? model.labor : model.priceLabor;
 		if (this.isStock) {
-			const k = this.resource === 'coal' ? ITEM_COAL : this.resource === 'food' ? ITEM_FOOD : ITEM_GOODS;
+			const k = this.resource === 'coal' ? ITEM_COAL : this.resource === 'wood' ? ITEM_WOOD : this.resource === 'food' ? ITEM_FOOD : ITEM_GOODS;
 			const st = model.stocks[k], sp = model.goodsPool.spawnAmount[k];
 			for (let i = 0; i < ECONOMY_SIZE; i++) v[i] = st[i] + sp[i];
 			return v;
 		}
-		return this.resource === 'coal' ? model.priceCoal : this.resource === 'food' ? model.priceFood : model.priceGoods;
+		return this.resource === 'coal' ? model.priceCoal : this.resource === 'wood' ? model.priceWood : this.resource === 'food' ? model.priceFood : model.priceGoods;
 	}
 
 	intensity(value) {
@@ -262,8 +263,8 @@ class FieldPlot {
 		const { ctx: g } = this;
 		g.lineWidth = 1.1;
 		g.lineCap = 'round';
-		if (this.resource === 'coal' || this.resource === 'food' || this.resource === 'goods') {
-			const kind = this.resource === 'coal' ? ITEM_COAL : this.resource === 'food' ? ITEM_FOOD : ITEM_GOODS;
+		if (this.resource === 'coal' || this.resource === 'wood' || this.resource === 'food' || this.resource === 'goods') {
+			const kind = this.resource === 'coal' ? ITEM_COAL : this.resource === 'wood' ? ITEM_WOOD : this.resource === 'food' ? ITEM_FOOD : ITEM_GOODS;
 			const pool = model.goodsPool;
 			const priceRef = Math.max(1, START_PRICE * 1.6);
 			for (let p = 0; p < pool.count; p++) {
@@ -436,6 +437,7 @@ class FieldPlot {
 		else if (marker.kind === ECONOMY_FACTORY) g.rect(x - r * 0.85, y - r * 0.85, r * 1.7, r * 1.7);
 		else if (marker.kind === ECONOMY_GOLD) this.polygon(x, y, r, 6, Math.PI / 6);
 		else if (marker.kind === ECONOMY_GARDEN) this.polygon(x, y, r * 0.95, 8, Math.PI / 8);
+		else if (marker.kind === ECONOMY_SAWMILL) this.polygon(x, y, r, 3, -Math.PI / 2);
 		else g.arc(x, y, r * 0.88, 0, Math.PI * 2);
 		g.fill(); g.stroke();
 		g.fillStyle = g.strokeStyle;
@@ -484,8 +486,8 @@ class FieldPlot {
 		}
 		const name = settlements.isYoungTown(i) ? 'Young town' : ACTOR_NAMES[actor];
 		const head = `${pinned ? 'Pinned · ' : ''}${name} ${cellName(i)}${detail}`;
-		const stocks = `Food ${model.food[i].toFixed(2)} · Coal ${model.coal[i].toFixed(2)} · Goods ${model.goods[i].toFixed(2)} · Fresh ${model.labor[i].toFixed(2)} · Tired ${model.depleted[i].toFixed(2)} · Forage ${model.forageCount[i].toFixed(0)}`;
-		const prices = `Food ${model.priceFood[i].toFixed(2)} · Coal ${model.priceCoal[i].toFixed(2)} · Goods ${model.priceGoods[i].toFixed(2)} · Wage ${model.priceLabor[i].toFixed(2)} · Home ${model.priceHome[i].toFixed(2)}/${model.priceRest[i].toFixed(2)} · FoodGrad ${forage.scoreAtCell(i).toFixed(2)}`;
+		const stocks = `Food ${model.food[i].toFixed(2)} · Coal ${model.coal[i].toFixed(2)} · Goods ${model.goods[i].toFixed(2)} · Wood ${model.wood[i].toFixed(2)} · Fresh ${model.labor[i].toFixed(2)} · Tired ${model.depleted[i].toFixed(2)} · Forage ${model.forageCount[i].toFixed(0)}`;
+		const prices = `Food ${model.priceFood[i].toFixed(2)} · Coal ${model.priceCoal[i].toFixed(2)} · Goods ${model.priceGoods[i].toFixed(2)} · Wood ${model.priceWood[i].toFixed(2)} · Wage ${model.priceLabor[i].toFixed(2)} · Home ${model.priceHome[i].toFixed(2)}/${model.priceRest[i].toFixed(2)} · FoodGrad ${forage.scoreAtCell(i).toFixed(2)}`;
 		const wallet = actor === ECONOMY_TOWN
 			? `Town ${money.purse[i].toFixed(2)}g · Rations ${model.food[i].toFixed(2)} · WorkerGold ${model.workerGold[i].toFixed(2)}g · Profit ${model.profit[i].toFixed(2)}/s`
 			: `Purse ${money.purse[i].toFixed(2)}g · WorkerGold ${model.workerGold[i].toFixed(2)}g · Owed ${money.owedWage[i].toFixed(2)}g · Vault ${money.vault.toFixed(2)}g`;

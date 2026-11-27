@@ -5,7 +5,7 @@
 const DIAG_HISTORY_SECONDS = 10;
 const DIAG_HISTORY_ROWS = 32;
 const DIAG_STOP_SPEED = 1e-6;
-const DIAG_ACTOR_LABELS = ['', 'mine', 'fact', 'town', 'gold', 'gard', 'farm'];
+const DIAG_ACTOR_LABELS = ['', 'mine', 'fact', 'town', 'gold', 'gard', 'farm', 'sawm'];
 const DIAG_HISTORY_COLS = ['t', 'workers', 'walk', 'pool', 'shift', 'wait', 'room', 'still', 'forage', 'wallet%', 'townG', 'firmG', 'coal', 'coalFly', 'coalAsk', 'coalBid', 'wage', 'wages/s', 'taxes/s', 'pop', 'goods'];
 
 class EconomyDiagnostics {
@@ -74,7 +74,7 @@ class EconomyDiagnostics {
 	}
 
 	countActors(s, m) {
-		s.mines = s.factories = s.towns = s.goldMines = s.gardens = s.farms = s.young = 0;
+		s.mines = s.factories = s.towns = s.goldMines = s.gardens = s.farms = s.sawmills = s.young = 0;
 		s.pop = s.rooms = s.wait = s.comfort = s.restTax = 0;
 		s.bazaarEmpty = s.idleFarms = 0;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
@@ -83,6 +83,7 @@ class EconomyDiagnostics {
 			else if (a === ECONOMY_FACTORY) s.factories++;
 			else if (a === ECONOMY_GOLD) s.goldMines++;
 			else if (a === ECONOMY_GARDEN) s.gardens++;
+			else if (a === ECONOMY_SAWMILL) s.sawmills++;
 			else if (a === ECONOMY_FARM) {
 				s.farms++;
 				if (m.farms.plots[i] > 0 && m.shiftCount[i] <= 0) s.idleFarms++;
@@ -187,22 +188,27 @@ class EconomyDiagnostics {
 		const P = m.goodsPool;
 		let coalSum = 0, coalMax = 0, coalBest = 0, goodsSum = 0, goodsMax = 0, goodsBest = 0;
 		let foodSum = 0, foodMax = 0, foodBest = 0;
+		let woodSum = 0, woodMax = 0, woodBest = 0;
 		let coalTotal = m.goodsPool.spawnBufferTotal(ITEM_COAL) + m.goodsPool.inTransitTotal(ITEM_COAL);
 		let goodsTotal = m.goodsPool.spawnBufferTotal(ITEM_GOODS) + m.goodsPool.inTransitTotal(ITEM_GOODS);
 		let foodTotal = m.goodsPool.spawnBufferTotal(ITEM_FOOD) + m.goodsPool.inTransitTotal(ITEM_FOOD);
+		let woodTotal = m.goodsPool.spawnBufferTotal(ITEM_WOOD) + m.goodsPool.inTransitTotal(ITEM_WOOD);
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			const pc = m.priceCoal[i], pg = m.priceGoods[i], pf = m.priceFood[i];
-			coalSum += pc; goodsSum += pg; foodSum += pf;
+			const pc = m.priceCoal[i], pg = m.priceGoods[i], pf = m.priceFood[i], pw = m.priceWood[i];
+			coalSum += pc; goodsSum += pg; foodSum += pf; woodSum += pw;
 			if (pc > coalMax) coalMax = pc;
 			if (pg > goodsMax) goodsMax = pg;
 			if (pf > foodMax) foodMax = pf;
+			if (pw > woodMax) woodMax = pw;
 			const a = m.actors[i];
 			if ((a === ECONOMY_FACTORY || a === ECONOMY_TOWN) && pc > coalBest) coalBest = pc;
 			if (a === ECONOMY_TOWN && pg > goodsBest) goodsBest = pg;
 			if (a === ECONOMY_TOWN && pf > foodBest) foodBest = pf;
+			if ((a === ECONOMY_TOWN || a === ECONOMY_FARM) && pw > woodBest) woodBest = pw;
 			coalTotal += m.coal[i];
 			goodsTotal += m.goods[i];
 			foodTotal += m.food[i];
+			woodTotal += m.wood[i];
 		}
 		s.coalFieldMean = coalSum / ECONOMY_SIZE;
 		s.coalFieldMax = coalMax;
@@ -213,14 +219,20 @@ class EconomyDiagnostics {
 		s.foodFieldMean = foodSum / ECONOMY_SIZE;
 		s.foodFieldMax = foodMax;
 		s.foodBestBuyer = foodBest;
+		s.woodFieldMean = woodSum / ECONOMY_SIZE;
+		s.woodFieldMax = woodMax;
+		s.woodBestBuyer = woodBest;
 		s.coalTotal = coalTotal;
 		s.goodsTotal = goodsTotal;
 		s.foodTotal = foodTotal;
+		s.woodTotal = woodTotal;
 		s.coalParticles = s.coalStopped = 0;
 		s.goodsParticles = s.goodsStopped = 0;
 		s.foodParticles = s.foodStopped = 0;
+		s.woodParticles = s.woodStopped = 0;
 		let coalFly = 0, coalBook = 0, coalHaul = 0, goodsFly = 0, goodsBook = 0, goodsHaul = 0;
 		let foodFly = 0, foodBook = 0, foodHaul = 0;
+		let woodFly = 0, woodBook = 0, woodHaul = 0;
 		for (let p = 0; p < P.count; p++) {
 			const k = P.kind[p], amt = P.amount[p];
 			const stopped = Math.abs(P.hx[p]) + Math.abs(P.hy[p]) <= DIAG_STOP_SPEED ? 1 : 0;
@@ -236,11 +248,16 @@ class EconomyDiagnostics {
 				s.foodParticles++;
 				s.foodStopped += stopped;
 				foodFly += amt; foodBook += P.factoryCost[p]; foodHaul += P.transportCost[p];
+			} else if (k === ITEM_WOOD) {
+				s.woodParticles++;
+				s.woodStopped += stopped;
+				woodFly += amt; woodBook += P.factoryCost[p]; woodHaul += P.transportCost[p];
 			}
 		}
 		s.coalFlight = coalFly;
 		s.goodsFlight = goodsFly;
 		s.foodFlight = foodFly;
+		s.woodFlight = woodFly;
 		s.coalAsk = coalFly > 1e-12 ? (coalBook + coalHaul) / coalFly : 0;
 		s.coalBookCost = coalFly > 1e-12 ? coalBook / coalFly : 0;
 		s.coalHaulCost = coalFly > 1e-12 ? coalHaul / coalFly : 0;
@@ -250,9 +267,13 @@ class EconomyDiagnostics {
 		s.foodAsk = foodFly > 1e-12 ? (foodBook + foodHaul) / foodFly : 0;
 		s.foodBookCost = foodFly > 1e-12 ? foodBook / foodFly : 0;
 		s.foodHaulCost = foodFly > 1e-12 ? foodHaul / foodFly : 0;
+		s.woodAsk = woodFly > 1e-12 ? (woodBook + woodHaul) / woodFly : 0;
+		s.woodBookCost = woodFly > 1e-12 ? woodBook / woodFly : 0;
+		s.woodHaulCost = woodFly > 1e-12 ? woodHaul / woodFly : 0;
 		s.coalSpoiled = P.spoiled[ITEM_COAL];
 		s.goodsSpoiled = P.spoiled[ITEM_GOODS];
 		s.foodSpoiled = P.spoiled[ITEM_FOOD];
+		s.woodSpoiled = P.spoiled[ITEM_WOOD];
 		s.deliveries = P.arrivals;
 		s.coalMade = m.producedCoal;
 		s.coalBurned = m.burnedCoal;
@@ -260,6 +281,8 @@ class EconomyDiagnostics {
 		s.goodsEaten = m.consumedGoods;
 		s.foodMade = m.producedFood;
 		s.foodEaten = m.consumedFood;
+		s.woodMade = m.producedWood;
+		s.woodEaten = m.consumedWood;
 		s.gardenFed = m.forage.gardenFed;
 		s.wildPicked = m.forage.wildPicked;
 	}
@@ -378,7 +401,7 @@ class EconomyDiagnostics {
 			'## flags',
 			...(s.flags.length ? s.flags.map(t => `- ${t}`) : ['- none']),
 			'## actors & towns',
-			`mines=${s.mines} factories=${s.factories} towns=${s.towns} young=${s.young} gold_mines=${s.goldMines} gardens=${s.gardens} farms=${s.farms} pop=${f(s.pop, 2)}/${f(s.rooms, 1)} wait=${f(s.wait, 1)} comfort=${f(s.comfort)} rest_tax=${f(s.restTax)}`,
+			`mines=${s.mines} factories=${s.factories} towns=${s.towns} young=${s.young} gold_mines=${s.goldMines} gardens=${s.gardens} farms=${s.farms} sawmills=${s.sawmills} pop=${f(s.pop, 2)}/${f(s.rooms, 1)} wait=${f(s.wait, 1)} comfort=${f(s.comfort)} rest_tax=${f(s.restTax)}`,
 			'## workers',
 			`count=${s.workers}/${s.workerCap} walk_job=${s.walkJob} pool=${s.pool} shift=${s.shift} walk_home=${s.walkHome} wait=${s.wait} room=${s.room} still=${s.still} forage=${s.forage} walking=${s.walking} stalled=${s.stalled} hungry=${s.hungry}`,
 			`labor_worked=${f(s.worked, 2)} rested=${f(s.rested, 2)} births=${s.births} starved=${s.starved}`,
@@ -390,10 +413,10 @@ class EconomyDiagnostics {
 			`wages_paid=${f(s.wagesPaid, 2)} taxes_paid=${f(s.taxesPaid, 2)} wages_rate=${f(s.wageRate, 4)} g/s taxes_rate=${f(s.taxRate, 4)} g/s`,
 			'## prices (field = diffused buyer bid, ask = in-flight unit cost + haulage)'
 		];
-		for (const key of ['coal', 'goods', 'food']) {
+		for (const key of ['coal', 'goods', 'food', 'wood']) {
 			lines.push(`${key}: total=${f(s[key + 'Total'], 2)} in_flight=${f(s[key + 'Flight'], 2)} particles=${s[key + 'Particles']} stopped=${s[key + 'Stopped']} field_mean=${f(s[key + 'FieldMean'], 4)} field_max=${f(s[key + 'FieldMax'], 4)} best_buyer=${f(s[key + 'BestBuyer'], 4)} ask=${f(s[key + 'Ask'], 4)} book=${f(s[key + 'BookCost'], 4)} haul=${f(s[key + 'HaulCost'], 4)} spoiled=${f(s[key + 'Spoiled'], 2)}`);
 		}
-		lines.push(`flows: coal_made=${f(s.coalMade, 2)} coal_burned=${f(s.coalBurned, 2)} goods_made=${f(s.goodsMade, 2)} goods_eaten=${f(s.goodsEaten, 2)} food_made=${f(s.foodMade, 2)} food_eaten=${f(s.foodEaten, 2)} deliveries=${s.deliveries} garden_rations=${f(s.gardenFed, 2)} wild_rations=${f(s.wildPicked, 2)}`);
+		lines.push(`flows: coal_made=${f(s.coalMade, 2)} coal_burned=${f(s.coalBurned, 2)} goods_made=${f(s.goodsMade, 2)} goods_eaten=${f(s.goodsEaten, 2)} food_made=${f(s.foodMade, 2)} food_eaten=${f(s.foodEaten, 2)} wood_made=${f(s.woodMade, 2)} wood_built=${f(s.woodEaten, 2)} deliveries=${s.deliveries} garden_rations=${f(s.gardenFed, 2)} wild_rations=${f(s.wildPicked, 2)}`);
 		for (const entry of watched) lines.push(this.workerText(entry));
 		lines.push(this.actorRows(), this.historyText());
 		return lines.join('\n');
@@ -448,13 +471,18 @@ const PANEL_ROWS = [
 		['Food in flight', s => `${s.foodFlight.toFixed(1)} u`, s => s.foodStopped > 8],
 		['Food ask · town', s => `${s.foodAsk.toFixed(3)} · ${s.foodBestBuyer.toFixed(3)} g/u`, s => s.foodFlight > 1 && s.foodAsk > s.foodBestBuyer],
 		['Food field mean/max', s => `${s.foodFieldMean.toFixed(3)} / ${s.foodFieldMax.toFixed(3)}`],
-		['Spoiled coal/goods/food', s => `${s.coalSpoiled.toFixed(2)} · ${s.goodsSpoiled.toFixed(2)} · ${s.foodSpoiled.toFixed(2)} u`],
+		['Wood total', s => `${s.woodTotal.toFixed(1)} u`],
+		['Wood in flight', s => `${s.woodFlight.toFixed(1)} u`, s => s.woodStopped > 8],
+		['Wood ask · buyer', s => `${s.woodAsk.toFixed(3)} · ${s.woodBestBuyer.toFixed(3)} g/u`, s => s.woodFlight > 1 && s.woodAsk > s.woodBestBuyer],
+		['Wood field mean/max', s => `${s.woodFieldMean.toFixed(3)} / ${s.woodFieldMax.toFixed(3)}`],
+		['Spoiled coal/goods/food/wood', s => `${s.coalSpoiled.toFixed(2)} · ${s.goodsSpoiled.toFixed(2)} · ${s.foodSpoiled.toFixed(2)} · ${s.woodSpoiled.toFixed(2)} u`],
 		['Deliveries', s => `${s.deliveries}`]
 	]],
 	['Flow', [
 		['Coal made · burned', s => `${s.coalMade.toFixed(1)} · ${s.coalBurned.toFixed(1)} u`],
 		['Goods made · eaten', s => `${s.goodsMade.toFixed(1)} · ${s.goodsEaten.toFixed(1)} u`],
 		['Food made · eaten', s => `${s.foodMade.toFixed(1)} · ${s.foodEaten.toFixed(1)} u`],
+		['Wood made · built', s => `${s.woodMade.toFixed(1)} · ${s.woodEaten.toFixed(1)} u`],
 		['Garden · wild rations', s => `${s.gardenFed.toFixed(1)} · ${s.wildPicked.toFixed(1)}`]
 	]],
 	['Towns & farms', [

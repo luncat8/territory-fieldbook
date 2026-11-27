@@ -1,4 +1,4 @@
-// Owns: firm recipes (mine, factory, gold mine), joint-budget input bidding, shift conversion and scale adaptation.
+// Owns: firm recipes (mine, factory, gold mine, sawmill), joint-budget input bidding, shift conversion and scale adaptation.
 // Edit for: recipe yields/labor needs, pool-occupancy wage cooling, cost-basis sell floors and firm scale rates.
 'use strict';
 
@@ -28,7 +28,9 @@ class ActorOptimizer {
 		this.recipes = {
 			[ECONOMY_MINE]: { rate: SOURCE_RATE, outItem: ITEM_COAL, outYield: 1, gate: PRICE_GATE, inputs: [{ item: ITEM_LABOR, need: MINE_LABOR }] },
 			[ECONOMY_FACTORY]: { rate: FACTORY_RATE, outItem: ITEM_GOODS, outYield: FACTORY_YIELD, gate: 0, inputs: [{ item: ITEM_COAL, need: 1 }, { item: ITEM_LABOR, need: FACTORY_LABOR * FACTORY_YIELD }] },
-			[ECONOMY_GOLD]: { rate: SOURCE_RATE, outItem: -1, outYield: GOLD_RATE / SOURCE_RATE, gate: 0, inputs: [{ item: ITEM_LABOR, need: GOLD_LABOR }] }
+			[ECONOMY_GOLD]: { rate: SOURCE_RATE, outItem: -1, outYield: GOLD_RATE / SOURCE_RATE, gate: 0, inputs: [{ item: ITEM_LABOR, need: GOLD_LABOR }] },
+			// patch:true marks the sawmill's forest dependence — bids and scale adapt clamp against remaining forest room.
+			[ECONOMY_SAWMILL]: { rate: SAWMILL_RATE, outItem: ITEM_WOOD, outYield: 1, gate: SAWMILL_GATE, patch: true, inputs: [{ item: ITEM_LABOR, need: SAWMILL_LABOR }] }
 		};
 	}
 
@@ -38,6 +40,7 @@ class ActorOptimizer {
 		if (actor === ECONOMY_FACTORY) return m.goodsPool.sellFloor[ITEM_GOODS][i];
 		if (actor === ECONOMY_TOWN) return m.towns.restTax(i);
 		if (actor === ECONOMY_FARM) return m.goodsPool.sellFloor[ITEM_FOOD][i];
+		if (actor === ECONOMY_SAWMILL) return m.goodsPool.sellFloor[ITEM_WOOD][i];
 		return 0;
 	}
 
@@ -117,7 +120,9 @@ class ActorOptimizer {
 		if (outValue <= 0) return;
 		const outTarget = Math.max(0.25, rate * scale * BUFFER_SECONDS);
 		const outBuffered = outItem < 0 ? 0 : m.goodsPool.spawnAmount[outItem][i];
-		const sellRoom = outItem < 0 || !m.suppression ? 1 : Math.max(0, 1 - outBuffered / outTarget);
+		let sellRoom = outItem < 0 || !m.suppression ? 1 : Math.max(0, 1 - outBuffered / outTarget);
+		// Patch firms (sawmill) cannot bid past the surrounding forest: no standing timber, no hiring.
+		if (recipe.patch) sellRoom = Math.min(sellRoom, m.farms.forestRoom(i));
 		const ref = Math.max(0.02, outValue * rate * 0.12);
 		const drive = m.derived ? Math.tanh(m.profit[i] / ref) : 0;
 		const cool = m.money.creditCool(i, INPUT_SHARE * outValue * rate * scale * PURSE_SECONDS);
@@ -154,13 +159,20 @@ class ActorOptimizer {
 	factoryLaborBid(i) { this.firmBids(i, this.recipes[ECONOMY_FACTORY]); return this.bidOut[1]; }
 	mineLaborBid(i) { this.firmBids(i, this.recipes[ECONOMY_MINE]); return this.bidOut[0]; }
 	goldLaborBid(i) { this.firmBids(i, this.recipes[ECONOMY_GOLD]); return this.bidOut[0]; }
+	sawmillLaborBid(i) { this.firmBids(i, this.recipes[ECONOMY_SAWMILL]); return this.bidOut[0]; }
 
 	stepFirms() {
 		const m = this.model;
 		m.goodsPool.cap[ITEM_COAL].fill(0);
 		m.goodsPool.cap[ITEM_GOODS].fill(0);
+		// cap[ITEM_WOOD] is deliberately not zeroed here: farms/towns rewrite it every tick before goodsPool.step reads it.
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			const a = m.actors[i];
+			// Sawmill output must deplete standing forest first, so it bypasses the generic stock-converting stepFirm.
+			if (a === ECONOMY_SAWMILL && !m.founding.isBuilding(i)) {
+				m.farms.stepSawmill(i, this.recipes[a]);
+				continue;
+			}
 			if (!this.recipes[a] || m.founding.isBuilding(i)) continue;
 			this.stepFirm(i, this.recipes[a]);
 		}
@@ -243,9 +255,11 @@ class ActorOptimizer {
 			const outValue = outPrice * outYield;
 			const ref = Math.max(0.02, outValue * rate * 0.12);
 			const drive = Math.tanh(m.profit[i] / ref);
-			const outStock = outItem < 0 ? 0 : m.goodsPool.spawnAmount[outItem][i];
-			const outTarget = Math.max(0.25, rate * m.scale[i] * BUFFER_SECONDS);
-			const sellRoom = outItem < 0 ? 1 : Math.max(0, 1 - outStock / outTarget);
+		const outStock = outItem < 0 ? 0 : m.goodsPool.spawnAmount[outItem][i];
+		const outTarget = Math.max(0.25, rate * m.scale[i] * BUFFER_SECONDS);
+		let sellRoom = outItem < 0 ? 1 : Math.max(0, 1 - outStock / outTarget);
+		// Patch firms (sawmill) also refuse to rescale up without forest room.
+		if (recipe.patch) sellRoom = Math.min(sellRoom, m.farms.forestRoom(i));
 			const solvent = m.money.owedWage[i] <= m.money.purse[i] + Math.max(0.25, outValue * rate * 2.5);
 			if (drive > 0.02 && solvent && sellRoom > 0.2) {
 				m.scale[i] = Math.min(SCALE_MAX, m.scale[i] + ECONOMY_DT * SCALE_UP * drive * sellRoom);

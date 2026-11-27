@@ -1,5 +1,5 @@
-// Owns: settlement tiers, forest stock, worker settle intent, the settler gather grid, young-town founding and forest build.
-// Edit for: intent pace, founding threshold, forest-felling build and tier floors on rest, tax, bids and rooms.
+// Owns: settlement tiers, forest stock, worker settle intent, the settler gather grid, young-town founding and market-wood build.
+// Edit for: intent pace, founding threshold, wood build demand and tier floors on rest, tax, bids and rooms.
 'use strict';
 
 const FOUND_RADIUS = 2;
@@ -56,6 +56,14 @@ class Settlements {
 
 	isYoungTown(i) {
 		return this.model.actors[i] === ECONOMY_TOWN && this.tier[i] < WOOD_TIER_CAP;
+	}
+
+	// Only towns still building their first half-tier demand wood; mature towns are built.
+	woodTarget(i) { return this.isYoungTown(i) ? 1 : 0; }
+
+	needWood(i) {
+		const target = this.woodTarget(i);
+		return target > 0 ? Math.max(0, 1 - this.model.wood[i] / target) : 0;
 	}
 
 	tierLerp(i, floor) { return floor + (1 - floor) * this.tier[i]; }
@@ -117,17 +125,19 @@ class Settlements {
 		if (goal > this.tier[i]) this.tier[i] = Math.min(1, this.tier[i] + ECONOMY_DT * TIER_RATE * (goal - this.tier[i]));
 	}
 
-	// Resting occupants and idle town workers fell surrounding woodland into the young town's first half-tier.
+	// Resting occupants and idle town workers convert delivered wood into the young town's first half-tier; sawmills fell, the market carries it.
 	buildFromForest(i) {
 		const m = this.model;
 		const builders = m.roomCount[i] * 0.45 + m.stillFresh[i];
 		if (builders <= 1e-6) return;
-		const availWood = this.sumAround(this.forest, i);
-		const wood = Math.min(builders * this.buildShare, availWood, (WOOD_TIER_CAP - this.tier[i]) * WOOD_PER_TIER);
+		const wood = Math.min(builders * this.buildShare, m.wood[i], (WOOD_TIER_CAP - this.tier[i]) * WOOD_PER_TIER);
 		if (wood <= 1e-12) return;
-		this.fellAround(i, wood);
+		const old = m.wood[i];
+		const costBuf = m.goodsPool.stockCost[ITEM_WOOD];
+		m.wood[i] = Math.max(0, old - wood);
+		costBuf[i] = m.wood[i] > 1e-12 ? Math.max(0, costBuf[i] * (m.wood[i] / old)) : 0;
+		m.consumedWood += wood;
 		this.tier[i] = Math.min(WOOD_TIER_CAP, this.tier[i] + wood / WOOD_PER_TIER);
-		this.felled += wood;
 	}
 
 	sumAround(field, i) {
@@ -143,22 +153,6 @@ class Settlements {
 			}
 		}
 		return total;
-	}
-
-	fellAround(i, wood) {
-		const total = this.sumAround(this.forest, i);
-		if (total <= 1e-12) return;
-		const share = Math.min(1, wood / total);
-		const cx = i % ECONOMY_WIDTH, cy = Math.floor(i / ECONOMY_WIDTH);
-		for (let y = cy - FOUND_RADIUS, yEnd = cy + FOUND_RADIUS; y <= yEnd; y++) {
-			const wy = MAP_WRAP ? wrapY(y) : y;
-			if (wy < 0 || wy >= ECONOMY_HEIGHT) continue;
-			for (let x = cx - FOUND_RADIUS, xEnd = cx + FOUND_RADIUS; x <= xEnd; x++) {
-				const wx = MAP_WRAP ? wrapX(x) : x;
-				if (wx < 0 || wx >= ECONOMY_WIDTH) continue;
-				this.forest[economyIndex(wx, wy)] *= 1 - share;
-			}
-		}
 	}
 
 	// Founding creates rooms, not occupants: nearby workers must walk in and buy rest normally.

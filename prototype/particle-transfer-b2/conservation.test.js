@@ -44,6 +44,8 @@ function checkLedgers(model) {
 	closeTo(model.producedGoods - model.consumedGoods - goodsPool.spoiled[ITEM_GOODS], goodsHeld);
 	const foodHeld = sum(model.food) + goodsPool.spawnBufferTotal(ITEM_FOOD) + goodsPool.inTransitTotal(ITEM_FOOD);
 	closeTo(model.producedFood - model.consumedFood - goodsPool.spoiled[ITEM_FOOD], foodHeld);
+	const woodHeld = sum(model.wood) + goodsPool.spawnBufferTotal(ITEM_WOOD) + goodsPool.inTransitTotal(ITEM_WOOD);
+	closeTo(model.producedWood - model.consumedWood - goodsPool.spoiled[ITEM_WOOD], woodHeld);
 	closeTo(workers.seededWorkers + workers.births - model.workerLife.deaths, workers.totalAmount(), 1e-9);
 	closeTo(workers.seededTired + model.workedLabor - model.restedDepleted - model.workerLife.removedTired, workers.totalTired());
 	closeTo(money.seeded + money.mined, money.total());
@@ -58,6 +60,18 @@ test('reference chain sustains particle throughput and conserves mass, people, t
 	assert.ok(model.consumedGoods > 3, `expected goods eaten > 3, got ${model.consumedGoods}`);
 	assert.ok(model.money.wages > 20, `expected wages > 20, got ${model.money.wages}`);
 	assert.ok(model.money.transportEarned > 0, 'expected positive Transport Company haul revenue');
+});
+
+test('young town builds its first tier from sawmill wood delivered through the market', () => {
+	const model = new PriceEconomy();
+	const town = economyIndex(9, 20);
+	// Reference towns start mature (tier 1, zero wood demand); reset one to young so it must buy construction wood.
+	model.settlements.tier[town] = 0;
+	run(model, 60);
+	checkLedgers(model);
+	assert.ok(model.producedWood > 1, `expected wood produced > 1, got ${model.producedWood}`);
+	assert.ok(model.consumedWood > 0, `expected delivered wood consumed by builders, got ${model.consumedWood}`);
+	assert.ok(model.settlements.tier[town] > 0, `expected young town tier to grow from wood, got ${model.settlements.tier[town]}`);
 });
 
 test('placing, erasing and clearing actors mid-run flushes buffers, releases purses and conserves ledgers', () => {

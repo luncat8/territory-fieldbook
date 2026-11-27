@@ -10,6 +10,7 @@ const RESOURCE_TITLES = {
 	depleted: ['Tired & resting workers', 'Homebound walkers, wait queues and town rooms', 'Home appeal', 'Blended rest value and quality field'],
 	forage: ['Wild food & Monastery gardens', 'Shoreline/forest wild food, garden plots and FORAGE walkers', 'Low-res food gradient', 'Coarse 24×14 (4-tick) free-food reach field'],
 	gold: ['Gold held', 'Purses and worker wallets on map', 'Wage & home pull', 'Combined gold circulation signal'],
+	wood: ['Wood particles & timber', 'Sawmill felling, yard stocks and deliveries', 'Wood price', 'Diffused builder bid per cell'],
 	land: ['Land rest', 'Terrain rest pace less industrial wasteland', 'Town site', 'Shoreline/meadow site quality less town claims']
 };
 const TOOL_HINTS = {
@@ -20,12 +21,13 @@ const TOOL_HINTS = {
 	gold: 'Click walkable land to place a gold mine.',
 	farm: 'Click walkable land to build a food farm. Paid crews clear forest or use local wood, then harvest every seven seconds.',
 	garden: 'Click walkable land to place a Monastery garden: farms surrounding plots and gives free food.',
+	sawmill: 'Click walkable land to place a sawmill. Paid crews fell nearby forest into wood sold to builders.',
 	erase: 'Click an actor to remove it. Docked workers step outside with their wallets intact.'
 };
 
 function bootEconomy() {
 	for (const node of document.querySelectorAll('[data-icon]')) node.outerHTML = labIcon(node.dataset.icon);
-	const toolKinds = { inspect: 0, erase: 0, mine: ECONOMY_MINE, factory: ECONOMY_FACTORY, town: ECONOMY_TOWN, gold: ECONOMY_GOLD, garden: ECONOMY_GARDEN, farm: ECONOMY_FARM };
+	const toolKinds = { inspect: 0, erase: 0, mine: ECONOMY_MINE, factory: ECONOMY_FACTORY, town: ECONOMY_TOWN, gold: ECONOMY_GOLD, garden: ECONOMY_GARDEN, farm: ECONOMY_FARM, sawmill: ECONOMY_SAWMILL };
 	const model = new PriceEconomy();
 	const plots = [new FieldPlot($('resource-map'), true), new FieldPlot($('price-map'), false)];
 	const stats = new EconomyTelemetry();
@@ -55,12 +57,12 @@ function bootEconomy() {
 	$('gold-rate-note').textContent = GOLD_RATE.toFixed(2);
 
 	function syncActors() {
-		const counts = [0, 0, 0, 0, 0, 0, 0];
+		const counts = [0, 0, 0, 0, 0, 0, 0, 0];
 		for (const kind of model.actors) counts[kind]++;
-		const [, mines, factories, towns, gold, gardens, farms] = counts;
+		const [, mines, factories, towns, gold, gardens, farms, sawmills] = counts;
 		let young = 0;
 		for (let i = 0; i < ECONOMY_SIZE; i++) if (model.settlements.isYoungTown(i)) young++;
-		$('actor-count').textContent = `${mines} M · ${factories} F · ${towns} T${young ? ` (${young}y)` : ''} · ${gold} G · ${gardens} A · ${farms} H`;
+		$('actor-count').textContent = `${mines} M · ${factories} F · ${towns} T${young ? ` (${young}y)` : ''} · ${gold} G · ${gardens} A · ${farms} H · ${sawmills} S`;
 		clearButton.disabled = !towns;
 		for (const plot of plots) plot.readActors(model.actors);
 		dirty = true;

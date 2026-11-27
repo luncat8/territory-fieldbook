@@ -1,4 +1,4 @@
-// Owns: town rest services, bazaar food sales and wealth-class tax/room adaptation.
+// Owns: town rest services, bazaar food sales, construction-wood bidding and wealth-class tax/room adaptation.
 // Edit for: service prices, input bids and Cheap/Med/Rich strategies; never worker lifecycle.
 'use strict';
 
@@ -21,6 +21,9 @@ const RICH_OCC = 0.8;
 const VACANT_OCC = 0.3;
 const VACANT_SECONDS = 25;
 const NEED_FLOOR = 0.25;
+const WOOD_BID_VALUE = 0.14;
+const WOOD_USE = 0.002;
+const YOUNG_PULL = 0.05;
 
 class TownRules {
 	constructor(model) {
@@ -162,6 +165,20 @@ class TownRules {
 		return m.settlements.bidFactor(i) * optimalBid((COAL_COMFORT / TOWN_COAL_NEED) * tax, present, this.coalTarget(i), cool, m.suppression, sh);
 	}
 
+	// Construction wood: only towns below the wood tier cap bid; the share trim keeps wood from crowding out coal/goods bids.
+	woodBid(i) {
+		const m = this.model;
+		const need = m.settlements.needWood(i);
+		if (need <= 0) return 0;
+		if (!m.derived) return START_PRICE * (m.suppression ? need : 1);
+		const tax = this.taxRate(i), sh = this.share(i) * 0.35;
+		const cool = m.money.townCool(i, sh * tax * Math.max(1, m.pop[i]) * PURSE_SECONDS);
+		const bid = Number.isFinite(cool)
+			? m.settlements.bidFactor(i) * optimalBid((WOOD_BID_VALUE / WOOD_USE) * tax, m.wood[i] + m.goodsPool.buyerQueue[ITEM_WOOD][i], m.settlements.woodTarget(i), cool, m.suppression, sh)
+			: 0;
+		return m.settlements.isYoungTown(i) ? Math.max(YOUNG_PULL * need, bid) : bid;
+	}
+
 	// Funded workers refill their food bag from the town's food stock; broke workers or unsupplied towns cannot, triggering FORAGE.
 	buyRation(i, w) {
 		const m = this.model, { workers } = m;
@@ -230,6 +247,8 @@ class TownRules {
 		const maxGoods = m.derived ? (GOODS_COMFORT / TOWN_GOODS_NEED) * tax * ceiling : Infinity;
 		m.goodsPool.cap[ITEM_COAL][i] = this.coalBid(i) > 0 && m.priceCoal[i] <= maxCoal ? Math.max(m.coal[i], this.coalTarget(i)) : m.coal[i];
 		m.goodsPool.cap[ITEM_GOODS][i] = this.goodsBid(i) > 0 && m.priceGoods[i] <= maxGoods ? Math.max(m.goods[i], this.goodsTarget(i)) : m.goods[i];
+		const maxWood = m.derived ? (WOOD_BID_VALUE / WOOD_USE) * tax * ceiling : Infinity;
+		m.goodsPool.cap[ITEM_WOOD][i] = this.woodBid(i) > 0 && m.priceWood[i] <= maxWood ? Math.max(m.wood[i], m.settlements.woodTarget(i)) : m.wood[i];
 	}
 
 	roomTarget(i) {

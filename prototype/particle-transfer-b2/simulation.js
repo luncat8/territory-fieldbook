@@ -199,6 +199,7 @@ class PriceEconomy {
 		for (const [x, y] of REFERENCE_TOWNS) this.actors[economyIndex(x, y)] = ECONOMY_TOWN;
 		for (const [x, y] of REFERENCE_GOLD) this.actors[economyIndex(x, y)] = ECONOMY_GOLD;
 		for (const [x, y] of REFERENCE_GARDENS) this.actors[economyIndex(x, y)] = ECONOMY_GARDEN;
+		for (const [x, y] of REFERENCE_SAWMILLS) this.actors[economyIndex(x, y)] = ECONOMY_SAWMILL;
 		for (const field of [this.coal, this.goods, this.labor, this.depleted, this.pop, this.rooms, this.priceCoal, this.priceGoods, this.priceLabor, this.priceHome, this.priceRest, this.scale, this.taxMult, this.vacantTicks, this.satCoal, this.satGoods, this.workLoad, this.shiftLabor, this.profit, this.earned, this.localWealth]) field.fill(0);
 		this.wealthClass.fill(0);
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
@@ -222,6 +223,8 @@ class PriceEconomy {
 		this.wood.fill(0);
 		this.priceFood.fill(0);
 		this.nextPriceFood.fill(0);
+		this.priceWood.fill(0);
+		this.nextPriceWood.fill(0);
 		this.producedFood = this.consumedFood = 0;
 		this.goodsPool.reset();
 		this.workers.reset();
@@ -250,6 +253,7 @@ class PriceEconomy {
 			this.coal[i] = this.goods[i] = this.food[i] = this.wood[i] = 0;
 			this.goodsPool.stockCost[ITEM_FOOD][i] = 0;
 			this.goodsPool.stockCost[0][i] = this.goodsPool.stockCost[1][i] = 0;
+			this.goodsPool.stockCost[ITEM_WOOD][i] = 0;
 			this.rooms[i] = this.scale[i] = this.taxMult[i] = this.satCoal[i] = this.satGoods[i] = this.workLoad[i] = this.profit[i] = 0;
 			this.towns.clearTown(i);
 			this.founding.clearSite(i);
@@ -312,11 +316,13 @@ class PriceEconomy {
 	townGoodsBid(i) { return this.towns.goodsBid(i); }
 	townCoalBid(i) { return this.towns.coalBid(i); }
 	townBid(i) { return this.towns.goodsBid(i); }
+	townWoodBid(i) { return this.towns.woodBid(i); }
 	factoryCoalBid(i) { return this.optimizer.factoryCoalBid(i); }
 	factoryLaborBid(i) { return this.optimizer.factoryLaborBid(i); }
 	factoryBid(i) { return this.optimizer.factoryCoalBid(i); }
 	mineLaborBid(i) { return this.optimizer.mineLaborBid(i); }
 	goldLaborBid(i) { return this.optimizer.goldLaborBid(i); }
+	sawmillLaborBid(i) { return this.optimizer.sawmillLaborBid(i); }
 
 	step() {
 		this.earned.fill(0);
@@ -344,19 +350,21 @@ class PriceEconomy {
 	}
 
 	updatePrices() {
-		const { actors, optimizer, towns, workforce, founding, priceCoal, priceGoods, priceLabor, priceHome, priceRest, nextPriceCoal, nextPriceGoods, nextPriceLabor, nextPriceHome, nextPriceRest } = this;
+		const { actors, optimizer, towns, workforce, founding, priceCoal, priceGoods, priceLabor, priceHome, priceRest, priceWood, nextPriceCoal, nextPriceGoods, nextPriceLabor, nextPriceHome, nextPriceRest, nextPriceWood } = this;
 		const decay = this.decay ? PRICE_DECAY : 0;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			const a = actors[i];
-			let bCoal = -1, bGoods = -1, bLabor = -1, bHome = -1, bRest = -1, bFood = -1;
+			let bCoal = -1, bGoods = -1, bLabor = -1, bHome = -1, bRest = -1, bFood = -1, bWood = -1;
 			if (a === ECONOMY_TOWN) {
 				bCoal = towns.coalBid(i);
 				bGoods = towns.goodsBid(i);
 				bFood = towns.foodBid(i);
 				bHome = workforce.homeValueBid(i);
 				bRest = workforce.homeRestBid(i);
+				bWood = towns.woodBid(i);
 			} else if (a === ECONOMY_FARM) {
 				bLabor = this.farms.wageBid(i);
+				bWood = this.farms.woodBid(i);
 			} else if (a && a !== ECONOMY_GARDEN && !founding.isBuilding(i)) {
 				const recipe = optimizer.recipes[a];
 				optimizer.firmBids(i, recipe);
@@ -372,6 +380,7 @@ class PriceEconomy {
 			nextPriceLabor[i] = stepBid(priceLabor, i, priceLabor[i], bLabor, decay);
 			nextPriceHome[i] = stepBid(priceHome, i, priceHome[i], bHome, decay);
 			nextPriceRest[i] = stepBid(priceRest, i, priceRest[i], bRest, decay);
+			nextPriceWood[i] = stepBid(priceWood, i, priceWood[i], bWood, decay);
 		}
 		const foodSwap = this.priceFood;
 		this.priceFood = this.nextPriceFood;
@@ -386,6 +395,8 @@ class PriceEconomy {
 		this.nextPriceHome = priceHome;
 		this.priceRest = nextPriceRest;
 		this.nextPriceRest = priceRest;
+		this.priceWood = nextPriceWood;
+		this.nextPriceWood = priceWood;
 	}
 }
 

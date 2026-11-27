@@ -242,10 +242,11 @@ class GoldMoney {
 		}
 		if (!workers.hasOnSite(i)) return;
 		const unitRate = actor === ECONOMY_FARM ? this.model.farms.crewTarget(i) * WORK_RATE
-			: (actor === ECONOMY_FACTORY ? FACTORY_RATE : SOURCE_RATE) * (scale[i] || 1);
+			: (actor === ECONOMY_SAWMILL ? SAWMILL_RATE : actor === ECONOMY_FACTORY ? FACTORY_RATE : SOURCE_RATE) * (scale[i] || 1);
+		const laborPerUnit = actor === ECONOMY_GOLD ? GOLD_LABOR : actor === ECONOMY_SAWMILL ? SAWMILL_LABOR : MINE_LABOR;
 		const costRate = actor === ECONOMY_FARM ? priceLabor[i] * unitRate : actor === ECONOMY_FACTORY
 			? (priceCoal[i] / FACTORY_YIELD + priceLabor[i] * FACTORY_LABOR) * unitRate
-			: priceLabor[i] * unitRate * (actor === ECONOMY_GOLD ? GOLD_LABOR : MINE_LABOR);
+			: priceLabor[i] * unitRate * laborPerUnit;
 		const surplus = Math.max(0, this.purse[i] - costRate * RESERVE_SECONDS) * this.payoutShare;
 		if (surplus <= 1e-9) return;
 		this.purse[i] -= surplus;

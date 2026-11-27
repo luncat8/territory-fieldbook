@@ -27,18 +27,18 @@ class GoodsPool {
 		this.owner = new Int32Array(MAX_GOODS_PARTICLES);
 		this.waitTicks = new Uint16Array(MAX_GOODS_PARTICLES);
 		this.arriving = new Uint8Array(MAX_GOODS_PARTICLES);
-		this.spawnAmount = Array.from({ length: 5 }, () => new Float64Array(ECONOMY_SIZE));
-		this.spawnCost = Array.from({ length: 5 }, () => new Float64Array(ECONOMY_SIZE));
-		this.spawnIdle = Array.from({ length: 5 }, () => new Uint16Array(ECONOMY_SIZE));
-		this.stockCost = Array.from({ length: 5 }, () => new Float64Array(ECONOMY_SIZE));
-		this.cap = Array.from({ length: 5 }, () => new Float64Array(ECONOMY_SIZE));
-		this.sellFloor = Array.from({ length: 5 }, () => new Float64Array(ECONOMY_SIZE));
-		this.buyerQueue = Array.from({ length: 5 }, () => new Float64Array(ECONOMY_SIZE));
+		this.spawnAmount = Array.from({ length: 6 }, () => new Float64Array(ECONOMY_SIZE));
+		this.spawnCost = Array.from({ length: 6 }, () => new Float64Array(ECONOMY_SIZE));
+		this.spawnIdle = Array.from({ length: 6 }, () => new Uint16Array(ECONOMY_SIZE));
+		this.stockCost = Array.from({ length: 6 }, () => new Float64Array(ECONOMY_SIZE));
+		this.cap = Array.from({ length: 6 }, () => new Float64Array(ECONOMY_SIZE));
+		this.sellFloor = Array.from({ length: 6 }, () => new Float64Array(ECONOMY_SIZE));
+		this.buyerQueue = Array.from({ length: 6 }, () => new Float64Array(ECONOMY_SIZE));
 		this.incoming = new Float64Array(ECONOMY_SIZE);
 		this.room = new Float64Array(ECONOMY_SIZE);
 		this.accept = new Float64Array(ECONOMY_SIZE);
-		this.spoiled = new Float64Array(5);
-		this.spoilShare = [0, 1 - Math.exp(-ECONOMY_DT * SPOIL_GOODS), 0, 0, 1 - Math.exp(-ECONOMY_DT * 0.012)];
+		this.spoiled = new Float64Array(6);
+		this.spoilShare = [0, 1 - Math.exp(-ECONOMY_DT * SPOIL_GOODS), 0, 0, 1 - Math.exp(-ECONOMY_DT * 0.012), 0];
 		this.queueBlend = 1 - Math.exp(-ECONOMY_DT * 3);
 		this.maxProfitError = 0;
 		this.arrivals = 0;
@@ -81,6 +81,7 @@ class GoodsPool {
 		if (this.model.coal[cell] > 0) this.spoiled[0] += this.model.coal[cell];
 		if (this.model.goods[cell] > 0) this.spoiled[1] += this.model.goods[cell];
 		this.spoiled[ITEM_FOOD] += this.model.food[cell];
+		this.spoiled[ITEM_WOOD] += this.model.wood[cell];
 	}
 
 	emit(kind, cell, amt, cost) {
@@ -126,7 +127,10 @@ class GoodsPool {
 
 	isBuyer(kind, cell) {
 		const a = this.model.actors[cell];
-		if (!a || this.model.founding.isBuilding(cell)) return false;
+		if (!a) return false;
+		// Wood is checked before the isBuilding guard: a farm mid-construction must still receive wood.
+		if (kind === ITEM_WOOD) return a === ECONOMY_TOWN || a === ECONOMY_FARM;
+		if (this.model.founding.isBuilding(cell)) return false;
 		return kind === ITEM_COAL ? a === ECONOMY_FACTORY || a === ECONOMY_TOWN : a === ECONOMY_TOWN;
 	}
 
@@ -156,7 +160,7 @@ class GoodsPool {
 				if (avail <= 1e-12) continue;
 				if (sIdle[i] < 60000) sIdle[i]++;
 				const unitCost = sCost[i] / avail;
-				const gate = k === ITEM_COAL ? PRICE_GATE : 0;
+				const gate = k === ITEM_WOOD ? SAWMILL_GATE : k === ITEM_COAL ? PRICE_GATE : 0;
 				const floor = this.model.derived ? Math.max(gate, unitCost * (1 + SELL_MARGIN)) : gate;
 				this.sellFloor[k][i] = floor;
 				const batch = avail >= SPAWN_UNIT ? SPAWN_UNIT : avail >= SPAWN_DUST && sIdle[i] >= SPAWN_FLUSH_TICKS ? avail : 0;
@@ -195,6 +199,7 @@ class GoodsPool {
 		this.admitKind(ITEM_COAL);
 		this.admitKind(ITEM_GOODS);
 		this.admitKind(ITEM_FOOD);
+		this.admitKind(ITEM_WOOD);
 	}
 
 	// Moves particles uphill, accrues haul cost on effort, handles underwater re-steering/consignment and flags buyer arrivals.

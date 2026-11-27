@@ -19,6 +19,7 @@ class EconomyTelemetry {
 		this.goodsSpoiled = $('goods-spoiled');
 		this.goodsHeld = $('goods-held');
 		this.foodBalance = $('food-balance');
+		this.woodBalance = $('wood-balance');
 		this.headSeeded = $('head-seeded');
 		this.headBirths = $('head-births');
 		this.headDeaths = $('head-deaths');
@@ -102,6 +103,9 @@ class EconomyTelemetry {
 		let foodHeld = model.goodsPool.spawnBufferTotal(ITEM_FOOD) + model.goodsPool.inTransitTotal(ITEM_FOOD);
 		for (let i = 0; i < ECONOMY_SIZE; i++) foodHeld += model.food[i];
 		this.foodBalance.textContent = `${model.producedFood.toFixed(3)} harvested − ${model.consumedFood.toFixed(3)} sold − ${model.goodsPool.spoiled[ITEM_FOOD].toFixed(3)} spoiled ≈ ${foodHeld.toFixed(3)} held+transit`;
+		let woodHeld = model.goodsPool.spawnBufferTotal(ITEM_WOOD) + model.goodsPool.inTransitTotal(ITEM_WOOD);
+		for (let i = 0; i < ECONOMY_SIZE; i++) woodHeld += model.wood[i];
+		this.woodBalance.textContent = `${model.producedWood.toFixed(3)} sawmill-made − ${model.consumedWood.toFixed(3)} built − ${model.goodsPool.spoiled[ITEM_WOOD].toFixed(3)} spoiled ≈ ${woodHeld.toFixed(3)} held+transit`;
 		this.headSeeded.textContent = model.workers.seededWorkers.toFixed(0);
 		this.headBirths.textContent = model.workers.births.toFixed(0);
 		this.headDeaths.textContent = model.workerLife.deaths.toFixed(0);

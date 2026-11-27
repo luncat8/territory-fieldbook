@@ -2,11 +2,13 @@
 :root{color-scheme:dark;--bg:#101115;--panel:#18191f;--line:#2d2e37;--muted:#a1a2af;--dim:#828492;--text:#f1f0f5;--accent:#b8a4f3;--amber:#f3b765;--violet:#b491ef;--mint:#87c7ac;--sage:#a9e38c;--blue:#87b7d9;--gold:#f0cf52;--mono:ui-monospace,SFMono-Regular,Menlo,monospace;--sans:system-ui,-apple-system,'Segoe UI',sans-serif}
 .section-bar{justify-content:space-between;gap:14px;margin-bottom:12px;flex-wrap:wrap}
 .field-options{gap:13px;font-size:12px;color:#bebfca;flex-wrap:wrap}
-.source-key,.consumer-key,.factory-key,.gold-key,.garden-key{display:inline-block;position:relative;flex:none;width:9px;height:9px}
+.source-key,.consumer-key,.factory-key,.gold-key,.garden-key,.sawmill-key{display:inline-block;position:relative;flex:none;width:9px;height:9px}
 .garden-key{border:1.5px solid #b9f09b;border-radius:3px;background:#2f4a2c}
+.sawmill-key{background:#f2ba7a;clip-path:polygon(50% 6%,100% 94%,0 94%)}
 .presets{gap:6px;flex-wrap:wrap}
 .presets button{padding-inline:9px;min-width:56px;font:11px var(--mono);gap:7px}
 .tools [data-tool=garden] .icon{color:var(--sage)}
+.tools [data-tool=sawmill] .icon{color:#f2ba7a}
 .watched-box{margin-top:12px;padding:9px 11px;border-radius:6px;border:1px solid #383546;background:#1e1d27;font:11px/1.55 var(--mono);color:#d7d4e4;white-space:pre-wrap}
 dialog{width:min(480px,calc(100% - 32px));max-height:85dvh;margin:auto;border:1px solid #4a4556;border-radius:12px;padding:22px 25px;background:#1b1b22;color:var(--text);box-shadow:0 18px 80px #0006}
 @media(min-width:1600px){.overview{padding-block:36px}.card-head{padding-block:18px}.metric{padding:18px}}
