@@ -124,7 +124,7 @@ class FarmSystem {
 		const m = this.model;
 		const scale = m.scale[i] || 1;
 		const outCap = Math.max(0.35, recipe.rate * scale * BUFFER_SECONDS * 1.5);
-		const canCut = m.priceWood[i] > recipe.gate && m.goodsPool.spawnAmount[recipe.outItem][i] < outCap && this.forestShare(i) > 0.02;
+		const canCut = m.priceWood[i] > recipe.gate && m.goodsPool.outputHeld(recipe.outItem, i) < outCap && this.forestShare(i) > 0.02;
 		const used = canCut ? Math.min(m.shiftAvail[i], recipe.rate * SAWMILL_LABOR * scale * ECONOMY_DT) : 0;
 		if (used > 0) {
 			const onSiteFresh = Math.max(used, m.labor[i]);
@@ -137,12 +137,10 @@ class FarmSystem {
 			if (this.sawAcc[i] >= SAWMILL_SEARCH_WORK) this.fellVisit(i);
 		}
 		m.workLoad[i] += m.optimizer.occBlend * (used / ECONOMY_DT - m.workLoad[i]);
-		const yard = m.goodsPool.spawnAmount[recipe.outItem][i];
-		const unitCost = yard > 1e-9 ? m.goodsPool.spawnCost[recipe.outItem][i] / yard : 0;
-		m.goodsPool.sellFloor[recipe.outItem][i] = m.derived ? Math.max(recipe.gate, unitCost * (1 + SELL_MARGIN)) : recipe.gate;
+		m.goodsPool.sellFloor[recipe.outItem][i] = recipe.gate;
 	}
 
-	// One felling visit: a random wrapped cell in radius; output books at the mill cell (pool owner = spawn cell).
+	// One felling visit: a random wrapped cell in radius; logs land on the cut cell, payable to the mill's owner.
 	fellVisit(i) {
 		const m = this.model;
 		this.sawAcc[i] -= SAWMILL_SEARCH_WORK;
@@ -158,7 +156,7 @@ class FarmSystem {
 		this.sawAcc[i] -= felled * SAWMILL_FELL_WORK;
 		const cost = this.sawCost[i];
 		this.sawCost[i] = 0;
-		m.goodsPool.produce(ITEM_WOOD, i, made, cost);
+		m.goodsPool.placeHarvest(ITEM_WOOD, c, made, cost, i);
 		m.producedWood += made;
 	}
 
