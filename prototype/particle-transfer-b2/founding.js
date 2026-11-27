@@ -1,5 +1,5 @@
-// Owns: the free-workforce idle grid, resource deposit mask, construction sites and firm founding without minted gold.
-// Edit for: idle founder threshold, deposit distribution, mine/factory siting margin and founder build work.
+// Owns: the free-workforce idle grid, resource deposit mask, construction sites, worker-owner selection and firm founding without minted gold.
+// Edit for: idle founder threshold, deposit distribution, mine/factory/sawmill siting margin, founder build work and reference owners.
 'use strict';
 
 const FIRM_SCAN_TICKS = 150;
@@ -9,6 +9,7 @@ const FIRM_SEARCH_RADIUS = 6;
 const FIRM_FOUNDERS = 3;
 const FIRM_BUILD_WORK = 1.0;
 const FOUNDER_BUILD_RATE = 0.45;
+const SAWMILL_SPACING = 2 * SAWMILL_RADIUS + 1;
 
 class FirmFounding {
 	constructor(model) {
@@ -33,8 +34,66 @@ class FirmFounding {
 		this.building.fill(0);
 		this.buildProgress.fill(0);
 		this.ticks = this.founded = this.completed = 0;
+		this.seed = 977;
 		this.lastFound = -FIRM_COOLDOWN_TICKS;
 		this.hadIdle = false;
+	}
+
+	random(n) {
+		this.seed = (Math.imul(1664525, this.seed) + 1013904223) >>> 0;
+		return Math.floor(this.seed / 4294967296 * n);
+	}
+
+	isFreeNear(w, sx, sy) {
+		const { workers } = this.model;
+		if (workers.state[w] !== WORKER_STILL || workers.tired[w] > 1e-6) return false;
+		const wc = workers.cell[w];
+		return Math.abs(torusDelta(wc % ECONOMY_WIDTH - sx, ECONOMY_WIDTH)) <= FIRM_SEARCH_RADIUS
+			&& Math.abs(torusDelta(Math.floor(wc / ECONOMY_WIDTH) - sy, ECONOMY_HEIGHT)) <= FIRM_SEARCH_RADIUS;
+	}
+
+	// A random free (still, rested) worker within reach of the site; else the nearest worker of any state; else -1.
+	pickFounder(cell) {
+		const { workers } = this.model;
+		const sx = cell % ECONOMY_WIDTH, sy = Math.floor(cell / ECONOMY_WIDTH);
+		let free = 0, nearest = -1, nearestD = Infinity;
+		for (let w = 0; w < workers.count; w++) {
+			if (this.isFreeNear(w, sx, sy)) free++;
+			const wc = workers.cell[w];
+			const d = Math.abs(torusDelta(wc % ECONOMY_WIDTH - sx, ECONOMY_WIDTH)) + Math.abs(torusDelta(Math.floor(wc / ECONOMY_WIDTH) - sy, ECONOMY_HEIGHT));
+			if (d < nearestD) { nearestD = d; nearest = w; }
+		}
+		if (!free) return nearest;
+		let pick = this.random(free);
+		for (let w = 0; w < workers.count; w++) {
+			if (!this.isFreeNear(w, sx, sy)) continue;
+			if (pick-- === 0) return w;
+		}
+		return nearest;
+	}
+
+	// Worker-owner founding (plan M.1a): no paid initiation and an empty purse; a founder who already owns
+	// a firm adds this facility to his shared cash and debt.
+	assignOwner(cell) {
+		const { workers, owners } = this.model;
+		const w = this.pickFounder(cell);
+		const id = w >= 0 ? workers.id[w] : -1;
+		const o = owners.ownerOfWorker(id) || owners.create(id);
+		owners.attach(cell, o);
+		return o;
+	}
+
+	// Reference scene: one named owner per firm kind, so same-kind sites share a portfolio purse from the start.
+	assignReferenceOwners() {
+		const { actors, workers, owners } = this.model;
+		const kindOwner = new Int32Array(8);
+		let next = 0;
+		for (let i = 0; i < ECONOMY_SIZE; i++) {
+			const a = actors[i];
+			if (!a || a === ECONOMY_TOWN || a === ECONOMY_GARDEN) continue;
+			if (!kindOwner[a]) kindOwner[a] = owners.create(next < workers.count ? workers.id[next++] : -1);
+			owners.attach(i, kindOwner[a]);
+		}
 	}
 
 	clearSite(i) {
@@ -107,6 +166,18 @@ class FirmFounding {
 		}
 	}
 
+	hasNear(cell, kind, radius) {
+		const { actors } = this.model;
+		const cx = cell % ECONOMY_WIDTH, cy = Math.floor(cell / ECONOMY_WIDTH);
+		for (let dy = -radius; dy <= radius; dy++) {
+			for (let dx = -radius; dx <= radius; dx++) {
+				const c = wrapCell(cx + dx, cy + dy);
+				if (c >= 0 && actors[c] === kind) return true;
+			}
+		}
+		return false;
+	}
+
 	scanAndFound(anchor) {
 		const m = this.model, { actors, land, forage } = m;
 		const ax = anchor % ECONOMY_WIDTH, ay = Math.floor(anchor / ECONOMY_WIDTH);
@@ -132,6 +203,10 @@ class FirmFounding {
 					const facVal = (m.priceGoods[i] * FACTORY_YIELD - m.priceCoal[i] * 1.05) * FACTORY_RATE;
 					if (facVal > bestValue) { bestValue = facVal; bestCell = i; bestKind = ECONOMY_FACTORY; }
 				}
+				if (m.priceWood[i] > SAWMILL_GATE * 1.5 && m.farms.forestShare(i) > 0.3 && !this.hasNear(i, ECONOMY_SAWMILL, SAWMILL_SPACING)) {
+					const sawVal = (m.priceWood[i] - m.priceLabor[i] * SAWMILL_LABOR) * SAWMILL_RATE;
+					if (sawVal > bestValue) { bestValue = sawVal; bestCell = i; bestKind = ECONOMY_SAWMILL; }
+				}
 			}
 		}
 		if (bestCell < 0) return;
@@ -140,6 +215,7 @@ class FirmFounding {
 		m.workLoad[bestCell] = m.profit[bestCell] = 0;
 		this.building[bestCell] = 1;
 		this.buildProgress[bestCell] = 0;
+		this.assignOwner(bestCell);
 		if (bestKind === ECONOMY_FARM) m.farms.init(bestCell);
 		this.lastFound = this.ticks;
 		this.founded++;
