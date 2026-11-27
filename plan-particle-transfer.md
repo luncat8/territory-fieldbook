@@ -7,18 +7,19 @@ personal food bag. The pricing, pool, tax, land and settlement rules are the one
 already runs on a cell field; this engine swaps the transport substrate (Eulerian cell flow → Lagrangian SoA
 particles) under them. All numbers live in the owning source file; numbers below are starting values.
 
-## Monetary design extension (proposed)
+## Monetary design extension (confirmed)
 
-[Gold circulation and competing paper currencies](plan-gold-and-paper-money.md), sourced from
-[draft/economy-money-bank.md](draft/economy-money-bank.md), owns the proposed mine-only gold origin,
-stable facility/owner accounts (isolated or shared purses), bank-funded startup and debt service,
-wood-funded mine operation, transport/custody accounting and optional bank/town/faction note experiments.
-It also defines output-depot comparisons: current route-gated buffers are the local-depot control;
-speculative map output and reserved dispatch are alternatives, not existing approved behavior. Reuse the
-traded sawmill/wood path for mine inputs. A bank can lend existing gold with paper disabled.
-Its approval checkpoints precede implementation; the gold/vault rules below describe the existing baseline,
-not approval of paper money, shared purses or indefinite town redistribution. Compare ownership, storage,
-funding and currency policies independently before combining them.
+[Gold circulation and credit money](plan-gold-and-paper-money.md), sourced from
+[draft/economy-money-bank.md](draft/economy-money-bank.md), owns the confirmed mine-only gold origin,
+stable facility/owner accounts with **shared** cash and debt, worker-owner founding with no paid initiation,
+bank-funded startup and debt service, wood-funded mine operation, transport/custody accounting and credit-note
+issuance. It also defines output placement: current route-gated buffers are the internal-depot default,
+speculative map output is a comparison, and reserved buyer-directed dispatch is **not available** — this
+engine's transport substrate cannot do it. Forest-cut logs are placed at the cut cell. Reuse the traded
+sawmill/wood path for mine inputs. A bank can lend existing gold with credit money disabled.
+Credit notes are the only paper mechanism; gold-backed banknotes are a control. Compare ownership, storage,
+funding and currency policies independently before combining them. The gold/vault rules below describe the
+existing baseline, not the confirmed monetary policy.
 
 ## Scope
 
@@ -180,13 +181,16 @@ B2 `Settlements` / `Land`, per worker:
   bought comfort lifts the tier above that. Land sets the site: water edge and forest/meadow best, desert and
   wasteland worst; other towns' claims repel.
 
-## Firm founding (free workforce)
+## Firm founding (free workforce, worker-owner)
 
 - `STILL` fresh workers write `amount` into an idle grid at write time, like the gather grid.
 - Every `FIRM_SCAN_TICKS`, where the idle sum within radius 2 clears `FIRM_FOUNDERS`, the best empty nearby
   walkable cell is chosen by value: output bid minus recipe input cost at that cell, gated by resources (a mine
-  needs a deposit; a factory needs coal reach). Nearby idle founders build it into a working firm with an empty
-  purse (`0` minted gold).
+  needs a deposit; a factory needs coal reach). A random free worker from that workforce becomes the firm's
+  **owner** and builds it into a working firm with an empty purse (`0` minted gold).
+- The owner is liable for the firm's debt across all facilities it owns. Startup cash comes from an explicit
+  owner transfer or a bank loan (`plan-gold-and-paper-money.md` F0/F1), never from placement minting. The
+  mine can pay workers from its own extracted gold; a sawmill owner borrows from the bank to pay workers.
 
 ## Commercial food farms (`farms.js`)
 

@@ -187,6 +187,10 @@ Before all topics has minimal implementation Do not try to implement 100% of som
   map-money-particle.js); its rules lift from prototype/price-model-b2 plus worker-owned splitting and prolonged starvation, commercial food farms,
   coarse food-gradient foraging and Monastery gardens. Towns never manage worker lifecycle.
   Particle lab owners: worker-life.js (splits/starvation), farms.js (fields/harvest), towns.js (services/bazaar).
+- prototype-to-game boundary (plan-gold-and-paper-money.md M.10): the particle lab is a rules lab, not a
+  second game. It ends at the money end-to-end gate (G1+O2+D1+G2+B0/P1); the validated kernel then ports to
+  map-money-particle.js and the default flips. Transport staffing, science and other gameplay features build
+  straight in the game, not in the lab.
 - experiment files cover the loop: smoke (sim), dom_smoke (boot + UI), survey_spread. run
   smoke + dom_smoke after touching main.js, index.html or load order.
 - keep files under ~600 lines where practical; go beyond that only with a reason; a new feature gets a new file, header and map entry.
