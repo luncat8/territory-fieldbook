@@ -1,0 +1,103 @@
+
+# task
+
+fetch old outdated main branch d1981200cf3cd1511c93377fedc96238ebb66c3fthat was maid on some old drafts and have some missing or wrong understanding on design of workers behavior in particle engine. they mainly works on cell based price-model-b2 as i understand and they have good view panels that inform about issues visually, but current branch work most on particle engine and updated draft.
+
+compare with current active implementation in current branch (implemented wrap xy, and some logic fixes) and against updated drafts.
+
+is anything worth to pick?
+
+i recommend if some models big diverge - pick as new prototypes to keep both. 
+
+else if some prototypes similar but outdated - pick good changes or ideas and implement in current branch.
+
+
+Fetched `d1981200cf3cd1511c93377fedc96238ebb66c3f` (`origin/main`) and compared it against the current branch (`arena/2b7bbe26-territory-fieldbook` at `4e67047`, from `particle-transfer-b2b`) and the updated `draft/` files. Both branches diverge from the same merge-base `73dc6d4` (`drafts: combine particle-transfer model and draft2 edits`).
+
+---
+
+# report by agent
+
+
+## 1. Ground-Truth Comparison (`d198120` vs Current Branch vs Updated Drafts)
+
+First, two important structural clarifications from inspecting the git history:
+1. **Where the visual issue panels in `d198120` actually live:** They are inside **`d198120:prototype/particle-transfer/`** (`diagnostics.js`, `economy-panel.js`, `track.js`, `tracked.js`, plus `fields.js` heading-triangle rendering) — **not** in `price-model-b2`.
+2. **Where `price-model-b2` and `wrap-XY` actually stand:**
+   - **Current branch (`HEAD`) is far ahead on BOTH `price-model-b2` and `particle-transfer-b2`**, whereas `d198120` only pasted the updated `draft/*` files in its final commit *after* building its code against older drafts.
+   - **Important gap found inside current branch (`HEAD`):** Commit `87559dc` (`map border fix with wrap XY`) implemented `MAP_WRAP` / `wrapCell` in **`prototype/price-model-b2/` only** — **`prototype/particle-transfer-b2/` is still hard-bounded** and does not have `wrap-XY` yet.
+
+### Model-by-Model Verdict
+
+| Area | Old `main` (`d198120`) | Current branch (`4e67047`) | Verdict vs Updated Drafts |
+| :--- | :--- | :--- | :--- |
+| **Particle lab** | `prototype/particle-transfer/` (37 tests) — hybrid docked cell stocks (`labor[i]`/`depleted[i]`) + walkers; "residents as a measure"; **deleted town wait pool**; town famine deaths; no personal food bag, `FORAGE`, gardens, bazaar food, or farms. Collapses at ~4 min (2048/2048 stalled workers, 99% gold in wallets). **Has great visual inspector & watched-worker audit panels.** | `prototype/particle-transfer-b2/` (26 tests) — every person is a persistent SoA worker particle; towns sell room rest & bazaar food only (never spawn/despawn/route); keeps both firm pool & town wait pool; dedicated `FORAGE` over half-res 4-tick gradient + Monastery gardens; commercial `farms.js`; worker-owned 45s splits & 120s empty-bag starvation. **Missing `wrap-XY` and visual diagnostic panels.** | **Same target engine, outdated predecessor — do NOT keep `prototype/particle-transfer/` as a second prototype.** Keep `particle-transfer-b2` and **port the visual panels, worker audit, rendering, and per-worker wage claims** from `d198120`, plus **port `wrap-XY`** from `price-model-b2`. |
+| **Cell lab B2 (`prototype/price-model-b2/`)** | Outdated step-10 base + demography patch (51 tests): **removed `townWaitPool`** (`poolTarget(town) === 0`) and added 30s town famine thinning on minted cell labor. Lacks `towns.js`, `harvest.js`, `farms.js`, sawmills, resident workers, litter/CO2, and `wrap-XY`. | Full steps 11–14 (70 tests): `towns.js`, land build ladder, `harvest.js`, `farms.js` (sawmills + 7s farms + plot-clearing wood conservation `6e9d149`), conserved resident workers (`fresh`/`away`/`rooms` + ring eviction `ca4f686`), CO2/litter, and **`wrap-XY` torus (`87559dc`)**. | **Current branch strictly supersedes `d198120`.** `d198120`'s B2 changes contradict `draft/workers-food.md` (deleted town wait pool + town-famine deaths). Keep current B2; only pick `16×` speed (and optional inspector panel if desired). |
+| **Cell lab B (`prototype/price-model-b/`)** | Replaced `goalPop` formula shedding with savings-gated births + 30s town famine clock; `16×` speed. | Untouched historical Model B baseline. | **Skip engine changes** (Model B is an archived pre-wallet baseline and town-famine deaths conflict with `draft/workers-food.md`); optionally pick `16×` speed in UI. |
+| **Docs / Findings / Scratch** | `findings-pitfalls-skills.md` (+59 lines), `experiments/diag8..11.js`, `16×` speed in `water-humidity` & `diffusion/{a,b}`. | Updated `plan-particle-transfer.md`, `plan-price-echo-fix.md`, B2/particle findings. | **Pick valid engine-general findings** + `16×` speed options; **skip** `diag8..11.js` (scratch scripts tied to old API) and obsolete "particles only while walking" finding. |
+
+---
+
+## 2. Is Anything Worth Picking from `d198120`? — **Yes, 5 Concrete Picks**
+
+None of `d198120`'s *simulation rules* diverge in a worth-keeping model direction (its worker/town rules were based on the old misunderstood drafts and self-stall after ~4 minutes), so **no new separate prototype folder is needed**. However, **5 items from `d198120:prototype/particle-transfer/` are high-value and directly fit `prototype/particle-transfer-b2/`**:
+
+1. **Visual Economy Inspector Panel + Stall Flags + `Copy all stats` (`diagnostics.js` + `economy-panel.js`):**
+   - Live grouped panel (`Workers`, `Gold`, `Wages & taxes`, `Prices`) with **red `.off` alarm highlights** and plain-English **stall flags** (`#economy-flags`: pool at cap, stopped/stalled walkers, excessive `FORAGE` / empty bazaar stocks, gold trapped in wallets vs broke towns, underwater in-flight asks `ask > bestBuyer` for coal/goods/food, unpaid firm wage debt > cash).
+   - **Plain-English `workerReason(w)` ("Why" line)** explaining why any worker is doing what it's doing or why it stopped (e.g. slope vs `DOCK_SLOPE`, room/wait occupancy, forage target).
+   - Zero-alloc 10s strided history table + one-click **`Copy all stats`** button (with `file://` clipboard fallback) exporting flags, worker/gold/price breakdowns, watched workers, all actors, and history as plain text.
+2. **Named Watched-Workers Audit Panel (`track.js` + `tracked.js`):**
+   - Upgrades `particle-transfer-b2`'s minimal 2-line `#watched-worker` box into a full audit panel: auto-watches worker #1 from boot (`watchFirst`), supports clicking workers on the map or spawning/granting test gold (`Worker` tool, e.g. the draft's `50g` cycle check), plots **purse over time**, shows `Where` + **`Why`**, and checks the per-worker conservation identity (`funded + earned − spent − splitShared == wallet`) to `< 1e-9` (`exact` badge).
+3. **Per-Worker Unpaid Wage Claims (`gold.js`):**
+   - Bug/design fix worth picking: in current `particle-transfer-b2/gold.js`, when a newly founded zero-purse firm books `owedWage[firm]` at entry and later earns revenue, `settleFirm` pays `workers.payOnSite(firm, pay)` — paying *whoever happens to be at the firm later* instead of the worker who worked on credit and walked home. Porting `d198120`'s per-worker `(firm, workerId, amount)` FIFO wage claims (implemented as a fixed-size **SoA typed-array table** so there are zero hot-path allocations per `AGENTS.md`) pays back the original worker ID anywhere on the map and keeps personal worker ledgers exact.
+4. **Flock-Style Heading Triangles, Shape Selector & Flow Vectors (`fields.js` + `render.test.js`):**
+   - Replaces plain circles with oriented **heading triangles** (`hx, hy`) by default, adds the **Particles** shape dropdown (`Triangles`, `Points` 1px, `Large ×⅛`), **Motion tails**, and **Gold flow vectors** (wallet velocity + goods value flux), while keeping `FORAGE` green styling and the watched-worker ring.
+   - *(Optional small check from `d198120:particles.js`)*: evaluate whether `COST_RELAX` (book-cost markdown on unsellable post-spike spawn buffers, zero gold/mass impact) is needed or if `particle-transfer-b2` never wedges spawn buffers; include only if a founding-spike test shows wedged buffers.
+5. **`16×` Playback Speed + Reusable Findings:**
+   - Add `16×` speed option in `particle-transfer-b2` and `price-model-b2` (great for testing 45s splits, 120s starvation grace, and 7s harvests), and merge the valid non-obsolete pitfalls from `d198120:findings-pitfalls-skills.md`.
+
+---
+
+## 3. Implementation Plan
+
+### Stage 1 — Bring `wrap-XY` Torus Topology into `prototype/particle-transfer-b2/`
+Align `particle-transfer-b2` with `price-model-b2` (`87559dc`) and `draft/map-border.md` before layering new UI/diagnostics:
+- **`simulation.js`**: Add `MAP_WRAP = true`, `wrapX`, `wrapY`, `wrapCell(x, y)`, and `setMapWrap(wrap)` rebuilding `NEIGHBORS`, `forage.coarseNeighbors`, `land.refresh()`, and `steering.rebuildConductance()`.
+- **`steering.js`**: Wrap continuous particle coordinates `(x, y)` into `[0, W) × [0, H)` when `MAP_WRAP` is on; compute `ds` via torus shortest-delta `(dx, dy)` so crossing a seam never bills full-map haul cost!
+- **`forage.js`**: Wrap `coarseNeighbors` on the `24×14` grid, wrap bilinear `x0/x1`, `y0/y1` indices in `scoreAtCell()`, and use `wrapCell` in garden plot scans.
+- **`land.js`, `settlement.js`, `founding.js`, `farms.js`, `workers.js`**: Route radius/cone/ring scans (`stampCone`, `pledge`, `sumAround`, `fellAround`, `foundTown`, `stepConstruction`, `scanAndFound`, `canSite`, `clearVisit`, `harvest`, `pushWaste`, `pickNear`) through `wrapCell` and torus distances; ensure `farms.js` `clearVisit` preserves forest-to-wood conservation.
+- **`index.html`, `app.js`, `styles.css`**: Add `Map edges: Wrap · torus | Bounded` toggle and grid badge (`48 × 28 · wrap`), plus torus unit tests (`conservation.test.js` / new `wrap.test.js`).
+
+### Stage 2 — Per-Worker SoA Unpaid Wage Claims in `prototype/particle-transfer-b2/gold.js`
+- Replace anonymous `owedWage` `payOnSite` settlement with a preallocated SoA FIFO claim table (`claimFirm`, `claimWorkerId`, `claimAmount`, cap `512`, zero object allocations).
+- `payEntryWage` logs unpaid shortfall against `workers.id[w]`; `settleFirm` credits the original worker's wallet (or `vault` if despawned) and exposes `unpaidWages(workerId)`.
+- Add unit test in `workers.test.js` verifying a sweat-equity / zero-purse firm pays back the original worker after he has walked away to rest.
+
+### Stage 3 — Port & Adapt Visual Diagnostic Panels to `prototype/particle-transfer-b2/`
+- **`track.js` + `tracked.js` (Watched Workers Audit Panel):**
+  - Port named worker tracker (`watchFirst` on boot/reset, map click to watch, `Worker` tool + spawn/grant gold controls, purse-over-time chart, event feed).
+  - Adapt personal ledger (`funded + earned - spent - splitOut == wallet`) to account for bazaar ration purchases (`towns.buyRation`), 50/50 wallet splits (`worker-life.split` — auto-adopting or logging the child), and 120s starvation vault transfer (`worker-life.remove`).
+- **`diagnostics.js` + `economy-panel.js` (Economy Inspector, Stall Flags & Copy Stats):**
+  - Port `EconomyDiagnostics` and `EconomyPanel` adapted to `particle-transfer-b2`'s full model:
+    - All 8 worker states (`WALK_JOB`, `FIRM_POOL`, `SHIFT`, `WALK_HOME`, `TOWN_WAIT`, `ROOM`, `STILL`, `FORAGE`), splits/starved, low-food count;
+    - Exact gold partition (`townPurse + firmPurse + workerWallets + vault == goldTotal`), unpaid wage claims, wallet median/mean/share;
+    - Town room occupancy (`roomCount / rooms`), `waitCount`, bazaar food stock, Garden/Wild forage totals;
+    - Price vs in-flight `ask` (`book + haul`) and consignment/spoilage stats for **Coal, Goods, and Food**;
+    - Adapted **stall flags** + **`workerReason(w)`** covering all 8 worker states + **`Copy all stats`** button & 10s strided history.
+  - Add `diagnostics.test.js` verifying exact gold/worker partitions, exact from-start watched-worker ledger across splits/foraging/work/rest, and `Copy all stats` output sections.
+
+### Stage 4 — Port Particle Shape Rendering & Speed Controls
+- **`prototype/particle-transfer-b2/{fields.js,index.html,app.js,styles.css}`**:
+  - Port heading-triangle particle rendering (`hx, hy`), `Particles` shape selector (`Triangles`, `Points`, `Large ×⅛`), motion tails, and gold flow vectors (`buildGoldFlows`), keeping `FORAGE` green coloring, `Food` particles, and watched-worker highlight ring; add `render.test.js` + update `ui.test.js`.
+  - Add `16×` speed option to `particle-transfer-b2/index.html` and `price-model-b2/index.html` (keeping `1×` default so automated/manual baselines don't jump unexpectedly).
+
+### Stage 5 — Findings, File Map & Validation
+- Merge the valid general lessons from `d198120:findings-pitfalls-skills.md` (excluding obsolete hybrid-dock notes).
+- Update `AGENTS.md` ownership entries, `plan-particle-transfer.md`, `prototype/particle-transfer-b2/README.md`, and `archive/particle-transfer-b2-worklog.md`.
+- Run L0 (`node --check`), L1/L2 (`node --test` in `prototype/particle-transfer-b2/` and `prototype/price-model-b2/`), and start a live server preview so you can inspect the panels directly in the browser.
+
+---
+
+### Quick Confirmation Before Implementation
+1. **Confirm dropping `d198120:prototype/particle-transfer/` as a separate folder** and putting all picked panels/rendering/fixes directly into `prototype/particle-transfer-b2/`?
+2. Do you want the **Economy Inspector + Stall Flags + Copy all stats** panel only in **`prototype/particle-transfer-b2/`**, or also a cell-adapted version in **`prototype/price-model-b2/`**?
