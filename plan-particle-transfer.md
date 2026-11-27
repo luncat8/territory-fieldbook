@@ -18,8 +18,11 @@ speculative map output is a comparison, and reserved buyer-directed dispatch is 
 engine's transport substrate cannot do it. Forest-cut logs are placed at the cut cell. Reuse the traded
 sawmill/wood path for mine inputs. A bank can lend existing gold with credit money disabled.
 Credit notes are the only paper mechanism; gold-backed banknotes are a control. Compare ownership, storage,
-funding and currency policies independently before combining them. The gold/vault rules below describe the
-existing baseline, not the confirmed monetary policy.
+funding and currency policies independently before combining them. The lab runs the first slice (G1 + O2 + D1 +
+G2 + F1): scenario starting gold `START_GOLD_PER_WORKER × workers` recorded once and split between named owners,
+town treasuries, worker wallets and bank equity; shared worker-owners (`owners.js`); a gold mine that needs
+delivered wood; and a capital-funded gold bank (`banks.js`) with simple interest, grace-period default and
+write-off. Credit notes (P1) and bankruptcy/facility resale (P3) are not in the lab yet.
 
 ## Scope
 
@@ -93,9 +96,10 @@ back to the individual workers of that cell. A rule never writes the view.
   arriving that tick; the rejected remainder counts as that buyer's queue (cools its bid, never its cap). On
   admission:
   1. buyer pays `buyerPay = amount · priceKind[buyer]` from its purse;
-  2. `transportPaid = min(buyerPay, transportCost)` → single map-wide **Transport Company** vault (gentle drip
-     back to active towns so the vault does not hoard);
-  3. `factoryRevenue = buyerPay − transportPaid` → `owner` purse (direct credit).
+  2. `transportPaid = min(buyerPay, transportCost)` → map-wide **transport account** (T0 drips it back to active
+     towns by population; T1 retains it);
+  3. `factoryRevenue = buyerPay − transportPaid` → the particle's `payee` owner (stable owner id, so revenue
+     reaches the owner even after the producing facility is erased; profit attribution checks `originFacility`).
   Profit identity: `profit = amount · (buyerUnitPrice − item.price)`; gold is conserved by construction.
 - **Underwater** (`buyerUnitPrice < item.price`): re-steer up any gradient that still clears `item.price`; at a
   local price maximum non-perishables wait in consignment (no transport accrual), perishables spot-sell after a
@@ -108,9 +112,10 @@ States: `WALK_JOB`, `FIRM_POOL`, `SHIFT`, `WALK_HOME`, `TOWN_WAIT`, `ROOM`, `STI
 1. **Job.** A fresh worker climbs `priceLabor`. At a firm: a free shift slot → `SHIFT`; else a free pool place →
    `FIRM_POOL` (FIFO into shifts); else keep walking. Pool + shift count toward occupancy, so the posted wage
    falls to `0` on overflow (bid only — the admission cap stays, or an emptied pool locks itself out).
-2. **Wage at entry.** On joining the firm the firm prepays the shift (`priceLabor[firm] · fresh` from its purse
-   into `gold`; a newly founded zero-purse firm books the unpaid remainder as `owedWage` cooled by `creditCool`
-   and settles it from its first sale, so no gold is ever minted). Wage level is fixed at entry.
+2. **Wage at entry.** On joining the firm the firm prepays the shift (`priceLabor[firm] · fresh` from its
+   facility budget — a bounded share of the owner's cash — into `gold`; a short owner books the remainder as a
+   wage claim on the original worker id, cooled by `creditCool` and settled FIFO from later owner cash, so no
+   gold is ever minted). Wage level is fixed at entry; the shift also accrues bonus credit with that owner.
 3. **Work.** In `SHIFT`, `tired += WORK_RATE · amount · dt`; the firm recipe consumes exactly that labor. At
    `tired = amount` the worker becomes `WALK_HOME`.
 4. **Home choice.** `WALK_HOME` climbs the wallet-blended score `(1 − w) · priceHome + w · priceRest`,
@@ -164,8 +169,12 @@ the next job — same `id`, same `amount` throughout.
   relocate them. Empty rooms, comfort, taxes and town wealth affect services, not headcount.
 - Bazaar food target `max(2, demandPop · 0.5)`; bids cool with stock, incoming queues and available gold.
   Rations cost `max(0.45, delivered food cost · 1.15)` per unit. Sales remove food cost basis proportionally.
-- Gold: towns and starter firms begin with seeded purses; only initial worker wallets are seeded; splitting shares wallets; the gold mine is the
-  only source.
+- Gold: the scenario's starting gold is the only non-mined gold; placement, founding, erase and reset mint
+  nothing. Splitting shares wallets; the gold mine is the only source. Holdings: town purses, owner cash, bank
+  reserve, transport account, custody (estates of the dead and of erased towns, dripped back to towns), wallets.
+- Owner waterfall each tick: wage claims; a bank loan when cash is below the next-shift reserve (owners that
+  extract gold self-fund); debt service from cash above the reserve; then bonuses to credited workers, only
+  from earnings — never while a loan is open and never out of paid-in capital.
 
 ## Settlement founding (still depleted workers)
 
@@ -186,8 +195,13 @@ B2 `Settlements` / `Land`, per worker:
 - `STILL` fresh workers write `amount` into an idle grid at write time, like the gather grid.
 - Every `FIRM_SCAN_TICKS`, where the idle sum within radius 2 clears `FIRM_FOUNDERS`, the best empty nearby
   walkable cell is chosen by value: output bid minus recipe input cost at that cell, gated by resources (a mine
-  needs a deposit; a factory needs coal reach). A random free worker from that workforce becomes the firm's
-  **owner** and builds it into a working firm with an empty purse (`0` minted gold).
+  needs a deposit; a factory needs coal reach; a sawmill needs a wood bid above 1.5 × its gate over forest and
+  no other sawmill within its cutting reach). A random free worker from that workforce becomes the firm's
+  **owner** and builds it into a working firm with an empty purse (`0` minted gold); a worker who already owns a
+  firm adds the site to the same owner. Hand-placed firms get an owner the same way.
+- The gold mine needs delivered wood (`GOLD_WOOD` per unit of output) besides labor; the reference scene seeds a
+  small starting timber stock (`GOLD_START_WOOD`, booked as `seededWood` in the wood ledger). Felled logs are
+  placed as particles on the cut cell and their unsold total throttles the mill that cut them.
 - The owner is liable for the firm's debt across all facilities it owns. Startup cash comes from an explicit
   owner transfer or a bank loan (`plan-gold-and-paper-money.md` F0/F1), never from placement minting. The
   mine can pay workers from its own extracted gold; a sawmill owner borrows from the bank to pay workers.
@@ -224,7 +238,7 @@ B2 `Settlements` / `Land`, per worker:
 - Foraging is the first response to hunger. Only 120 continuous seconds with an empty personal food bag
   despawns a worker. Receiving food resets the grace period. Location, comfort, tax and wealth cannot kill.
 - Swap-remove all worker and lifecycle columns; watched IDs remain stable. The removed wallet enters the
-  Transport Company vault, preserving gold. Removed tired mass is explicitly booked for the labor ledger.
+  custody account, preserving gold. Removed tired mass is explicitly booked for the labor ledger.
 
 ## Steering & movement (`steering.js`, shared by goods and workers)
 
@@ -242,7 +256,7 @@ B2 `Settlements` / `Land`, per worker:
   wild/garden food and personal digestion are a separate subsystem.
 - Headcount: `Σ worker.amount = seeded + splits − starved`; founding and foraging never change headcount.
 - Labor: `Σ tired = seededTired + worked − rested − removedTired`.
-- Gold: `purses + wallets + vault = seeded + mined` to `< 1e-7`.
+- Gold: `towns + owner cash + bank reserve + transport + custody + wallets = initial + mined` to `< 1e-7`.
 
 ## Rendering
 
@@ -274,10 +288,14 @@ Lab `prototype/particle-transfer-b2/` (each file < 500 lines, header per `AGENTS
 - `workforce.js`, `land.js`, `settlement.js` — pareto home policy, water/forest/desert land & claims, young-town
   founding and forest-felling tier build.
 - `founding.js` — idle grid and firm founding from free workforce.
-- `gold.js` — purses, wallets, Transport Company vault and town drip.
+- `gold.js` — gold origin ledger, scenario funding, town purses, owner waterfall, wage claims, transport/custody
+  accounts and town drip.
+- `owners.js` — shared owners, facility ids, per-site budgets and debt limits.
+- `banks.js` — F1 gold bank: loans from existing reserve, simple interest, arrears, default and write-off.
 - `fields.js`, `telemetry.js`, `app.js`, `index.html`, `styles.css`, `README.md` — particle & field render,
   ledgers, watched worker readout, Garden tool and UI.
-- `*.test.js` — node test suites (`conservation`, `workers`, `food-life`, `forage`, `founding`, `ui`).
+- `*.test.js` — node test suites (`conservation`, `workers`, `food-life`, `forage`, `founding`, `gold`, `banks`,
+  `diagnostics`, `wrap`, `render`, `ui`).
 
 Game port: `map-money-particle.js` (+ split owner files as needed), dispatched by `mapeStepMoney` when
 `mape.moneyEngine === 'particle'`; new owners get AGENTS.md map entries.
