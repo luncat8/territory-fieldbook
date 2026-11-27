@@ -46,12 +46,14 @@ class TownRules {
 		this.model.food[i] = 0;
 		this.revenueTick[i] = 0;
 		this.model.localWealth[i] = this.model.workers.count ? this.walletMean() : WALLET_PRICE_REFERENCE;
+		this.model.currencies.stampTown(i);
 	}
 
 	clearTown(i) {
 		this.model.food[i] = 0;
 		this.revenueTick[i] = 0;
 		this.model.localWealth[i] = 0;
+		this.model.currencies.unstampTown(i);
 	}
 
 	recordRevenue(i, amount) {

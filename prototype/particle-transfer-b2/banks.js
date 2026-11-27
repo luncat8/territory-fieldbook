@@ -61,6 +61,16 @@ class GoldBank {
 		return paid;
 	}
 
+	// One bank, one issuer. A chartered bank under credit money registers its note ledger; off means no paper.
+	syncIssuer() {
+		if (this.exists && this.model.creditMoney && !this.model.currencies.issuers.length) this.model.currencies.charter('Bank notes');
+		return this.noteIssuer();
+	}
+
+	noteIssuer() {
+		return this.model.currencies.issuers.length ? 0 : -1;
+	}
+
 	headroom(account) {
 		return Math.max(0, account.debtLimit - account.loanDebt);
 	}

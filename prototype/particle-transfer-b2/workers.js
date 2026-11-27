@@ -99,6 +99,7 @@ class WorkerPool {
 		this.food[w] = food;
 		this.since[w] = this.model.ticks || 0;
 		this.model.workerLife.init(w);
+		this.model.currencies.initWorker(w);
 		if (isSeed) { this.seededWorkers += WORKER_UNIT; this.seededTired += tired; this.seededFood += food; }
 		else this.births += WORKER_UNIT;
 		return w;

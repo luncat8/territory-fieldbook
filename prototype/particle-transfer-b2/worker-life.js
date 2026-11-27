@@ -50,6 +50,7 @@ class WorkerLife {
 		const pool = this.model.workers;
 		const child = pool.spawn(pool.x[w], pool.y[w], WORKER_STILL, 0, pool.gold[w] / 2, pool.food[w] / 2, false);
 		if (child < 0) return false;
+		this.model.currencies.splitWorker(w, child);
 		pool.gold[w] /= 2;
 		pool.food[w] /= 2;
 		pool.tired[child] = pool.tired[w] / 2;
@@ -69,6 +70,7 @@ class WorkerLife {
 		this.removedTired += pool.tired[w];
 		this.lostFood += pool.food[w];
 		const last = --pool.count;
+		m.currencies.onWorkerRemoved(w, last);
 		for (const col of pool.columns) col[w] = col[last];
 		for (const col of this.columns) col[w] = col[last];
 	}

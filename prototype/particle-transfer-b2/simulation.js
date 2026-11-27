@@ -166,12 +166,14 @@ class PriceEconomy {
 		this.decay = true;
 		this.derived = true;
 		this.suppression = true;
+		this.creditMoney = false;
 		this.land = new Land(this);
 		this.steering = new Steering(this);
 		this.forage = new ForageSystem(this);
 		this.owners = new OwnerAccounts(this);
 		this.money = new GoldMoney(this);
 		this.banks = new GoldBank(this);
+		this.currencies = new Currencies(this);
 		this.goodsPool = new GoodsPool(this);
 		this.workers = new WorkerPool(this);
 		this.workerLife = new WorkerLife(this);
@@ -240,10 +242,12 @@ class PriceEconomy {
 		this.towns.reset();
 		this.founding.reset();
 		this.banks.reset();
+		this.currencies.reset();
 		this.money.reset();
 		this.workers.seedReference();
 		this.money.initializeScenario(this.goldPerWorker);
 		this.banks.initializeScenario(this.bankCapital);
+		this.banks.syncIssuer();
 		this.ticks = this.producedCoal = this.burnedCoal = this.producedGoods = this.consumedGoods = 0;
 		this.workedLabor = this.restedDepleted = 0;
 		this.coalRate = this.goodsRate = this.uptakeRate = 0;
