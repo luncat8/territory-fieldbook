@@ -350,7 +350,11 @@ Game port: `map-money-particle.js` (+ split owner files as needed), dispatched b
   - splits and starvation keep headcount ledger exact (`seeded + splits − starved`), preserve wallets/food on
     split and worker identity across compaction; no food is manufactured by towns.
   - commercial farm siting gates, full clearing, wood construction, staff-scaled seven-second harvest,
-    humidity-at-harvest yield, adjacent-farm waste and paid food delivery.
+    humidity-at-harvest yield, adjacent-farm waste and paid food delivery;
+  - T0 drips transport earnings and custody to towns by population weight while T1 retains transport, custody
+    escheats in both presets and the gold invariant holds;
+  - felling places logs on the cut cell payable to the mill's stable owner; forest stock converts one-to-one
+    into placed wood with no gold movement.
 - **L2:** after game port: `smoke` + `dom_smoke` + `mape_*` comparison and the manual list.
 
 ## Manual verification checklist

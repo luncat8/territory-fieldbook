@@ -582,3 +582,6 @@ Carried over from the particle-transfer lab; these govern the persistent-worker 
   below paid-in capital (`owners.capital`).
 - A `money.reset()` that clears only its own arrays leaks gold once balances move to other owners (owner
   registry, bank): reset must zero every gold balance while keeping identities and facility links.
+- Replacing a test file must diff test names, not trust net counts: the `bootstrap-bank.test.js` →
+  `banks.test.js` swap silently dropped the T0/T1 transport/custody acceptance test while totals looked green.
+  Acceptance tests are gate evidence — when consolidating suites, port every old test name or record why it is obsolete.

@@ -110,7 +110,7 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 - prototype/shared/lab.css — common visual rules shared by both B2 labs; each lab's styles.css loads after and overrides only what differs.
 - prototype/shared/lab-ui.js — `$` DOM lookup + `ICON_PATHS`/`labIcon(name)` SVG helpers + `labBindCopy(button, read)` ⧉ clipboard buttons; loaded before each lab's app.js. Per-lab `RESOURCE_TITLES`/`TOOL_KINDS` stay in app.js.
 - prototype/shared/economy-panel.js — `EconomyPanel(diagnostics, rows, watched)` inspector shell (row groups + stall-flag list + ⧉ copy); pure view over each lab's `diagnostics.js` contract.
-- prototype/particle-transfer-b2/ — port of the d198120 reference lab: torus wrap, growable FIFO wage-claims + cost relaxation, particle/triangle/gold-flux rendering, Watched Workers audit (track.js/tracked.js), economy diagnostics with coal/goods/food in-flight asks. Tests: 49.
+- prototype/particle-transfer-b2/ — port of the d198120 reference lab: torus wrap, growable FIFO wage-claims + cost relaxation, particle/triangle/gold-flux rendering, Watched Workers audit (track.js/tracked.js), economy diagnostics with coal/goods/food in-flight asks. Tests: 54.
 - prototype/price-model-b2/ — cell-lab B2 port + economy inspector adapter (diagnostics.js). Tests: 72.
 
 ## drafts = human input
@@ -190,9 +190,10 @@ Before all topics has minimal implementation Do not try to implement 100% of som
   gold.js (gold origin ledger, scenario funding, owner cash waterfall, wage claims), owners.js (shared owners,
   facility ids, budgets, debt limits), banks.js (F1 gold lending, debt service, default).
 - prototype-to-game boundary (plan-gold-and-paper-money.md M.10): the particle lab is a rules lab, not a
-  second game. It ends at the money end-to-end gate (G1+O2+D1+G2+B0/P1); the validated kernel then ports to
-  map-money-particle.js and the default flips. Transport staffing, science and other gameplay features build
-  straight in the game, not in the lab.
+  second game. The money end-to-end gate (G1+O2+D1+G2+B0/P1) is reached (2026-11-27: M.7 scenario test green,
+  comparison axes decided — see archive/gold-and-paper-money-worklog.md); the lab is frozen for feature work
+  and the validated kernel ports to map-money-particle.js with the default flip (Phase B). Transport staffing,
+  science and other gameplay features build straight in the game, not in the lab.
 - experiment files cover the loop: smoke (sim), dom_smoke (boot + UI), survey_spread. run
   smoke + dom_smoke after touching main.js, index.html or load order.
 - keep files under ~600 lines where practical; go beyond that only with a reason; a new feature gets a new file, header and map entry.
