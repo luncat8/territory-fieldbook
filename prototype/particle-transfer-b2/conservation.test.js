@@ -1,5 +1,5 @@
-// Owns: conservation, Transport Company accounting, pass-through and consignment tests for Particle Transfer B2.
-// Edit for: mass/headcount/gold invariants across reference runs, actor edits and edge particle routing.
+// Owns: conservation, Transport Company accounting, pass-through, consignment and felling tests for Particle Transfer B2.
+// Edit for: mass/headcount/gold invariants across reference runs, actor edits, edge particle routing and harvest placement.
 'use strict';
 
 const test = require('node:test');
@@ -81,6 +81,36 @@ test('young town builds its first tier from sawmill wood delivered through the m
 	assert.ok(model.producedWood > 1, `expected wood produced > 1, got ${model.producedWood}`);
 	assert.ok(model.consumedWood > 0, `expected delivered wood consumed by builders, got ${model.consumedWood}`);
 	assert.ok(model.settlements.tier[town] > 0, `expected young town tier to grow from wood, got ${model.settlements.tier[town]}`);
+});
+
+test('felling places logs on the cut cell payable to the mill and converts forest stock one-to-one', () => {
+	const model = new PriceEconomy();
+	const mill = economyIndex(13, 13);
+	assert.equal(model.setActor(mill, 0), true);
+	assert.equal(model.setActor(mill, ECONOMY_SAWMILL), true);
+	model.land.terrain.fill(TERRAIN_MEADOW);
+	model.settlements.forest.fill(0.4);
+	model.settlements.forest[mill] = 0;
+	for (let attempt = 0; attempt < 40 && !model.goodsPool.count; attempt++) {
+		model.farms.seed = 731 + attempt;
+		model.farms.sawCost[mill] = 0.3;
+		model.farms.fellVisit(mill);
+	}
+	assert.ok(model.goodsPool.count > 0, 'a felling visit must emit logs within the seeded attempts');
+	const cut = economyIndex(Math.floor(model.goodsPool.x[0]), Math.floor(model.goodsPool.y[0]));
+	assert.notEqual(cut, mill, 'logs land on the cut cell, never the mill');
+	const made = model.settlements.felled * WOOD_PER_FOREST;
+	closeTo(model.goodsPool.inTransitTotal(ITEM_WOOD), made);
+	closeTo(model.goodsPool.looseWood[mill], made);
+	closeTo(model.producedWood, made);
+	closeTo(model.settlements.forest[cut], 0.4 - model.settlements.felled);
+	for (let p = 0; p < model.goodsPool.count; p++) {
+		assert.equal(model.goodsPool.kind[p], ITEM_WOOD);
+		assert.equal(model.goodsPool.payee[p], model.owners.ownerAt(mill));
+		assert.equal(model.goodsPool.origin[p], mill);
+		assert.equal(model.goodsPool.transportCost[p], 0, 'placed logs have not been hauled yet');
+	}
+	checkLedgers(model);
 });
 
 test('placing, erasing and clearing actors mid-run flushes buffers, releases purses and conserves ledgers', () => {
