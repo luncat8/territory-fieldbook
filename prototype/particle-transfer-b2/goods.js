@@ -248,8 +248,29 @@ class GoodsPool {
 					p++;
 					continue;
 				}
-				// At a local maximum while underwater: coal waits in consignment; perishable goods spot-sell before rotting.
+				// At a local maximum while underwater: relax the in-flight book toward the best price the road can see so hauled cost that outran its buyers unwedges instead of parking forever (mirrors stepSpawn's COST_RELAX; accounting only, no gold moves).
 				if (this.waitTicks[p] < 60000) this.waitTicks[p]++;
+				let best = priceField[cell];
+				const nBase = cell * DEGREE;
+				for (let d = 0; d < DEGREE; d++) {
+					const to = NEIGHBORS[nBase + d];
+					if (to >= 0 && priceField[to] > best) best = priceField[to];
+				}
+				const unitCost = this.unitPrice(p);
+				const over = unitCost - Math.min(unitCost, best);
+				if (over > 0) {
+					const loss = over * (1 - Math.exp(-COST_RELAX * ECONOMY_DT)) * this.amount[p];
+					let rem = loss;
+					const tr = this.transportCost[p];
+					const trTake = Math.min(tr, rem);
+					this.transportCost[p] = Math.max(0, tr - trTake);
+					rem -= trTake;
+					const fc = this.factoryCost[p];
+					const fcTake = Math.min(fc, rem);
+					this.factoryCost[p] = Math.max(0, fc - fcTake);
+					this.writtenDown[k] += trTake + fcTake;
+				}
+				// Coal never consigns; perishable goods spot-sell below cost before rotting.
 				if (k !== ITEM_COAL && hasRoom && bid > 0 && this.waitTicks[p] >= CONSIGN_WAIT_TICKS) {
 					this.arriving[p] = 1;
 				}

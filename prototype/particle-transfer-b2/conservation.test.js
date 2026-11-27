@@ -143,3 +143,34 @@ test('over-hauled goods particle consigns into a hungry town after CONSIGN_WAIT_
 	assert.ok(model.goodsPool.underwaterLosses >= 1, 'consignment below haul cost should record an underwater spot sale');
 	assert.ok(model.goods[town] > 0 || model.consumedGoods > 0);
 });
+
+test('stranded in-flight coal relaxes its over-hauled book toward the buyer instead of parking', () => {
+	const model = new PriceEconomy();
+	for (let i = 0; i < ECONOMY_SIZE; i++) if (model.actors[i]) model.setActor(i, 0);
+	model.workers.reset();
+	model.money.reset();
+	const town = economyIndex(24, 14);
+	model.setActor(town, ECONOMY_TOWN);
+	model.money.payOwner(model.owners.ownerAt(town), 12);
+	model.money.seedWorker(12);
+	model.owners.allocate();
+	model.coal[town] = 0;
+	for (let n = 0; n < 60; n++) model.updatePrices();
+	const field = model.priceCoal[town];
+	assert.ok(field > 0, `town should bid for coal, got field ${field}`);
+	// Ask 1.5x the buyer's field price, so the particle is underwater at the town and no road pays its floor.
+	assert.equal(model.goodsPool.emit(ITEM_COAL, town, 0.08, field * 1.5 * 0.08), true);
+	const p = model.goodsPool.count - 1;
+	const ask0 = model.goodsPool.unitPrice(p);
+	assert.ok(ask0 > field, `particle ask ${ask0} should exceed the buyer field ${field}`);
+	model.producedCoal += 0.08;
+	run(model, 10);
+	checkLedgers(model);
+	assert.ok(model.goodsPool.writtenDown[ITEM_COAL] > 0, 'stranded coal should write down its over-hauled book cost');
+	if (model.goodsPool.count > 0) {
+		const still = model.goodsPool.count - 1;
+		if (model.goodsPool.kind[still] === ITEM_COAL) {
+			assert.ok(model.goodsPool.unitPrice(still) < ask0, 'stranded coal ask should relax down toward the buyer');
+		}
+	}
+});
