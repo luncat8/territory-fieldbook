@@ -51,6 +51,10 @@ function checkLedgers(model) {
 	closeTo(workers.seededWorkers + workers.births - model.workerLife.deaths, workers.totalAmount(), 1e-9);
 	closeTo(workers.seededTired + model.workedLabor - model.restedDepleted - model.workerLife.removedTired, workers.totalTired());
 	closeTo(money.seeded + money.mined, money.total());
+	for (let k = 0; k < model.currencies.issuers.length; k++) {
+		const e = model.currencies.invariantError(k);
+		assert.ok(e <= 1e-9, `note ledger identity broken for issuer ${k}: ${e}`);
+	}
 }
 
 test('reference chain sustains particle throughput and conserves mass, people, tired and gold', () => {

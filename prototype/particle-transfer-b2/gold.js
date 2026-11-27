@@ -31,6 +31,7 @@ class GoldMoney {
 		this.redistributed = 0;
 		this.inputs = 0;
 		this.seeded = this.mined = this.wages = this.taxes = this.transportEarned = 0;
+		this.wageNotes = this.taxNotes = this.rationNotes = 0;
 		this.mineRate = this.wageRate = this.taxRate = 0;
 		this.lastMined = this.lastWages = this.lastTaxes = 0;
 		this.initialized = false;
@@ -117,22 +118,28 @@ class GoldMoney {
 		return Math.max(1, budget / cash) * this.creditCool(i, budget);
 	}
 
+	// The employer settles the shift in its own notes first (the borrowed tender), then gold, then wage debt.
 	payEntryWage(cell, worker, bill) {
 		if (bill <= 0) return 0;
 		const { workers, owners } = this.model;
 		const account = owners.accountAt(cell);
 		if (account.wageDebt > 0) this.settleOwner(owners.ownerAt(cell));
-		const paid = this.spend(cell, bill);
-		workers.gold[worker] += paid;
-		if (paid > 0) this.model.tracker.income(worker, paid, workers.cell[worker]);
-		this.wages += paid;
-		const owed = bill - paid;
+		let notes = 0;
+		if (this.model.banks.notesSpendable()) {
+			notes = this.model.currencies.accountToWorker(this.model.banks.noteIssuer(), cell, worker, bill);
+		}
+		const goldPart = this.spend(cell, bill - notes);
+		workers.gold[worker] += goldPart;
+		if (notes + goldPart > 0) this.model.tracker.income(worker, notes + goldPart, workers.cell[worker]);
+		this.wages += goldPart;
+		this.wageNotes += notes;
+		const owed = bill - notes - goldPart;
 		if (owed > 1e-15) {
 			const owner = owners.ownerAt(cell);
 			owners.accounts[owner].wageDebt += owed;
 			this.addWageClaim(owner, workers.id[worker], owed);
 		}
-		return paid;
+		return notes + goldPart;
 	}
 
 	addWageClaim(owner, workerId, amount) {

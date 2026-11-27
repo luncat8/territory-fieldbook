@@ -21,7 +21,7 @@ class OwnerAccounts {
 
 	create(workerId = -1, municipal = false) {
 		const id = this.accounts.length;
-		this.accounts.push({ workerId, municipal, cash: 0, wageDebt: 0, loanDebt: 0, debtLimit: municipal ? 0 : OWNER_DEBT_LIMIT, sites: 0 });
+		this.accounts.push({ workerId, municipal, cash: 0, wageDebt: 0, loanDebt: 0, noteLoanDebt: 0, debtLimit: municipal ? 0 : OWNER_DEBT_LIMIT, sites: 0 });
 		return id;
 	}
 

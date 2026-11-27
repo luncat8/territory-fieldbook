@@ -59,58 +59,63 @@ class Currencies {
 		}
 	}
 
-	// Origination: new note liabilities into an owner account. Adds no gold anywhere.
-	issueToAccount(k, cell, amount) {
-		if (!(amount > 0)) return 0;
+	// Owner-id primitives are the settlement core: owner ids are stable across site removal, sale and cell reuse.
+	ownerBalance(k, owner) {
+		this.ensureAccounts();
+		return owner > 0 ? this.accountNotes[k][owner] : 0;
+	}
+
+	ownerIssue(k, owner, amount) {
+		if (!(owner > 0) || !(amount > 0)) return 0;
 		this.ensureAccounts();
 		this.issuers[k].issued += amount;
-		this.accountNotes[k][this.model.owners.ownerAt(cell)] += amount;
+		this.accountNotes[k][owner] += amount;
 		return amount;
 	}
 
-	accountBalance(k, cell) {
-		this.ensureAccounts();
-		return this.accountNotes[k][this.model.owners.ownerAt(cell)];
-	}
-
-	workerBalance(k, w) {
-		return this.workerNotes[k][w];
-	}
-
-	// Employer pays a worker in notes; a transfer between holders leaves the note ledger untouched.
-	accountToWorker(k, cell, w, amount) {
-		const paid = Math.min(Math.max(0, amount), this.accountBalance(k, cell));
+	ownerRetire(k, owner, amount) {
+		const paid = Math.min(Math.max(0, amount), this.ownerBalance(k, owner));
 		if (!(paid > 0)) return 0;
-		this.accountNotes[k][this.model.owners.ownerAt(cell)] -= paid;
-		this.workerNotes[k][w] += paid;
-		return paid;
-	}
-
-	// Worker buys rest/rations in notes at a consenting town; a transfer between holders.
-	workerToAccount(k, w, cell, amount) {
-		const paid = Math.min(Math.max(0, amount), this.workerNotes[k][w]);
-		if (!(paid > 0)) return 0;
-		this.workerNotes[k][w] -= paid;
-		this.accountNotes[k][this.model.owners.ownerAt(cell)] += paid;
-		return paid;
-	}
-
-	// Holder hands notes back to the issuer: the notes are destroyed, bank-held earnings are a different bucket.
-	retireAccount(k, cell, amount) {
-		const paid = Math.min(Math.max(0, amount), this.accountBalance(k, cell));
-		if (!(paid > 0)) return 0;
-		this.accountNotes[k][this.model.owners.ownerAt(cell)] -= paid;
+		this.accountNotes[k][owner] -= paid;
 		this.issuers[k].retired += paid;
 		return paid;
 	}
 
-	// Interest paid in notes becomes the bank's own holding; it stays an outstanding liability.
-	accountToBank(k, cell, amount) {
-		const paid = Math.min(Math.max(0, amount), this.accountBalance(k, cell));
+	ownerToBank(k, owner, amount) {
+		const paid = Math.min(Math.max(0, amount), this.ownerBalance(k, owner));
 		if (!(paid > 0)) return 0;
-		this.accountNotes[k][this.model.owners.ownerAt(cell)] -= paid;
+		this.accountNotes[k][owner] -= paid;
 		this.issuers[k].bankHeld += paid;
 		return paid;
+	}
+
+	ownerToWorker(k, owner, w, amount) {
+		const paid = Math.min(Math.max(0, amount), this.ownerBalance(k, owner));
+		if (!(paid > 0)) return 0;
+		this.accountNotes[k][owner] -= paid;
+		this.workerNotes[k][w] += paid;
+		return paid;
+	}
+
+	workerToOwner(k, w, owner, amount) {
+		const paid = Math.min(Math.max(0, amount), this.workerNotes[k][w]);
+		if (!(paid > 0) || !(owner > 0)) return 0;
+		this.ensureAccounts();
+		this.workerNotes[k][w] -= paid;
+		this.accountNotes[k][owner] += paid;
+		return paid;
+	}
+
+	// Cell wrappers resolve the current facility's owner; ownerless cells settle nothing.
+	accountBalance(k, cell) { return this.ownerBalance(k, this.model.owners.ownerAt(cell)); }
+	issueToAccount(k, cell, amount) { return this.ownerIssue(k, this.model.owners.ownerAt(cell), amount); }
+	retireAccount(k, cell, amount) { return this.ownerRetire(k, this.model.owners.ownerAt(cell), amount); }
+	accountToBank(k, cell, amount) { return this.ownerToBank(k, this.model.owners.ownerAt(cell), amount); }
+	accountToWorker(k, cell, w, amount) { return this.ownerToWorker(k, this.model.owners.ownerAt(cell), w, amount); }
+	workerToAccount(k, w, cell, amount) { return this.workerToOwner(k, w, this.model.owners.ownerAt(cell), amount); }
+
+	workerBalance(k, w) {
+		return this.workerNotes[k][w];
 	}
 
 	splitWorker(w, child) {

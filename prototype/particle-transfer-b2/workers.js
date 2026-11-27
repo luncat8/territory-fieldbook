@@ -244,29 +244,49 @@ class WorkerPool {
 		return true;
 	}
 
+	// Town fees tender the worker's notes first at consenting towns; gold covers the remainder.
+	canTenderNotes(w, c) {
+		const m = this.model;
+		return m.banks.notesSpendable() && m.currencies.townAccepts(m.banks.noteIssuer(), c)
+			&& m.currencies.workerBalance(m.banks.noteIssuer(), w) > 1e-9;
+	}
+
+	noteTender(w, c, bill) {
+		const m = this.model;
+		if (!(bill > 1e-15) || !m.banks.notesSpendable() || !m.currencies.townAccepts(m.banks.noteIssuer(), c)) return 0;
+		return m.currencies.workerToAccount(m.banks.noteIssuer(), w, c, bill);
+	}
+
 	checkInRoom(w, c) {
 		const m = this.model, towns = m.towns;
 		const tr = this.tired[w];
 		const feeRate = towns.restTax(c);
 		const fullFee = feeRate * tr;
-		if (fullFee > 1e-9 && this.gold[w] <= 1e-6) return false;
+		const noteCover = this.canTenderNotes(w, c) ? Math.min(m.currencies.workerBalance(m.banks.noteIssuer(), w), fullFee) : 0;
+		if (fullFee - noteCover > 1e-9 && this.gold[w] <= 1e-6) return false;
+		const notes = this.noteTender(w, c, fullFee);
+		const goldDue = fullFee - notes;
 		m.towns.observeWallet(c, this.gold[w] / this.amount[w]);
-		let paid = 0;
+		let paid = notes;
 		if (fullFee <= 1e-9) {
 			this.paidRest[w] = tr;
-		} else if (this.gold[w] >= fullFee) {
-			paid = fullFee;
-			this.gold[w] -= fullFee;
+		} else if (this.gold[w] >= goldDue) {
+			paid += goldDue;
+			this.gold[w] -= goldDue;
 			this.paidRest[w] = tr;
 		} else {
-			paid = this.gold[w];
+			paid += this.gold[w];
 			this.paidRest[w] = tr * (paid / fullFee);
 			this.gold[w] = 0;
 		}
-		if (paid > 0) {
-			m.money.payTown(c, paid);
+		if (paid > notes) {
+			m.money.payTown(c, paid - notes);
 			this.logEvent(w, EVT_TAX, paid);
 			m.tracker.expense(w, paid, c);
+		} else if (notes > 0) {
+			m.money.taxNotes += notes;
+			this.logEvent(w, EVT_TAX, notes);
+			m.tracker.expense(w, notes, c);
 		}
 		m.tracker.visit(this.id[w], c, paid);
 		m.roomCount[c] += this.amount[w];
@@ -279,7 +299,7 @@ class WorkerPool {
 		const m = this.model, towns = m.towns;
 		if (m.actors[c] !== ECONOMY_TOWN || m.rooms[c] <= 0) return false;
 		const feeRate = towns.restTax(c);
-		if (feeRate > 1e-9 && this.gold[w] <= 1e-6) return false;
+		if (feeRate > 1e-9 && this.gold[w] <= 1e-6 && !this.canTenderNotes(w, c)) return false;
 		if (m.roomCount[c] + this.amount[w] <= m.rooms[c] + 1e-6) return this.checkInRoom(w, c);
 		if (m.waitCount[c] + this.amount[w] <= towns.waitCap(c) + 1e-6) {
 			m.waitCount[c] += this.amount[w];
