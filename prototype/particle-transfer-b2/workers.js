@@ -50,7 +50,10 @@ class WorkerPool {
 		this.food = new Float64Array(MAX_WORKERS);
 		this.intent = new Float64Array(MAX_WORKERS);
 		this.since = new Int32Array(MAX_WORKERS);
-		this.columns = [this.id, this.state, this.cell, this.x, this.y, this.hx, this.hy, this.amount, this.tired, this.paidRest, this.gold, this.food, this.intent, this.since];
+		// Unbonused shift labor and the owner it was worked for: bonuses follow credited work, not presence on site.
+		this.credit = new Float64Array(MAX_WORKERS);
+		this.creditOwner = new Int32Array(MAX_WORKERS);
+		this.columns = [this.id, this.state, this.cell, this.x, this.y, this.hx, this.hy, this.amount, this.tired, this.paidRest, this.gold, this.food, this.intent, this.since, this.credit, this.creditOwner];
 		this.watchedId = -1;
 		this.logHead = 0;
 		this.logCount = 0;
@@ -66,18 +69,18 @@ class WorkerPool {
 		this.logHead = this.logCount = 0;
 	}
 
+	// Wallets start empty (scenario funding allocates them once); a full food bag keeps the opening transient
+	// a work/financing test rather than a starvation cycle (plan M.1).
 	seedReference() {
-		const { actors, money } = this.model;
+		const { actors } = this.model;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			if (actors[i] !== ECONOMY_TOWN) continue;
-			this.model.localWealth[i] = SEED_WORKER_GOLD;
+			this.model.localWealth[i] = WALLET_REFERENCE;
 			const cx = (i % ECONOMY_WIDTH) + 0.5, cy = Math.floor(i / ECONOMY_WIDTH) + 0.5;
 			for (let n = 0; n < SEED_WORKERS_PER_TOWN; n++) {
 				const inRoom = n < 7, tired = inRoom ? 0.15 + 0.75 * (n / 7) : 0;
-				const food = 0.65 + 0.35 * (((n + 1) * 0.6180339887) % 1);
-				const w = this.spawn(cx, cy, inRoom ? WORKER_ROOM : WORKER_STILL, tired, SEED_WORKER_GOLD, food, true);
+				const w = this.spawn(cx, cy, inRoom ? WORKER_ROOM : WORKER_STILL, tired, 0, FOOD_BAG, true);
 				if (w >= 0 && inRoom) this.paidRest[w] = tired;
-				if (w >= 0) money.seedWorker(SEED_WORKER_GOLD);
 			}
 		}
 		if (this.count > 0) this.watch(this.id[0]);
@@ -98,6 +101,8 @@ class WorkerPool {
 		this.gold[w] = gold;
 		this.food[w] = food;
 		this.since[w] = this.model.ticks || 0;
+		this.credit[w] = 0;
+		this.creditOwner[w] = 0;
 		this.model.workerLife.init(w);
 		if (isSeed) { this.seededWorkers += WORKER_UNIT; this.seededTired += tired; }
 		else this.births += WORKER_UNIT;
@@ -159,19 +164,19 @@ class WorkerPool {
 		return false;
 	}
 
-	payOnSite(cell, totalPay) {
+	// Splits a bonus by unbonused credited labor for this owner, wherever those workers are now; returns gold paid.
+	payCredited(o, totalPay) {
 		let weight = 0;
+		for (let w = 0; w < this.count; w++) if (this.creditOwner[w] === o) weight += this.credit[w];
+		if (weight <= 1e-12) return 0;
 		for (let w = 0; w < this.count; w++) {
-			if (this.cell[w] === cell && (this.state[w] === WORKER_SHIFT || this.state[w] === WORKER_FIRM_POOL)) weight += this.amount[w];
+			if (this.creditOwner[w] !== o || this.credit[w] <= 0) continue;
+			const share = totalPay * (this.credit[w] / weight);
+			this.gold[w] += share;
+			this.credit[w] = 0;
+			this.model.tracker.income(w, share, this.cell[w]);
 		}
-		if (weight <= 0) return;
-		for (let w = 0; w < this.count; w++) {
-			if (this.cell[w] === cell && (this.state[w] === WORKER_SHIFT || this.state[w] === WORKER_FIRM_POOL)) {
-				const share = totalPay * (this.amount[w] / weight);
-				this.gold[w] += share;
-				this.model.tracker.income(w, share, cell);
-			}
-		}
+		return totalPay;
 	}
 
 	evictCell(cell) {
@@ -224,6 +229,7 @@ class WorkerPool {
 		const avail = this.model.shiftAvail[cell];
 		if (avail <= 1e-12) return;
 		const ratio = Math.min(1, usedLabor / avail);
+		const o = this.model.owners.ownerAt(cell);
 		let actual = 0;
 		for (let w = 0; w < this.count; w++) {
 			if (this.cell[w] !== cell || this.state[w] !== WORKER_SHIFT) continue;
@@ -233,6 +239,8 @@ class WorkerPool {
 			// Credit the real tired delta — including the full-tired snap — so workedLabor stays the exact complement of totalTired.
 			if (this.tired[w] >= this.amount[w] - 1e-7) this.tired[w] = this.amount[w];
 			actual += this.tired[w] - before;
+			if (this.creditOwner[w] !== o) { this.creditOwner[w] = o; this.credit[w] = 0; }
+			this.credit[w] += this.tired[w] - before;
 			if (this.tired[w] >= this.amount[w] - 1e-7) this.setState(w, WORKER_WALK_HOME);
 		}
 		this.model.workedLabor += actual;
@@ -247,7 +255,7 @@ class WorkerPool {
 		const totalCap = shiftSlots + opt.poolSlots(c);
 		if (m.shiftCount[c] + m.poolCount[c] + this.amount[w] > totalCap + 1e-6) return false;
 		const bill = m.priceLabor[c] * fr;
-		if (bill > 0 && m.money.purse[c] <= 1e-9 && m.money.owedWage[c] > START_PRICE * 1.5) return false;
+		if (bill > 0 && m.money.cashAt(c) <= 1e-9 && m.owners.owedAt(c) > START_PRICE * 1.5) return false;
 		m.money.payEntryWage(c, w, bill);
 		opt.laborCost[c] += bill;
 		if (bill > 0) this.logEvent(w, EVT_WAGE, bill);
