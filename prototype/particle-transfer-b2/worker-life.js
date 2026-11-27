@@ -64,7 +64,7 @@ class WorkerLife {
 	remove(w) {
 		const m = this.model, pool = m.workers;
 		this.model.tracker.onRemove(w);
-		m.money.vault += pool.gold[w];
+		m.money.custody += pool.gold[w]; // Orphaned wallet: custody holds it, never the transport company.
 		this.deaths += pool.amount[w];
 		this.removedTired += pool.tired[w];
 		this.lostFood += pool.food[w];

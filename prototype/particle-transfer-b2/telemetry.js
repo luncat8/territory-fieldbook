@@ -31,7 +31,9 @@ class EconomyTelemetry {
 		this.goldMined = $('gold-mined');
 		this.goldHeld = $('gold-held');
 		this.workerCarried = $('worker-carried');
-		this.vaultHeld = $('vault-held');
+		this.transportHeld = $('transport-held');
+		this.custodyHeld = $('custody-held');
+		this.bankHeld = $('bank-held');
 		this.forageGarden = $('forage-garden');
 		this.forageWild = $('forage-wild');
 	}
@@ -105,7 +107,7 @@ class EconomyTelemetry {
 		this.foodBalance.textContent = `${model.producedFood.toFixed(3)} harvested − ${model.consumedFood.toFixed(3)} sold − ${model.goodsPool.spoiled[ITEM_FOOD].toFixed(3)} spoiled ≈ ${foodHeld.toFixed(3)} held+transit`;
 		let woodHeld = model.goodsPool.spawnBufferTotal(ITEM_WOOD) + model.goodsPool.inTransitTotal(ITEM_WOOD);
 		for (let i = 0; i < ECONOMY_SIZE; i++) woodHeld += model.wood[i];
-		this.woodBalance.textContent = `${model.producedWood.toFixed(3)} sawmill-made − ${model.consumedWood.toFixed(3)} built − ${model.goodsPool.spoiled[ITEM_WOOD].toFixed(3)} spoiled ≈ ${woodHeld.toFixed(3)} held+transit`;
+		this.woodBalance.textContent = `${(model.seededTimber + model.producedWood).toFixed(3)} timber+made − ${model.consumedWood.toFixed(3)} used − ${model.goodsPool.spoiled[ITEM_WOOD].toFixed(3)} spoiled ≈ ${woodHeld.toFixed(3)} held+transit`;
 		this.headSeeded.textContent = model.workers.seededWorkers.toFixed(0);
 		this.headBirths.textContent = model.workers.births.toFixed(0);
 		this.headDeaths.textContent = model.workerLife.deaths.toFixed(0);
@@ -117,7 +119,9 @@ class EconomyTelemetry {
 		this.goldMined.textContent = model.money.mined.toFixed(2);
 		this.goldHeld.textContent = this.values[4].toFixed(2);
 		this.workerCarried.textContent = model.workers.totalGold().toFixed(2);
-		this.vaultHeld.textContent = model.money.vault.toFixed(2);
+		this.transportHeld.textContent = model.money.transport.toFixed(2);
+		this.custodyHeld.textContent = model.money.custody.toFixed(2);
+		this.bankHeld.textContent = model.banks.gold.toFixed(2);
 		this.forageGarden.textContent = model.forage.gardenFed.toFixed(2);
 		this.forageWild.textContent = model.forage.wildPicked.toFixed(2);
 		const seconds = Math.floor(model.ticks * ECONOMY_DT);

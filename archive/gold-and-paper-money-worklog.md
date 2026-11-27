@@ -56,3 +56,17 @@
 - evidence: 90 s default run: 24 g initial, coal 17.005, goods 6.325, consumed 6.066; gold error < 2e-12. 0.001 g/worker circulates wages/taxes/deliveries; tiny-settlement tests cover down to 1e-6 g.
 - pitfalls: competing wage signals are not executable employer quotes; price-scale independence also requires relative transport costs/steering (findings).
 - next: finish G2/B0 (mine wood bootstrap, real-gold bank loans, debt caps/service/default), separate T1 transport/custody; paper remains deferred, then port only at the M.7 gate.
+
+
+## G2 / B0 / T1 · Mine timber, gold bank, transport-custody split, 2026-11-27
+- changed: particle `actors.js`, `gold.js`, `simulation.js` — gold recipe consumes `WOOD 0.05`/batch after a one-time `GOLD_TIMBER` reserve; inputs ledger, wood-outage pause and restart.
+- changed: particle `banks.js` (new) + `owners.js` — charter funding transfer, fixed-rate loans with owner debt limits, interest/principal service, grace defaults; lending never mints.
+- changed: `gold.js` — transport/custody/bank as separate accounts, selectable T0 drip / T1 retained rule; custody never drips; invariant sums all accounts plus bank terms.
+- changed: `goods.js`, `worker-life.js`, `founding.js` — wood admitted to gold buyers with input payments recorded; dead-worker wallets move to custody.
+- changed: lab controls/diagnostics — bank capital/Fund/Borrow, transport preset, bank panel rows, stall flags (loan arrears, gold mine out of timber).
+- changed: `bootstrap-bank.test.js` (new, 8 tests) plus fixtures — reserve granted once, outage/restock, delivery purchase, debt caps/refusals, repayment with exact interest, equity identity, T0/T1, banked scene.
+- decisions: wood rides the existing sawmill/`ITEM_WOOD` chain; labor stays the last recipe input so entry-wage accounting holds; debt service runs after owner wages and before the T0 drip.
+- validation: all lab JS syntax checks; full particle suite 67/67; banked 120 s scene: interest 0.480 exact, conservation <1e-11, inputs 2.46 g; zero-start wages pay from the recorded reserve only.
+- evidence: zero-start mine wood 1.5→0 at t≈60 with inputs 0 — no wood supplier is capitalized there (sawmill needs owner cash or a bank loan); diagnosed via the timber-out flag, not subsidized.
+- pitfalls: labor must stay last in the recipe (`bidOut[0]` would bid wood as the wage); `near()`'s epsilon must be numeric; real-asset sink counters live on the model, not in `money.reset` (findings).
+- next: paper money (P0–P1) or port — only at the M.7 end-to-end gate; by hand, Fund the bank from the mine owner then Borrow to a sawmill to exercise the zero-start wood loop.

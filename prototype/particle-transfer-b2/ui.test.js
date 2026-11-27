@@ -71,7 +71,7 @@ const cardStub = { querySelector() { return makeNode('SPAN', '', 1); } };
 function bootLab() {
 	const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 	const scripts = Array.from(html.matchAll(/<script src="([^"]+)"><\/script>/g), m => m[1]);
-	assert.equal(scripts.length, 23);
+	assert.equal(scripts.length, 24);
 	const byId = new Map();
 	for (const [, id] of html.matchAll(/\bid="([^"]+)"/g)) {
 		const node = makeNode(id.includes('map') || id.includes('relief') ? 'CANVAS' : 'DIV', id);
@@ -123,7 +123,7 @@ function bootLab() {
 	return { byId, resources, tools, asides, frame: now => rafCb(now), copiedText: () => copied };
 }
 
-test('index.html boots all 23 scripts, renders every resource tab, places a Garden/Farm and updates watched worker', () => {
+test('index.html boots all 24 scripts, renders every resource tab, places a Garden/Farm and updates watched worker', () => {
 	const { byId, resources, tools, frame } = bootLab();
 	assert.match(byId.get('watched-worker').querySelector('[data-track-head]').textContent, /Watched worker #1/);
 	assert.match(byId.get('actor-count').textContent, /1 A/);

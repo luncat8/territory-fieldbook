@@ -19,7 +19,8 @@ engine's transport substrate cannot do it. Forest-cut logs are placed at the cut
 sawmill/wood path for mine inputs. A bank can lend existing gold with credit money disabled.
 Credit notes are the only paper mechanism; gold-backed banknotes are a control. Compare ownership, storage,
 funding and currency policies independently before combining them. The gold-only rules below use stable
-owner accounts; bank lending, debt limits, mine wood inputs and separate custody accounts follow M.7 gates.
+owner accounts; bank lending, debt limits, mine wood inputs and separate custody accounts are implemented
+under their M.7 gates (G2/B0/T1). Credit money (P0–P3) still follows its gates.
 
 ## Scope
 
@@ -96,8 +97,9 @@ back to the individual workers of that cell. A rule never writes the view.
   arriving that tick; the rejected remainder counts as that buyer's queue (cools its bid, never its cap). On
   admission:
   1. buyer pays `buyerPay = amount · priceKind[buyer]` from its purse;
-  2. `transportPaid = min(buyerPay, transportCost)` → single map-wide **Transport Company** vault (gentle drip
-     back to active towns so the vault does not hoard);
+  2. `transportPaid = min(buyerPay, transportCost)` → the map-wide **Transport Company** account (a purse like
+     any other): preset **T0** drips it to active town purses by population weight, **T1** (default) retains
+     it as haul capital; custody — dead workers' wallets — is a third account that never drips;
   3. `factoryRevenue = buyerPay − transportPaid` → `owner` purse (direct credit).
   Profit identity: `profit = amount · (buyerUnitPrice − item.price)`; gold is conserved by construction.
 - **Underwater** (`buyerUnitPrice < item.price`): re-steer up any gradient that still clears `item.price`; at a
@@ -201,9 +203,11 @@ B2 `Settlements` / `Land`, per worker:
   **owner** and builds it into a working firm with an empty purse (`0` minted gold).
 - The owner is liable for the firm's debt across all facilities it owns. Startup cash comes from an explicit
   owner transfer or a bank loan (`plan-gold-and-paper-money.md` F0/F1), never from placement minting. The
-  gold mine can pay workers from its own extracted gold. A sawmill needs an explicit owner investment; the
-  gold-bank lending slice supplies the later loan path. Founders stay available for their own unfinished
-  sweat-equity project instead of immediately departing toward paid jobs.
+  gold mine can pay workers from its own extracted gold and buys delivered wood with earned gold after a
+  one-time recorded timber reserve; with timber and purchasable supply exhausted it pauses, flagged, rather
+  than minting wood. A sawmill needs an explicit owner investment; the gold-bank lending path (B0,
+  `banks.js`) supplies loans from explicitly funded bank capital. Founders stay available for their own
+  unfinished sweat-equity project instead of immediately departing toward paid jobs.
 
 ## Commercial food farms (`farms.js`)
 
@@ -257,7 +261,7 @@ B2 `Settlements` / `Land`, per worker:
   wild/garden food and personal digestion are a separate subsystem.
 - Headcount: `Σ worker.amount = seeded + splits − starved`; founding and foraging never change headcount.
 - Labor: `Σ tired = seededTired + worked − rested − removedTired`.
-- Gold: `purses + wallets + vault = seeded + mined` to `< 1e-7`.
+- Gold: `purses + wallets + transport + custody + bank = seeded + mined + interest − write-downs` to `< 1e-7`.
 
 ## Rendering
 
@@ -290,10 +294,14 @@ Lab `prototype/particle-transfer-b2/` (each file < 500 lines, header per `AGENTS
   founding and forest-felling tier build.
 - `founding.js` — idle grid and firm founding from free workforce.
 - `owners.js` — owner/facility identities, shared cash envelopes, worker investment and facility-only sales.
-- `gold.js` — scenario capital, mined gold, durable owner wage claims, Transport Company vault and town drip.
+- `gold.js` — scenario capital and one-time timber reserve, mined gold, durable owner wage claims, the
+  transport/custody accounts, the T0/T1 transport rule and bank capital funding.
+- `banks.js` — gold bank: explicit charter funding transfers, fixed-rate loans with owner debt limits,
+  interest/principal service and grace-period defaults; lending moves existing gold, never mints.
 - `fields.js`, `telemetry.js`, `app.js`, `index.html`, `styles.css`, `README.md` — particle & field render,
   ledgers, watched worker readout, Garden tool and UI.
-- `*.test.js` — node test suites (`conservation`, `owners-economy`, `gold`, `workers`, `food-life`, `forage`, `founding`, `ui`).
+- `*.test.js` — node test suites (`conservation`, `owners-economy`, `gold`, `workers`, `food-life`, `forage`,
+  `founding`, `ui`, `bootstrap-bank`).
 
 Game port: `map-money-particle.js` (+ split owner files as needed), dispatched by `mapeStepMoney` when
 `mape.moneyEngine === 'particle'`; new owners get AGENTS.md map entries.

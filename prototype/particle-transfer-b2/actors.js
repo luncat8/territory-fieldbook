@@ -28,7 +28,8 @@ class ActorOptimizer {
 		this.recipes = {
 			[ECONOMY_MINE]: { rate: SOURCE_RATE, outItem: ITEM_COAL, outYield: 1, gate: PRICE_GATE, inputs: [{ item: ITEM_LABOR, need: MINE_LABOR }] },
 			[ECONOMY_FACTORY]: { rate: FACTORY_RATE, outItem: ITEM_GOODS, outYield: FACTORY_YIELD, gate: 0, inputs: [{ item: ITEM_COAL, need: 1 }, { item: ITEM_LABOR, need: FACTORY_LABOR * FACTORY_YIELD }] },
-			[ECONOMY_GOLD]: { rate: SOURCE_RATE, outItem: -1, outYield: GOLD_RATE / SOURCE_RATE, gate: 0, inputs: [{ item: ITEM_LABOR, need: GOLD_LABOR }] },
+			// Wood first, labor last: entry quotes and pool sizing read the last input as the labor claim.
+			[ECONOMY_GOLD]: { rate: SOURCE_RATE, outItem: -1, outYield: GOLD_RATE / SOURCE_RATE, gate: 0, inputs: [{ item: ITEM_WOOD, need: GOLD_WOOD }, { item: ITEM_LABOR, need: GOLD_LABOR }] },
 			// patch:true marks the sawmill's forest dependence — bids and scale adapt clamp against remaining forest room.
 			[ECONOMY_SAWMILL]: { rate: SAWMILL_RATE, outItem: ITEM_WOOD, outYield: 1, gate: SAWMILL_GATE, patch: true, inputs: [{ item: ITEM_LABOR, need: SAWMILL_LABOR }] }
 		};
@@ -101,7 +102,8 @@ class ActorOptimizer {
 		const fallback = recipe.outItem === ITEM_COAL ? START_PRICE * 0.5 : START_PRICE;
 		const outPrice = recipe.outItem < 0 ? 1 : (m.derived ? m.pricesAt(recipe.outItem)[i] : fallback);
 		if (!m.derived && recipe.gate > 0 && outPrice <= recipe.gate) return false;
-		if (recipe.outItem < 0) return true;
+		// The gold mine stops hiring when it holds no timber and cannot bid for a delivery: no wood, no shift.
+		if (recipe.outItem < 0) return m.wood[i] + m.goodsPool.buyerQueue[ITEM_WOOD][i] > 1e-9 || m.money.cash(i) > 1e-9;
 		const outTarget = Math.max(0.25, recipe.rate * (m.scale[i] || 1) * BUFFER_SECONDS);
 		if (m.suppression && m.goodsPool.spawnAmount[recipe.outItem][i] >= outTarget) return false;
 		return outPrice > 0;
@@ -170,7 +172,7 @@ class ActorOptimizer {
 	factoryCoalBid(i) { this.firmBids(i, this.recipes[ECONOMY_FACTORY]); return this.bidOut[0]; }
 	factoryLaborBid(i) { this.firmBids(i, this.recipes[ECONOMY_FACTORY]); return this.bidOut[1]; }
 	mineLaborBid(i) { this.firmBids(i, this.recipes[ECONOMY_MINE]); return this.bidOut[0]; }
-	goldLaborBid(i) { this.firmBids(i, this.recipes[ECONOMY_GOLD]); return this.bidOut[0]; }
+	goldLaborBid(i) { const r = this.recipes[ECONOMY_GOLD]; this.firmBids(i, r); return this.bidOut[r.inputs.length - 1]; }
 	sawmillLaborBid(i) { this.firmBids(i, this.recipes[ECONOMY_SAWMILL]); return this.bidOut[0]; }
 
 	stepFirms() {
@@ -226,6 +228,7 @@ class ActorOptimizer {
 					costBuf[i] = m.stocks[item][i] > 1e-12 ? Math.max(0, costBuf[i] - usedCost) : 0;
 					inputCost += usedCost;
 					if (item === ITEM_COAL) m.burnedCoal += used;
+					else if (item === ITEM_WOOD) m.consumedWood += used;
 				}
 			}
 			const made = batches * outYield;

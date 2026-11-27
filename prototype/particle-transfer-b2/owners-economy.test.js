@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'owners.js', 'gold.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js', 'diagnostics.js'];
+const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'owners.js', 'gold.js', 'banks.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js', 'diagnostics.js'];
 for (const file of SCRIPTS) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${b}`);
 const conserved = m => near(m.money.total(), m.money.seeded + m.money.mined);
@@ -76,7 +76,7 @@ test('one worker owns two sites with one purse and bounded non-overlapping envel
 	near(m.money.spend(a, 9), 5);
 	near(m.money.spend(b, 9), 5);
 	near(m.owners.total(), 0);
-	m.money.vault += 10;
+	m.money.custody += 10;
 	conserved(m);
 });
 
@@ -210,6 +210,7 @@ test('no demand retains internal products, demand fields stay live and full depo
 test('strict zero-start gold mine produces gold and pays the original worked wage claims', () => {
 	const m = empty(), cell = economyIndex(20, 14);
 	m.setActor(cell, ECONOMY_GOLD);
+	m.money.seedTimber(cell, GOLD_TIMBER); // recorded initial timber: a real-asset grant, never gold
 	const w = m.workers.spawn(20.5, 14.5, WORKER_SHIFT, 0, 0, 1, true);
 	m.money.payEntryWage(cell, w, 0.1);
 	m.rebuildCellView();
@@ -226,7 +227,7 @@ test('diagnostics count shared and retired owner cash exactly once', () => {
 	const m = new PriceEconomy(), cell = economyIndex(7, 8);
 	m.setActor(cell, 0);
 	const d = new EconomyDiagnostics(m), s = d.snapshot();
-	near(s.townPurse + s.firmPurse + s.wallets + s.vault, s.goldTotal);
+	near(s.townPurse + s.firmPurse + s.wallets + s.transport + s.custody + s.bankGold, s.goldTotal);
 	conserved(m);
 });
 

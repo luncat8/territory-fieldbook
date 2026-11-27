@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'owners.js', 'gold.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js'];
+const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'owners.js', 'gold.js', 'banks.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js'];
 for (const file of SCRIPTS) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 
 const sum = values => values.reduce((total, value) => total + value, 0);
@@ -24,7 +24,9 @@ function checkLedgers(model) {
 	assert.ok(model.goods.every(v => Number.isFinite(v) && v >= 0));
 	assert.ok(model.owners.accounts.slice(1).every(a => Number.isFinite(a.cash) && a.cash >= -1e-12));
 	assert.ok(model.owners.accounts.slice(1).every(a => Number.isFinite(a.wageDebt) && a.wageDebt >= -1e-12));
-	assert.ok(Number.isFinite(money.vault) && money.vault >= -1e-12);
+	assert.ok(Number.isFinite(money.transport) && money.transport >= -1e-12);
+	assert.ok(Number.isFinite(money.custody) && money.custody >= -1e-12);
+	assert.ok(Number.isFinite(money.total()) && money.total() >= -1e-12);
 	assert.ok(goodsPool.maxProfitError <= 1e-11, `profit identity error too large: ${goodsPool.maxProfitError}`);
 	for (let p = 0; p < goodsPool.count; p++) {
 		assert.ok(goodsPool.amount[p] > 0 && Number.isFinite(goodsPool.amount[p]));
@@ -45,7 +47,7 @@ function checkLedgers(model) {
 	const foodHeld = sum(model.food) + goodsPool.spawnBufferTotal(ITEM_FOOD) + goodsPool.inTransitTotal(ITEM_FOOD);
 	closeTo(model.producedFood - model.consumedFood - goodsPool.spoiled[ITEM_FOOD], foodHeld);
 	const woodHeld = sum(model.wood) + goodsPool.spawnBufferTotal(ITEM_WOOD) + goodsPool.inTransitTotal(ITEM_WOOD);
-	closeTo(model.producedWood - model.consumedWood - goodsPool.spoiled[ITEM_WOOD], woodHeld);
+	closeTo(model.seededTimber + model.producedWood - model.consumedWood - goodsPool.spoiled[ITEM_WOOD], woodHeld);
 	closeTo(workers.seededWorkers + workers.births - model.workerLife.deaths, workers.totalAmount(), 1e-9);
 	closeTo(workers.seededTired + model.workedLabor - model.restedDepleted - model.workerLife.removedTired, workers.totalTired());
 	closeTo(money.seeded + money.mined, money.total());

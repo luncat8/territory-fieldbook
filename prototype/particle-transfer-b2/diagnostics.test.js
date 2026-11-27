@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'owners.js', 'gold.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js', 'diagnostics.js'];
+const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'owners.js', 'gold.js', 'banks.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js', 'diagnostics.js'];
 for (const file of SCRIPTS) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 
 function run(model, diagnostics, seconds, each) {
@@ -43,7 +43,7 @@ test('snapshot partitions gold and workers exactly', () => {
 	const diagnostics = new EconomyDiagnostics(model);
 	run(model, diagnostics, 30);
 	const s = diagnostics.snapshot();
-	const gold = s.townPurse + s.firmPurse + s.wallets + s.vault;
+	const gold = s.townPurse + s.firmPurse + s.wallets + s.transport + s.custody + s.bankGold;
 	assert.ok(Math.abs(gold - s.goldTotal) < 1e-9, `${gold} ≠ ${s.goldTotal}`);
 	assert.equal(s.walkJob + s.pool + s.shift + s.walkHome + s.wait + s.room + s.still + s.forage, s.workers, 'the eight worker states partition the pool');
 	assert.equal(s.walking, s.walkJob + s.walkHome + s.forage);

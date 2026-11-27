@@ -1,6 +1,8 @@
-// Owns: stable owner/facility identities, worker proprietors and shared gold spending envelopes.
+// Owns: stable owner/facility identities, worker proprietors, owner-level debt limits and shared gold spending envelopes.
 // Edit for: portfolio allocation, capital transfers and facility ownership; physical stock stays at the site.
 'use strict';
+
+const OWNER_DEBT_LIMIT = 10;
 
 class OwnerAccounts {
 	constructor(model) {
@@ -19,7 +21,7 @@ class OwnerAccounts {
 
 	create(workerId = -1, municipal = false) {
 		const id = this.accounts.length;
-		this.accounts.push({ workerId, municipal, cash: 0, wageDebt: 0, sites: 0 });
+		this.accounts.push({ workerId, municipal, cash: 0, wageDebt: 0, loanDebt: 0, debtLimit: municipal ? 0 : OWNER_DEBT_LIMIT, sites: 0 });
 		return id;
 	}
 
@@ -115,4 +117,4 @@ class OwnerAccounts {
 	}
 }
 
-if (typeof module === 'object') module.exports = { OwnerAccounts };
+if (typeof module === 'object') module.exports = { OwnerAccounts, OWNER_DEBT_LIMIT };

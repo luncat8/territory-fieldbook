@@ -26,6 +26,7 @@ const FACTORY_YIELD = 1;
 const MINE_LABOR = 1.1;
 const FACTORY_LABOR = 1.1;
 const GOLD_LABOR = 1.1;
+const GOLD_WOOD = 0.05;
 const GOLD_RATE = 0.4;
 const START_PRICE = 4;
 const INPUT_SHARE = 0.65;
@@ -113,9 +114,11 @@ function setMapWrap(wrap) {
 }
 
 class PriceEconomy {
-	constructor(goldPerWorker = INITIAL_GOLD_PER_WORKER) {
+	constructor(goldPerWorker = INITIAL_GOLD_PER_WORKER, bankCapital = 0) {
 		if (!Number.isFinite(goldPerWorker) || goldPerWorker < 0) throw new RangeError('Starting gold must be finite and nonnegative');
+		if (!Number.isFinite(bankCapital) || bankCapital < 0) throw new RangeError('Bank capital must be finite and nonnegative');
 		this.goldPerWorker = goldPerWorker;
+		this.bankCapital = bankCapital;
 		this.actors = new Uint8Array(ECONOMY_SIZE);
 		this.coal = new Float64Array(ECONOMY_SIZE);
 		this.goods = new Float64Array(ECONOMY_SIZE);
@@ -168,6 +171,7 @@ class PriceEconomy {
 		this.forage = new ForageSystem(this);
 		this.owners = new OwnerAccounts(this);
 		this.money = new GoldMoney(this);
+		this.banks = new GoldBank(this);
 		this.goodsPool = new GoodsPool(this);
 		this.workers = new WorkerPool(this);
 		this.workerLife = new WorkerLife(this);
@@ -224,6 +228,7 @@ class PriceEconomy {
 		this.workerLife.reset();
 		this.food.fill(0);
 		this.wood.fill(0);
+		this.seededTimber = 0;
 		this.priceFood.fill(0);
 		this.nextPriceFood.fill(0);
 		this.priceWood.fill(0);
@@ -234,9 +239,11 @@ class PriceEconomy {
 		this.workers.reset();
 		this.towns.reset();
 		this.founding.reset();
+		this.banks.reset();
 		this.money.reset();
 		this.workers.seedReference();
 		this.money.initializeScenario(this.goldPerWorker);
+		this.banks.initializeScenario(this.bankCapital);
 		this.ticks = this.producedCoal = this.burnedCoal = this.producedGoods = this.consumedGoods = 0;
 		this.workedLabor = this.restedDepleted = 0;
 		this.coalRate = this.goodsRate = this.uptakeRate = 0;
@@ -379,6 +386,7 @@ class PriceEconomy {
 					const item = recipe.inputs[m].item;
 					if (item === ITEM_COAL) bCoal = optimizer.bidOut[m];
 					else if (item === ITEM_LABOR) bLabor = optimizer.bidOut[m];
+					else if (item === ITEM_WOOD) bWood = optimizer.bidOut[m];
 				}
 			}
 			this.nextPriceFood[i] = stepBid(this.priceFood, i, this.priceFood[i], bFood, decay);

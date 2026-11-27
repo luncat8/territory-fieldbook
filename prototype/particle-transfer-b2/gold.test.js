@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'owners.js', 'gold.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js'];
+const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'owners.js', 'gold.js', 'banks.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js'];
 for (const file of SCRIPTS) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 
 function bareModel() {
@@ -61,25 +61,25 @@ test('later firm cash settles the claim to the original hire even when a differe
 	assert.ok(conserved(m) < 1e-12);
 });
 
-test('a despawned hire\'s settled claim falls to the vault and erased firms retain their promises', () => {
+test('a despawned hire\'s settled claim falls to custody and erased firms retain their promises', () => {
 	const m = bareModel(), firm = economyIndex(10, 10);
 	m.setActor(firm, ECONOMY_MINE);
 	const w = m.workers.spawn(10.5, 10.5, WORKER_SHIFT, 0, 1, 1, true);
 	m.money.seedWorker(1);
 	const id = m.workers.id[w];
 	m.money.payEntryWage(firm, w, 2);
-	// Despawn: wallet gold already falls to the vault in WorkerLife.remove.
+	// Despawn: wallet gold already falls to custody in WorkerLife.remove.
 	m.workerLife.remove(w);
 	assert.equal(m.workers.indexOfId(id), -1);
 	const before = m.money.total();
 	m.money.dig(firm, 3);
 	m.money.settleFirm(firm, ECONOMY_MINE);
 	assert.equal(m.money.unpaidWages(id), 0, 'dead claim settled');
-	assert.ok(Math.abs(m.money.total() - (before + 3)) < 1e-12, 'vault credit keeps the injected gold in the system');
+	assert.ok(Math.abs(m.money.total() - (before + 3)) < 1e-12, 'custody credit keeps the injected gold in the system');
 	assert.ok(conserved(m) < 1e-12);
 	// Erasure retires the site, not its owner or the earned wage claim.
 	const w2 = m.workers.spawn(10.5, 10.5, WORKER_SHIFT, 0, 0, 1, true);
-	m.money.vault += m.owners.accountAt(firm).cash;
+	m.money.custody += m.owners.accountAt(firm).cash;
 	m.owners.accountAt(firm).cash = 0;
 	m.money.payEntryWage(firm, w2, 1.25);
 	assert.equal(m.money.claimCount, 1);
@@ -109,7 +109,8 @@ test('the claim table grows past its initial cap without losing an entitlement',
 	for (let w = 0; w < N; w++) {
 		assert.ok(Math.abs(m.workers.gold[w] - 1) < 1e-12, `worker ${w} paid in full`);
 	}
-	assert.equal(m.money.vault, 0, 'no entitlement fell to the vault');
+	assert.equal(m.money.custody, 0, 'no entitlement fell to custody');
+	assert.equal(m.money.transport, 0, 'no entitlement fell to transport');
 	assert.equal(m.money.wageDebt(firm), 0);
 	assert.equal(m.money.claimCount, 0);
 	assert.ok(conserved(m) < 1e-12);

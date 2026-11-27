@@ -581,3 +581,19 @@ Carried over from the particle-transfer lab; these govern the persistent-worker 
   spending envelopes are limits, not extra assets. Retired/estate accounts stay in the conservation sum.
 - A static lab preview must serve the shared parent directory too. Serving only the lab folder breaks its
   `../shared/` scripts/styles; redirect the preview root to the lab path while serving the repository root.
+
+
+## gold mine timber, bank loans and real-asset counters
+
+- Keep the labor input last in a recipe whose `entryWage`/`firmLaborPool` read `inputs[last]`. The gold
+  mine's wood batch must not shift the labor index, or the wage bid collapses onto the wood slot.
+- A mine that must buy its next input can starve with a full purse: wage bids exist but no supplier is
+  capitalized (a sawmill needs owner cash or a bank loan first). Fund the supplier with an explicit transfer;
+  never paper over it with a mint or a special-cased bid cap.
+- `near(a, b, message)` treats a string as epsilon — a message argument silently disables the comparison.
+  Test-harness helpers should type-check their epsilon so tests can't pass or fail on formatting accidents.
+- Scenario real-asset sinks (the mine's seeded timber) belong on the model, not in `money.reset()`: tests
+  rebuild money mid-run, and zeroing the counter while the sink remains breaks conservation by exactly the
+  reserve amount.
+- Admission caps need `max(0, ...)` when a bid can legitimately be zero: a wood cap of 0 blocks all
+  deliveries, not just excess ones, and a gold mine with an empty reserve then never restarts.

@@ -490,7 +490,7 @@ class FieldPlot {
 		const prices = `Food ${model.priceFood[i].toFixed(2)} · Coal ${model.priceCoal[i].toFixed(2)} · Goods ${model.priceGoods[i].toFixed(2)} · Wood ${model.priceWood[i].toFixed(2)} · Wage ${model.priceLabor[i].toFixed(2)} · Home ${model.priceHome[i].toFixed(2)}/${model.priceRest[i].toFixed(2)} · FoodGrad ${forage.scoreAtCell(i).toFixed(2)}`;
 		const wallet = actor === ECONOMY_TOWN
 			? `Town ${money.cash(i).toFixed(2)}g · Rations ${model.food[i].toFixed(2)} · WorkerGold ${model.workerGold[i].toFixed(2)}g · Profit ${model.profit[i].toFixed(2)}/s`
-			: `Budget ${money.cash(i).toFixed(2)}g · Owner #${model.owners.ownerAt(i)} (${(model.owners.accountAt(i)?.cash || 0).toFixed(2)}g) · Facility #${model.owners.cell[i]} · WorkerGold ${model.workerGold[i].toFixed(2)}g · Owed ${money.wageDebt(i).toFixed(2)}g · Vault ${money.vault.toFixed(2)}g`;
+			: `Budget ${money.cash(i).toFixed(2)}g · Owner #${model.owners.ownerAt(i)} (${(model.owners.accountAt(i)?.cash || 0).toFixed(2)}g${model.owners.accountAt(i)?.loanDebt ? ` · loan ${model.owners.accountAt(i).loanDebt.toFixed(2)}g` : ''}) · Facility #${model.owners.cell[i]} · WorkerGold ${model.workerGold[i].toFixed(2)}g · Owed ${money.wageDebt(i).toFixed(2)}g · Transport ${money.transport.toFixed(2)}g · Custody ${money.custody.toFixed(2)}g`;
 		const shore = land.waterEdge[i] ? ' (Shore)' : '';
 		const ground = `${TERRAIN_NAMES[land.terrain[i]]}${shore} · WildFood ${forage.wildFood[i].toFixed(2)} · Rest ${land.rest[i].toFixed(2)} · Site ${land.site[i].toFixed(2)} · Forest ${settlements.forest[i].toFixed(2)}`;
 		const settle = `Intent ${settlements.cellIntent[i].toFixed(2)} · Gathered ${settlements.gather[i].toFixed(1)} · IdleFresh ${founding.idle[i].toFixed(1)}`;

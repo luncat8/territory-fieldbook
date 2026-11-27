@@ -75,13 +75,17 @@ class EconomyDiagnostics {
 
 	countActors(s, m) {
 		s.mines = s.factories = s.towns = s.goldMines = s.gardens = s.farms = s.sawmills = s.young = 0;
+		s.goldTimberOut = 0;
 		s.pop = s.rooms = s.wait = s.comfort = s.restTax = 0;
 		s.bazaarEmpty = s.idleFarms = 0;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			const a = m.actors[i];
 			if (a === ECONOMY_MINE) s.mines++;
 			else if (a === ECONOMY_FACTORY) s.factories++;
-			else if (a === ECONOMY_GOLD) s.goldMines++;
+			else if (a === ECONOMY_GOLD) {
+				s.goldMines++;
+				if (m.wood[i] < 1e-9) s.goldTimberOut++;
+			}
 			else if (a === ECONOMY_GARDEN) s.gardens++;
 			else if (a === ECONOMY_SAWMILL) s.sawmills++;
 			else if (a === ECONOMY_FARM) {
@@ -138,18 +142,25 @@ class EconomyDiagnostics {
 		s.rested = m.restedDepleted;
 	}
 
-	// The buckets partition money.total() exactly: town purses, firm purses, worker wallets and the haul vault.
+	// The buckets partition money.total() exactly: town purses, firm purses, worker wallets, transport, custody and bank gold.
 	// Owed wages and claims are liabilities and stay outside the sum.
 	countGold(s, m) {
 		const money = m.money;
 		s.goldTotal = money.total();
 		s.townPurse = s.firmPurse = s.firmOwed = 0;
+		s.loanDebt = 0;
 		for (let id = 1; id < m.owners.accounts.length; id++) {
 			const account = m.owners.accounts[id];
 			if (account.municipal) s.townPurse += account.cash;
 			else { s.firmPurse += account.cash; s.firmOwed += account.wageDebt; }
+			s.loanDebt += account.loanDebt;
 		}
-		s.vault = money.vault;
+		s.transport = money.transport;
+		s.custody = money.custody;
+		s.inputsPaid = money.inputs;
+		s.redistributed = money.redistributed;
+		s.seededTimber = m.seededTimber;
+		this.countBank(s, m);
 		s.seeded = money.seeded;
 		s.mined = money.mined;
 		s.walletShare = s.goldTotal > 1e-9 ? s.wallets / s.goldTotal : 0;
@@ -164,6 +175,20 @@ class EconomyDiagnostics {
 		let unpaid = 0;
 		for (let k = 0; k < money.claimCount; k++) unpaid += money.claimAmount[k];
 		s.unpaidWages = unpaid;
+	}
+
+	countBank(s, m) {
+		const b = m.banks;
+		s.bankExists = b.exists;
+		s.bankGold = b.gold;
+		s.bankFunded = b.funded;
+		s.bankOriginated = b.originated;
+		s.bankRepaid = b.repaid;
+		s.bankInterest = b.interestPaid;
+		s.bankDefaults = b.defaults;
+		s.bankWrittenDown = b.writtenDown;
+		s.bankArrears = b.arrearsAmount();
+		s.bankEquity = b.equity();
 	}
 
 	countWages(s, m) {
@@ -304,6 +329,10 @@ class EconomyDiagnostics {
 		if (s.firmOwed > s.firmPurse && s.firmOwed > 1) out.push(`firms owe ${s.firmOwed.toFixed(2)} g but hold ${s.firmPurse.toFixed(2)} g (unpaid wage claims ${s.unpaidWages.toFixed(2)} g)`);
 		if (s.bazaarEmpty) out.push(`${s.bazaarEmpty} town bazaar(s) are empty while populated: food bids go dead until a farm delivers`);
 		if (s.idleFarms) out.push(`${s.idleFarms} farm(s) hold fields but no crew on this tick`);
+		if (s.bankArrears > 1e-9) out.push(`loan arrears ${s.bankArrears.toFixed(2)} g: overdue principal at the gold bank (grace before default)`);
+		if (s.goldTimberOut) out.push(`${s.goldTimberOut} gold mine(s) out of timber: extraction pauses until a wood delivery arrives`);
+		if (s.bankDefaults > 0) out.push(`${s.bankDefaults} loan default(s) wrote down ${s.bankWrittenDown.toFixed(2)} g of bank equity; wage claims and other creditors stay whole`);
+		if (s.goldTotal > 1 && s.transport > 0.2 * s.goldTotal) out.push(`transport company holds ${pct(s.transport / s.goldTotal)} of all gold (${s.transport.toFixed(2)} g): fees are liquidity away from firms${s.redistributed > 0 ? `, ${s.redistributed.toFixed(2)} g redistributed under T0` : ''}`);
 		return out;
 	}
 
@@ -380,11 +409,19 @@ class EconomyDiagnostics {
 
 	ownerRows() {
 		const { owners } = this.model;
-		const rows = ['## owners (cash and debt counted once; retired sites keep their accounts)', 'owner worker sites cash_g wage_debt_g'];
+		const rows = ['## owners (cash and debt counted once; retired sites keep their accounts)', 'owner worker sites cash_g wage_debt_g debt_limit_g loan_g'];
 		for (let id = 1; id < owners.accounts.length; id++) {
 			const a = owners.accounts[id];
-			rows.push(`${id} ${a.municipal ? 'town' : a.workerId} ${a.sites} ${a.cash.toFixed(6)} ${a.wageDebt.toFixed(6)}`);
+			rows.push(`${id} ${a.municipal ? 'town' : a.workerId} ${a.sites} ${a.cash.toFixed(6)} ${a.wageDebt.toFixed(6)} ${a.debtLimit.toFixed(2)} ${a.loanDebt.toFixed(6)}`);
 		}
+		return rows.join('\n');
+	}
+
+	bankRows() {
+		const b = this.model.banks;
+		const rows = ['## gold bank', 'reserves_g funded_g originated_g repaid_g interest_g arrears_g defaults_g written_g equity_g'];
+		rows.push(`${b.gold.toFixed(6)} ${b.funded.toFixed(6)} ${b.originated.toFixed(6)} ${b.repaid.toFixed(6)} ${b.interestPaid.toFixed(6)} ${b.arrearsAmount().toFixed(6)} ${b.defaults} ${b.writtenDown.toFixed(6)} ${b.equity().toFixed(6)}`);
+		if (!b.exists) rows.push('no bank chartered in this scene');
 		return rows.join('\n');
 	}
 
@@ -416,8 +453,10 @@ class EconomyDiagnostics {
 			`count=${s.workers}/${s.workerCap} walk_job=${s.walkJob} pool=${s.pool} shift=${s.shift} walk_home=${s.walkHome} wait=${s.wait} room=${s.room} still=${s.still} forage=${s.forage} walking=${s.walking} stalled=${s.stalled} hungry=${s.hungry}`,
 			`labor_worked=${f(s.worked, 2)} rested=${f(s.rested, 2)} births=${s.births} starved=${s.starved}`,
 			'## gold',
-			`total=${f(s.goldTotal)} seeded=${f(s.seeded)} mined=${f(s.mined)} town_purse=${f(s.townPurse)} firm_purse=${f(s.firmPurse)} wallets=${f(s.wallets)} haul_vault=${f(s.vault)}`,
-			`wallet_share=${f(s.walletShare * 100, 1)}% wallet_mean=${f(s.walletMean, 4)} wallet_median=${f(s.walletMedian, 4)} wallet_max=${f(s.walletMax)} broke_workers=${s.walletBroke} firm_owed=${f(s.firmOwed)} unpaid_wage_claims=${f(s.unpaidWages)}`,
+			`total=${f(s.goldTotal)} seeded=${f(s.seeded)} mined=${f(s.mined)} town_purse=${f(s.townPurse)} firm_purse=${f(s.firmPurse)} wallets=${f(s.wallets)} transport=${f(s.transport)} custody=${f(s.custody)} bank=${f(s.bankGold)}`,
+			`wallet_share=${f(s.walletShare * 100, 1)}% wallet_mean=${f(s.walletMean, 4)} wallet_median=${f(s.walletMedian, 4)} wallet_max=${f(s.walletMax)} broke_workers=${s.walletBroke} firm_owed=${f(s.firmOwed)} unpaid_wage_claims=${f(s.unpaidWages)} inputs_paid=${f(s.inputsPaid)} redistributed=${f(s.redistributed)} loan_debt=${f(s.loanDebt)}`,
+			'## gold bank',
+			`chartered=${s.bankExists} reserves=${f(s.bankGold)} funded=${f(s.bankFunded)} originated=${f(s.bankOriginated)} repaid=${f(s.bankRepaid)} interest=${f(s.bankInterest)} arrears=${f(s.bankArrears)} defaults=${s.bankDefaults} written_down=${f(s.bankWrittenDown)} equity=${f(s.bankEquity)}`,
 			'## wages & taxes',
 			`wage_field_at_firms=${f(s.wageAtFirms, 4)} wage_field_max=${f(s.wageFieldMax, 4)} entry_wage_per_worker=${f(s.entryWage, 4)} pay_per_labor_unit=${f(s.payPerLabor, 4)}`,
 			`wages_paid=${f(s.wagesPaid, 2)} taxes_paid=${f(s.taxesPaid, 2)} wages_rate=${f(s.wageRate, 4)} g/s taxes_rate=${f(s.taxRate, 4)} g/s`,
@@ -428,7 +467,7 @@ class EconomyDiagnostics {
 		}
 		lines.push(`flows: coal_made=${f(s.coalMade, 2)} coal_burned=${f(s.coalBurned, 2)} goods_made=${f(s.goodsMade, 2)} goods_eaten=${f(s.goodsEaten, 2)} food_made=${f(s.foodMade, 2)} food_eaten=${f(s.foodEaten, 2)} wood_made=${f(s.woodMade, 2)} wood_built=${f(s.woodEaten, 2)} deliveries=${s.deliveries} garden_rations=${f(s.gardenFed, 2)} wild_rations=${f(s.wildPicked, 2)}`);
 		for (const entry of watched) lines.push(this.workerText(entry));
-		lines.push(this.actorRows(), this.ownerRows(), this.historyText());
+		lines.push(this.actorRows(), this.ownerRows(), this.bankRows(), this.historyText());
 		return lines.join('\n');
 	}
 }
@@ -454,10 +493,20 @@ const PANEL_ROWS = [
 		['Wallet mean/median', s => `${s.walletMean.toFixed(3)} / ${s.walletMedian.toFixed(3)} g`],
 		['Wallet max', s => `${s.walletMax.toFixed(2)} g`],
 		['Broke workers', s => `${s.walletBroke}`, s => s.walletBroke > 0],
-		['Haul vault', s => `${s.vault.toFixed(1)} g`],
+		['Transport · custody', s => `${s.transport.toFixed(1)} · ${s.custody.toFixed(1)} g`, s => s.transport > 0.2 * s.goldTotal],
 		['Unpaid wages', s => `${s.unpaidWages.toFixed(2)} g`, s => s.unpaidWages > 1e-6],
 		['Owed by firms', s => `${s.firmOwed.toFixed(2)} g`, s => s.firmOwed > s.firmPurse && s.firmOwed > 1],
+		['Inputs paid', s => `${s.inputsPaid.toFixed(1)} g`],
 		['Seeded / mined', s => `${s.seeded.toFixed(1)} / ${s.mined.toFixed(1)} g`]
+	]],
+	['Bank', [
+		['Chartered', s => s.bankExists ? 'yes' : 'no'],
+		['Reserves', s => `${s.bankGold.toFixed(2)} g`],
+		['Loans outstanding', s => `${s.loanDebt.toFixed(2)} g`, s => s.loanDebt > 1e-6],
+		['Arrears', s => `${s.bankArrears.toFixed(2)} g`, s => s.bankArrears > 1e-6],
+		['Defaults · written down', s => `${s.bankDefaults} · ${s.bankWrittenDown.toFixed(2)} g`, s => s.bankDefaults > 0],
+		['Interest · repaid', s => `${s.bankInterest.toFixed(3)} · ${s.bankRepaid.toFixed(2)} g`],
+		['Equity (gold + loans)', s => `${s.bankEquity.toFixed(2)} g`]
 	]],
 	['Wages', [
 		['Wage at firms', s => `${s.wageAtFirms.toFixed(3)} g/u`, s => s.workers > 0 && s.wageAtFirms < 1e-6],

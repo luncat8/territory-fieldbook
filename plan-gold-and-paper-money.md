@@ -2,7 +2,8 @@
 
 Status: confirmed design. The open choices in [draft/economy-money-bank.md](draft/economy-money-bank.md)
 are answered and folded into this plan; the remaining forks are comparison axes, not undecided scope.
-No monetary rule in this document implies that a bank, tax obligation or currency has been implemented.
+The gold-only baseline and slices G1/O2/D1/G2/B0/T1 are implemented in `prototype/particle-transfer-b2/`
+(`banks.js`, `bootstrap-bank.test.js`); credit money (P0–P3) is not implemented.
 
 ## Global design
 
@@ -48,15 +49,15 @@ also follow `draft/company/`.
 | Particle gold output | `actors.js`, `ActorOptimizer.stepFirm`: gold recipe has `outItem: -1`; calls `money.dig(i, made)` | Already no gold goods particle; preserve this distinction. |
 | Cell gold output | `price-model-b2/actors.js` also calls `money.dig` | Same monetary principle applies to both labs. |
 | Gold overlay | Particle `fields.js`, `fieldFor`: purses plus worker wallets; the other pane blends home/wage signals | This is holdings, not saleable gold. Keep it and label the second pane as a signal, not a gold price. |
-| Initial money | Particle `gold.js` seeds town/firm purses on reset; `workers.js` seeds wallets | Starting gold is a scenario parameter from a reasonable daily amount (1 g per worker), recorded once as initial owner/bank capital; placement must not mint. |
+| Initial money | Particle `gold.js` seeds town/firm purses and the scene's bank capital on reset; `workers.js` seeds wallets | Starting gold is a scenario parameter from a reasonable daily amount (1 g per worker), recorded once as initial owner/bank capital; placement must not mint. |
 | Placement | Particle `simulation.js`, `setActor`: placing a town calls `seedTown` | Placement is an extra gold source today. Remove that source in the baseline; editing must not silently subsidize towns. |
 | Ownership | `gold.js` uses cell-indexed purses; `goods.js` stores producer cell as `owner` | Introduce stable owner and facility identities; facilities owned by one owner share its cash and debt. A cell is not an economic owner. |
 | Output storage | `goods.js` retains `spawnAmount`/`spawnCost` until a payable uphill route exists | This is the internal-depot control; demand-gate transport, keep demand fields always live. |
 | Mining distribution | `GoldMoney.dig` credits mine purse; `settleFirm` pays wage claims and on-site surplus after reserves | Preserve claim ownership/FIFO, but specify the mine's payout budget and avoid indiscriminate on-site bonuses. |
-| Mine recipe | Labor only; no purchased wood | A wood-input slice is required; a knob without delivery/consumption is insufficient. |
+| Mine recipe | `actors.js` gold recipe consumes labor + `WOOD 0.05` per batch; wood arrives via `goods.js` admission after a one-time `GOLD_TIMBER` reserve (G2) | Delivered wood gates extraction: outage pauses production and a restock restarts it; the reserve is recorded, never minted. |
 | Wood infrastructure | Particle sawmill recipe produces `ITEM_WOOD`; `goods.js` transports it to towns/farms; `farms.js` owns forest cutting | Reuse the existing market; extend mine admission, input caps and consumption rather than add another sawmill/wood resource. |
-| Transport | `goods.js` accrues haul cost; on arrival buyer pays transport share to `GoldMoney.vault`, remainder to producer | Haul cost is not already-paid wages. Distinguish quote, settlement and actual transport operating costs. |
-| Vault | `gold.js` combines transport income, erased-actor balances and orphan receipts; `step` drips it to towns by population weight | Conservation holds but economic ownership is blurred. Separate company revenue from estate/escrow money. |
+| Transport | `goods.js` accrues haul cost; on arrival buyer pays the transport share to the Transport Company account, remainder to producer | Haul cost is not already-paid wages. Distinguish quote, settlement and actual transport operating costs. |
+| Accounts | `gold.js` keeps transport fees, custody (dead-worker wallets) and the gold bank as separate accounts; `step` applies the selected T0 (drip to towns) / T1 (retained) rule to transport only | T1: company revenue, custody and bank reserves no longer blur; custody never drips and the invariant sums every account. |
 | Persistence | No save/load or localStorage path in either lab's `app.js`/`simulation.js` | The prototype needs a settings-persistence path only; a world snapshot is a later contract. |
 
 Previous monetary design: `prototype/archive/price-model-b/03-faction-money-plan.md` proposes faction notes,
@@ -201,8 +202,8 @@ Do not give a portfolio each facility's full cash as an independent buying budge
 - Deleting/replacing a facility preserves the owner cash, debts, earned wage claims and cargo payee IDs.
   Ownership transfer does not rewrite existing contracts; explicit stock/contract transfers need atomic terms.
 - Owner accounts without a living proprietor remain estates: their cash, facilities and wage debts persist;
-  no new worker identity inherits them implicitly. Settled claims of dead workers enter the explicitly labeled
-  custody/vault control until transport and custody are separated in T1.
+  no new worker identity inherits them implicitly. Settled claims of dead workers enter the labeled custody
+  account; transport and custody are separate accounts (T1), and custody never drips.
 - A facility-only sale transfers the site and its local stock at an explicit worker-wallet price; the seller
   retains cash, debts and existing cargo contracts. Whole-business acquisition with liability transfer is a
   separate atomic contract, not an implicit side effect of editing a site.
@@ -557,6 +558,9 @@ Copyable inspector and telemetry (2–5 Hz, no text rewrites on paused frames):
 | P2 | Two issuers, acceptance policies and executable FX; one-bank stress scene | Discount/rejection/run follows liquidity/trust shocks; no hidden gold or cross-currency gains. |
 | P3 | Bankruptcy/bank-takeover path (sell to bank, closure, bank resale); town/faction alternative (C) if useful | Closure preserves wage/note claims; bank-owned facilities are resold, not deleted. |
 
+Slices G1, O2, D1, G2, B0 and T1 are implemented and green in `prototype/particle-transfer-b2/`
+(`bootstrap-bank.test.js` plus the existing suites); P0–P3 remain future work.
+
 Do not implement all slices at once. The first playable target is the confirmed first scenario below.
 Model A is a control slice only; D2 is not planned.
 
@@ -666,6 +670,9 @@ invariant errors. Judge trade, welfare, inflation and failure exposure together;
 - Accepted/rejected currencies, zero bid, cash-limited FX, both legs atomic, spreads, no profitable frictionless
   round trip, no nominal addition of different currencies; contract values do not drift after issue.
 - Gold and every currency preserved across worker split/compaction, actor erase and outstanding contracts.
+- G2/B0/T1 acceptance lives in `prototype/particle-transfer-b2/bootstrap-bank.test.js`: timber granted once,
+  wood outage/restock, delivery purchase, debt caps and bank refusals, repayment with exact interest, equity
+  identity, T0/T1 transport rules and a banked reference scene.
 - Checkbox persists across boot; storage denied/file:// fallback; restore without replaying seed/loan issuance;
   off is equivalent to baseline and cannot erase outstanding notes. Full snapshot round trip only when the
   later snapshot contract is implemented.

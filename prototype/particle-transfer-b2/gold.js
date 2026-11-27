@@ -1,5 +1,5 @@
-// Owns: scenario gold origin, mined gold, stable-owner FIFO wage claims and transport/town transfers.
-// Edit for: starting capital allocation and settlement; prices never depend on the scenario gold setting.
+// Owns: scenario gold and timber origin, mined gold, stable-owner FIFO wage claims and transport/custody accounts.
+// Edit for: starting capital allocation, timber reserve and settlement; prices never depend on the scenario gold setting.
 'use strict';
 
 const PURSE_SECONDS = 15;
@@ -7,6 +7,9 @@ const INITIAL_GOLD_PER_WORKER = 1;
 const INITIAL_WALLET_SHARE = 0.5;
 const WAGE_CLAIM_CAP = 128;
 const VAULT_DRIP_RATE = 0.35;
+const TRANSPORT_T0 = 0;
+const TRANSPORT_T1 = 1;
+const GOLD_TIMBER = 1.5;
 
 class GoldMoney {
 	constructor(model) {
@@ -17,12 +20,16 @@ class GoldMoney {
 		this.claimCap = WAGE_CLAIM_CAP;
 		this.startTaxPerPop = START_PRICE / (INPUT_SHARE * (GOODS_COMFORT / TOWN_GOODS_NEED));
 		this.dripShare = 1 - Math.exp(-ECONOMY_DT * VAULT_DRIP_RATE);
+		this.transportPreset = TRANSPORT_T0;
 	}
 
 	reset() {
 		this.model.owners.reset();
 		this.claimCount = 0;
-		this.vault = 0;
+		this.transport = 0;
+		this.custody = 0;
+		this.redistributed = 0;
+		this.inputs = 0;
 		this.seeded = this.mined = this.wages = this.taxes = this.transportEarned = 0;
 		this.mineRate = this.wageRate = this.taxRate = 0;
 		this.lastMined = this.lastWages = this.lastTaxes = 0;
@@ -36,23 +43,33 @@ class GoldMoney {
 	initializeScenario(goldPerWorker) {
 		if (this.initialized) return false;
 		this.initialized = true;
-		const { workers, owners } = this.model;
+		const { workers, owners, actors } = this.model;
 		const capital = workers.totalAmount() * goldPerWorker;
 		this.seeded += capital;
 		for (let w = 0; w < workers.count; w++) workers.gold[w] += workers.amount[w] * goldPerWorker * INITIAL_WALLET_SHARE;
 		const count = owners.accounts.length - 1;
-		if (!count) this.vault += capital * (1 - INITIAL_WALLET_SHARE);
+		if (!count) this.custody += capital * (1 - INITIAL_WALLET_SHARE);
 		for (let id = 1; id <= count; id++) {
 			const a = owners.accounts[id];
 			a.cash += capital * (1 - INITIAL_WALLET_SHARE) / count;
 			if (!a.municipal && workers.count) a.workerId = workers.id[(id - 1) % workers.count];
 		}
 		owners.allocate();
+		// Scenario timber is a recorded real asset, not gold: it bridges the first shift until purchases use mined gold.
+		for (let i = 0; i < ECONOMY_SIZE; i++) if (actors[i] === ECONOMY_GOLD) this.seedTimber(i, GOLD_TIMBER);
 		return true;
 	}
 
 	seedWorker(gold) {
 		this.seeded += gold;
+	}
+
+	// Timber is a real asset: its grant counter lives beside produced/consumed wood so erase/spoilage keeps the ledger exact.
+	seedTimber(cell, amount) {
+		if (!(amount > 0)) return 0;
+		this.model.seededTimber += amount;
+		this.model.wood[cell] += amount;
+		return amount;
 	}
 
 	cash(i) { return this.model.owners.available(i); }
@@ -146,7 +163,7 @@ class GoldMoney {
 			if (w >= 0) {
 				workers.gold[w] += pay;
 				this.model.tracker.income(w, pay, workers.cell[w]);
-			} else this.vault += pay; // Unclaimed estates stay in custody under the transport-vault control.
+			} else this.custody += pay; // Unclaimed estates hold in custody: it never funds towns or the company.
 			account.cash -= pay;
 			account.wageDebt = Math.max(0, account.wageDebt - pay);
 			this.claimAmount[k] -= pay;
@@ -162,7 +179,7 @@ class GoldMoney {
 
 	payTransport(amount) {
 		if (amount <= 0) return;
-		this.vault += amount;
+		this.transport += amount;
 		this.transportEarned += amount;
 	}
 
@@ -181,17 +198,20 @@ class GoldMoney {
 		const a = this.model.owners.accountAt(i);
 		return (a ? a.cash / a.sites : 0) + this.model.workerGold[i];
 	}
-	total() { return this.vault + this.model.workers.totalGold() + this.model.owners.total(); }
+	total() { return this.transport + this.custody + this.model.banks.gold + this.model.workers.totalGold() + this.model.owners.total(); }
 
 	step() {
-		const { actors, pop, owners } = this.model;
+		const { actors, pop, owners, banks } = this.model;
 		const mined = this.lastMined, wages = this.lastWages, taxes = this.lastTaxes;
 		for (let id = 1; id < owners.accounts.length; id++) this.settleOwner(id);
+		banks.step();
+		// T0 redistributes only Transport Company earnings; custody is never town funding.
 		let townWeight = 0;
 		for (let i = 0; i < ECONOMY_SIZE; i++) if (actors[i] === ECONOMY_TOWN) townWeight += Math.max(1, pop[i]);
-		if (townWeight > 0 && this.vault > 0) {
-			const drip = this.vault * this.dripShare;
-			this.vault -= drip;
+		if (this.transportPreset === TRANSPORT_T0 && townWeight > 0 && this.transport > 0) {
+			const drip = this.transport * this.dripShare;
+			this.transport -= drip;
+			this.redistributed += drip;
 			for (let i = 0; i < ECONOMY_SIZE; i++) {
 				if (actors[i] === ECONOMY_TOWN) owners.accountAt(i).cash += drip * Math.max(1, pop[i]) / townWeight;
 			}
@@ -205,4 +225,4 @@ class GoldMoney {
 	}
 }
 
-if (typeof module === 'object') module.exports = { GoldMoney, INITIAL_GOLD_PER_WORKER };
+if (typeof module === 'object') module.exports = { GoldMoney, INITIAL_GOLD_PER_WORKER, GOLD_TIMBER, TRANSPORT_T0, TRANSPORT_T1 };

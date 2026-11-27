@@ -133,7 +133,7 @@ class GoodsPool {
 		const a = this.model.actors[cell];
 		if (!a) return false;
 		// Wood is checked before the isBuilding guard: a farm mid-construction must still receive wood.
-		if (kind === ITEM_WOOD) return a === ECONOMY_TOWN || a === ECONOMY_FARM;
+		if (kind === ITEM_WOOD) return a === ECONOMY_TOWN || a === ECONOMY_FARM || a === ECONOMY_GOLD;
 		if (this.model.founding.isBuilding(cell)) return false;
 		return kind === ITEM_COAL ? a === ECONOMY_FACTORY || a === ECONOMY_TOWN : a === ECONOMY_TOWN;
 	}
@@ -279,7 +279,7 @@ class GoodsPool {
 		this.waitTicks[p] = 0;
 	}
 
-	// Normalized buyer room + cash admission splits buyerPay across Transport Company vault and owner purse with exact conservation.
+	// Normalized buyer room + cash admission splits buyerPay across the Transport Company account and owner purse with exact conservation.
 	admitKind(kind) {
 		const { stocks, money } = this.model;
 		const stock = stocks[kind], priceField = this.model.pricesAt(kind);
@@ -325,6 +325,7 @@ class GoodsPool {
 			const factoryRevenue = buyerPay - transportPaid;
 			money.payTransport(transportPaid);
 			money.payOwner(this.owner[p], factoryRevenue);
+			if (buyerPay > 0 && !this.model.owners.accountAt(cell)?.municipal) money.inputs += buyerPay;
 			const realizedProfit = factoryRevenue - facSlice - (trSlice - transportPaid);
 			const identityProfit = accepted * (effectiveUnitBid - itemUnitPrice);
 			const err = Math.abs(realizedProfit - identityProfit);
