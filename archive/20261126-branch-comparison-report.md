@@ -101,3 +101,57 @@ Align `particle-transfer-b2` with `price-model-b2` (`87559dc`) and `draft/map-bo
 ### Quick Confirmation Before Implementation
 1. **Confirm dropping `d198120:prototype/particle-transfer/` as a separate folder** and putting all picked panels/rendering/fixes directly into `prototype/particle-transfer-b2/`?
 2. Do you want the **Economy Inspector + Stall Flags + Copy all stats** panel only in **`prototype/particle-transfer-b2/`**, or also a cell-adapted version in **`prototype/price-model-b2/`**?
+
+---
+
+## Follow-up review — 2026-11-27
+
+Compared the fetched `origin/main` (`d1981200cf3cd1511c93377fedc96238ebb66c3f`, unchanged remotely) with current snapshot `8263b084c4cbd0047aae58edbe8e1ea358e3bf4a`. The report above is the **original proposal**, not a current completion checklist. This checkout is shallow; historical ancestry/merge-base claims above were not independently revalidated.
+
+**Verdict: most valuable features were ported, but not everything useful is carried over correctly. Do not treat the port as fully complete yet.** No obsolete simulation engine needs restoring as an active prototype.
+
+### Confirmed present
+
+- Torus/bounded topology and seam tests in the particle lab.
+- Worker-ID wage claims, including settlement after removal and firm-release handling; however, see the correctness findings below.
+- Economy Inspector, stall flags, copyable stats, named watched workers, wallet chart, reason text, split/removal ledger hooks. Inspector shell is shared, with a separate cell-lab adapter.
+- Heading triangles, point/large shape modes, motion tails under the Flow toggle, and gold-value flow vectors.
+- Spawn-buffer cost relaxation (`COST_RELAX = 0.06`) in `goods.js`.
+- `16×` speed in the cell B2 lab. Historical cell/diffusion/water labs are retained under `prototype/archive/`.
+
+### Findings, highest priority first
+
+1. **P1 — claim-table overflow silently loses a worker's entitlement.**
+   `prototype/particle-transfer-b2/gold.js:98–112` increases `owedWage` before `addWageClaim` can silently return at its global 128-entry cap. Later settlement debits the firm's full debt, but `payWageClaims` sends the unrepresented share to the vault (`:146–147`). This conserves total gold while paying the wrong recipient. Old main used a growable claim list and did not have this fixed-cap loss.
+   A direct, zero-tick probe with 129 workers owed 1g each produced debt=129, claims=128, last-worker claim=0; after funding/settlement, workers received 128g, vault received 1g, and debt became zero.
+   **Required:** capacity-safe booking/admission or another lossless storage policy; merely increasing the cap postpones the bug. Add a focused overflow regression test.
+
+2. **P2 — wage claims are not FIFO as documented.**
+   `gold.js:139–143` swap-removes a paid claim, moving the newest claim ahead of older unpaid claims. With three 1g claims A/B/C and only 2g available, a direct probe paid `[1, 0, 1]`, not `[1, 1, 0]`. `release()` also reorders surviving claims through swap-removal. Old main's `splice` preserved order.
+   **Required:** preserve claim ordering, including after another firm's removal, or explicitly approve a different settlement policy. Existing three gold tests do not cover this case or overflow.
+
+3. **P2 — reusable findings were not merged.**
+   Comparing `main:findings-pitfalls-skills.md` with the current file shows entire useful sections missing: mass-weighted per-worker cell state, write-time founding aggregation, placement-time actor cones, neutral-land fixtures, shallow-gradient/symmetric-saddle traps, admission versus queue cooling, wallet ownership, and batched conservation counters. Skipping the obsolete “particles only while walking” rule and old town-minting prescriptions is correct; dropping all the general lessons is not.
+   **Required for the original pick list:** merge the still-applicable lessons with explicit cell/particle scope, not the obsolete engine assumptions or unqualified historical collapse prescriptions.
+
+4. **P2 — food diagnostics adaptation is incomplete.**
+   `prototype/particle-transfer-b2/diagnostics.js:185–239` computes food totals/spoilage, but price/particle breakdowns only handle coal and goods. Food has no corresponding in-flight ask/book/haul, best-buyer price, stopped-particle breakdown, or underwater-price flag; the copy export also iterates only `['coal', 'goods']`. The original Stage 3 explicitly requested all three commodities. This is unfinished adaptation to the new engine, not code missing from old main (which had no food commodity).
+   **Required for the proposed scope:** add the food diagnostics counterpart, or explicitly defer it rather than marking the adaptation complete.
+
+5. **P3 — particle `16×` control was missed.**
+   `prototype/particle-transfer-b2/index.html:31` stops at `4×`; `price-model-b2/index.html:31` includes `16×`. Old main's particle lab had the option. Restore the particle option while preserving the current `1×` default.
+   The archived diffusion A/B, Model B and water labs also omit old main's `16×` choices; these were optional picks, not blockers for the active engine. Defaults were also changed, so archive moves are not all byte-identical to main.
+
+### Documentation caveats
+
+`prototype/notes.md` records prior suites as 38/38 and 72/72; those results were not rerun. Its “over 40 s with split” ledger claim is stronger than the cited test: `diagnostics.test.js` checks the ledger for 40s, requires one tracked worker, and does not assert a split. That is not evidence of split coverage. Neither existing gold tests nor global gold conservation disprove findings 1–2.
+
+### Before replacing old main
+
+- Finish the missing picks and claim fixes above, or consciously defer noncritical items.
+- Preserve old `d198120` through a durable archive tag/ref or verified backup **before** removing its branch. This shallow checkout cannot establish whether that history is reachable from the replacement. A hash written in a report is not a durable Git reference. Removed scratch scripts, obsolete engine code and historical worklogs can stay out of the active tree if the old snapshot is retained.
+- Default-branch migration/deletion is a separate user-authorized step; no branch/default setting, tag, commit or push was changed during this review.
+
+Validation: fetched remote refs, inspected tree/blob diffs and port source/tests, ran two direct wage-booking/settlement probes (no simulation steps; combined under one second). **No test suites or long simulations rerun.**
+
+Next: correct claim overflow/order first; finish findings/speed carryover, then decide whether to complete or explicitly defer food diagnostics before the branch migration.
