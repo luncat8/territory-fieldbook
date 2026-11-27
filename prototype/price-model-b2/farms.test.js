@@ -298,6 +298,9 @@ test('UI smoke check: index.html scripts, FieldPlot, EconomyTelemetry and Sawmil
 			addEventListener: (ev, fn) => { (listeners[ev] ||= []).push(fn); },
 			trigger: (ev, payload = {}) => { for (const fn of listeners[ev] || []) fn(payload); },
 			setAttribute(k, v) { this[k] = String(v); },
+			appendChild() {},
+			select() {},
+			remove() {},
 			matches: () => false,
 			closest: () => ({ querySelector: () => makeEl() }),
 			querySelector: () => makeEl(),
@@ -339,9 +342,11 @@ test('UI smoke check: index.html scripts, FieldPlot, EconomyTelemetry and Sawmil
 		getComputedStyle: () => ({ color: '#fff' }),
 		requestAnimationFrame() {},
 		document: {
+			body: makeEl('body'),
 			getElementById: getEl,
 			createElement: () => makeEl(),
 			addEventListener() {},
+			execCommand() {},
 			fonts: { ready: { then() {} } },
 			querySelectorAll: (sel) => {
 				if (sel === '[data-icon]') return [];
@@ -354,7 +359,7 @@ test('UI smoke check: index.html scripts, FieldPlot, EconomyTelemetry and Sawmil
 		}
 	});
 	try {
-		for (const file of ['fields.js', 'telemetry.js', 'app.js']) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
+		for (const file of ['diagnostics.js', '../shared/lab-ui.js', '../shared/economy-panel.js', 'fields.js', 'telemetry.js', 'app.js']) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 
 		assert.match(getEl('actor-count').textContent, /1 S · 1 A/, 'actor badge reports starter sawmill and farm');
 		assert.match(getEl('grid-size').textContent, /wrap/, 'grid badge shows the torus default');

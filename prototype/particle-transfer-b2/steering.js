@@ -123,20 +123,30 @@ class Steering {
 		const ux = hx / hLen, uy = hy / hLen;
 		const cEdge = this.conductance[cell * DEGREE + bestDir] || this.model.land.speed[cell] || 0.5;
 		const ds = Math.min(0.45, maxSpeed * cEdge * (bestSlope / (bestSlope + GRADIENT_KNEE)) * ECONOMY_DT);
-		let nx = Math.min(ECONOMY_WIDTH - 0.05, Math.max(0.05, x + ux * ds));
-		let ny = Math.min(ECONOMY_HEIGHT - 0.05, Math.max(0.05, y + uy * ds));
+		let nx = x + ux * ds, ny = y + uy * ds;
+		if (MAP_WRAP) { nx = wrapX(nx); ny = wrapY(ny); }
+		else {
+			nx = Math.min(ECONOMY_WIDTH - 0.05, Math.max(0.05, nx));
+			ny = Math.min(ECONOMY_HEIGHT - 0.05, Math.max(0.05, ny));
+		}
 		let nextCell = economyIndex(Math.floor(nx), Math.floor(ny));
 		if (this.model.land.terrain[nextCell] === TERRAIN_WATER) {
 			const safe = NEIGHBORS[cell * DEGREE + bestDir];
-			const sx = (safe % ECONOMY_WIDTH) + 0.5 - x, sy = Math.floor(safe / ECONOMY_WIDTH) + 0.5 - y;
+			const sx = torusDelta((safe % ECONOMY_WIDTH) + 0.5 - x, ECONOMY_WIDTH);
+			const sy = torusDelta(Math.floor(safe / ECONOMY_WIDTH) + 0.5 - y, ECONOMY_HEIGHT);
 			const sLen = Math.hypot(sx, sy) || 1;
-			nx = Math.min(ECONOMY_WIDTH - 0.05, Math.max(0.05, x + (sx / sLen) * ds));
-			ny = Math.min(ECONOMY_HEIGHT - 0.05, Math.max(0.05, y + (sy / sLen) * ds));
+			nx = x + (sx / sLen) * ds;
+			ny = y + (sy / sLen) * ds;
+			if (MAP_WRAP) { nx = wrapX(nx); ny = wrapY(ny); }
+			else {
+				nx = Math.min(ECONOMY_WIDTH - 0.05, Math.max(0.05, nx));
+				ny = Math.min(ECONOMY_HEIGHT - 0.05, Math.max(0.05, ny));
+			}
 			nextCell = economyIndex(Math.floor(nx), Math.floor(ny));
 			if (this.model.land.terrain[nextCell] === TERRAIN_WATER) { nx = x; ny = y; nextCell = cell; }
 		}
 		out.x = nx; out.y = ny; out.hx = ux; out.hy = uy;
-		out.ds = Math.hypot(nx - x, ny - y);
+		out.ds = Math.hypot(torusDelta(nx - x, ECONOMY_WIDTH), torusDelta(ny - y, ECONOMY_HEIGHT));
 		out.effort = out.ds / Math.max(0.15, cEdge);
 		out.cell = nextCell;
 		return out.ds > 0;

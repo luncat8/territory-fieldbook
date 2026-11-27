@@ -51,6 +51,25 @@ const DOCK_SLOPE = 0.0006;
 const STEERING_BLEND = ECONOMY_DT / (0.18 + ECONOMY_DT);
 const economyIndex = (x, y) => y * ECONOMY_WIDTH + x;
 
+// Torus topology: wrapping X and Y gives every cell — rim and corner included — full 8-neighbour reach.
+// Bounded edges reflect scans into the corners instead. `setMapWrap` swaps topology live; callers re-stamp
+// land and rebuild the forage coarse table after the switch.
+let MAP_WRAP = true;
+const wrapX = x => ((x % ECONOMY_WIDTH) + ECONOMY_WIDTH) % ECONOMY_WIDTH;
+const wrapY = y => ((y % ECONOMY_HEIGHT) + ECONOMY_HEIGHT) % ECONOMY_HEIGHT;
+
+// Cell for raw coordinates: wrapped on a torus, -1 off a bounded map.
+function wrapCell(x, y) {
+	if (x < 0 || y < 0 || x >= ECONOMY_WIDTH || y >= ECONOMY_HEIGHT) {
+		if (!MAP_WRAP) return -1;
+		x = wrapX(x); y = wrapY(y);
+	}
+	return economyIndex(x, y);
+}
+
+// Shortest-image delta across the torus so distances and steps never travel the long way round.
+const torusDelta = (d, span) => MAP_WRAP ? (((d + span / 2) % span) + span) % span - span / 2 : d;
+
 function wealthClassFor(i) {
 	let h = (Math.imul(i + 1, 2654435761) >>> 0);
 	h = (Math.imul(h ^ (h >>> 15), 2246822519) >>> 0);
@@ -63,7 +82,7 @@ const DIRECTIONS = [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [-1, -1],
 		return { x, y, inv, ux: x * inv, uy: y * inv, weight: x && y ? 1 : 4 };
 	});
 const DEGREE = DIRECTIONS.length;
-const NEIGHBORS = buildEconomyNeighbors();
+let NEIGHBORS = buildEconomyNeighbors();
 const REFERENCE_MINES = [[7, 8], [22, 21], [39, 7]];
 const REFERENCE_FACTORIES = [[13, 13], [33, 10]];
 const REFERENCE_TOWNS = [[9, 20], [28, 12]];
@@ -74,12 +93,20 @@ function buildEconomyNeighbors() {
 	const result = new Int16Array(ECONOMY_SIZE * DEGREE).fill(-1);
 	for (let i = 0; i < ECONOMY_SIZE; i++) {
 		for (let k = 0; k < DEGREE; k++) {
-			const x = i % ECONOMY_WIDTH + DIRECTIONS[k].x;
-			const y = Math.floor(i / ECONOMY_WIDTH) + DIRECTIONS[k].y;
+			let x = i % ECONOMY_WIDTH + DIRECTIONS[k].x;
+			let y = Math.floor(i / ECONOMY_WIDTH) + DIRECTIONS[k].y;
+			if (MAP_WRAP) { x = wrapX(x); y = wrapY(y); }
 			if (x >= 0 && x < ECONOMY_WIDTH && y >= 0 && y < ECONOMY_HEIGHT) result[i * DEGREE + k] = economyIndex(x, y);
 		}
 	}
 	return result;
+}
+
+// Swap topology live: rebuilds the shared neighbour table; callers re-stamp derived land and forage state.
+function setMapWrap(wrap) {
+	if (MAP_WRAP === wrap) return;
+	MAP_WRAP = wrap;
+	NEIGHBORS = buildEconomyNeighbors();
 }
 
 class PriceEconomy {
@@ -142,6 +169,7 @@ class PriceEconomy {
 		this.towns = new TownRules(this);
 		this.settlements = new Settlements(this);
 		this.founding = new FirmFounding(this);
+		this.tracker = new WorkerTracker(this);
 		this.reset();
 	}
 
@@ -159,6 +187,7 @@ class PriceEconomy {
 	}
 
 	reset() {
+		this.tracker.reset();
 		this.actors.fill(0);
 		for (const [x, y] of REFERENCE_MINES) this.actors[economyIndex(x, y)] = ECONOMY_MINE;
 		for (const [x, y] of REFERENCE_FACTORIES) this.actors[economyIndex(x, y)] = ECONOMY_FACTORY;

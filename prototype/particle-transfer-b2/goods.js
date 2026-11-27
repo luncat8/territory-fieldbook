@@ -10,6 +10,7 @@ const HAUL_COST_RATE = 0.032;
 const CONSIGN_WAIT_TICKS = 180;
 const SPOIL_COAL = 0;
 const SPOIL_GOODS = 0.0035;
+const COST_RELAX = 0.06;
 
 class GoodsPool {
 	constructor(model) {
@@ -160,7 +161,20 @@ class GoodsPool {
 				this.sellFloor[k][i] = floor;
 				const batch = avail >= SPAWN_UNIT ? SPAWN_UNIT : avail >= SPAWN_DUST && sIdle[i] >= SPAWN_FLUSH_TICKS ? avail : 0;
 				if (batch <= 0 || this.count >= MAX_GOODS_PARTICLES) continue;
-				if (steering.sampleField(price, null, 0, i, floor) <= 0) continue;
+				if (steering.sampleField(price, null, 0, i, floor) <= 0) {
+					// No road pays this batch's floor: relax the book toward the best price the road can see, so
+					// inventory that outran its buyers cannot wedge the site's buffers forever.
+					// Accounting only — no gold moves, conservation is untouched.
+					let best = price[i];
+					const base = i * DEGREE;
+					for (let k = 0; k < DEGREE; k++) {
+						const to = NEIGHBORS[base + k];
+						if (to >= 0 && price[to] > best) best = price[to];
+					}
+					const over = unitCost - Math.min(unitCost, best);
+					if (over > 0) sCost[i] = Math.max(0, sCost[i] - Math.min(over, COST_RELAX * ECONOMY_DT) * avail);
+					continue;
+				}
 				const share = Math.min(1, batch / avail);
 				const batchCost = sCost[i] * share;
 				sAmt[i] = Math.max(0, avail - batch);

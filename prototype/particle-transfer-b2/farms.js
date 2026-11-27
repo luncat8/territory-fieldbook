@@ -51,9 +51,13 @@ class FarmSystem {
 		const m = this.model;
 		const cx = i % ECONOMY_WIDTH, cy = Math.floor(i / ECONOMY_WIDTH);
 		let forest = 0, quality = 0, cells = 0;
-		for (let y = Math.max(0, cy - FARM_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, cy + FARM_RADIUS); y++) {
-			for (let x = Math.max(0, cx - FARM_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, cx + FARM_RADIUS); x++) {
-				const c = economyIndex(x, y);
+		for (let y = cy - FARM_RADIUS, yEnd = cy + FARM_RADIUS; y <= yEnd; y++) {
+			const wy = MAP_WRAP ? wrapY(y) : y;
+			if (wy < 0 || wy >= ECONOMY_HEIGHT) continue;
+			for (let x = cx - FARM_RADIUS, xEnd = cx + FARM_RADIUS; x <= xEnd; x++) {
+				const wx = MAP_WRAP ? wrapX(x) : x;
+				if (wx < 0 || wx >= ECONOMY_WIDTH) continue;
+				const c = economyIndex(wx, wy);
 				if (!this.legalPlot(c, i)) continue;
 				forest += m.settlements.forest[c];
 				quality += this.quality(c);
@@ -122,8 +126,8 @@ class FarmSystem {
 		const m = this.model;
 		const x = i % ECONOMY_WIDTH + this.random(5) - FARM_RADIUS;
 		const y = Math.floor(i / ECONOMY_WIDTH) + this.random(5) - FARM_RADIUS;
-		if (x < 0 || y < 0 || x >= ECONOMY_WIDTH || y >= ECONOMY_HEIGHT) return;
-		const c = economyIndex(x, y);
+		const c = wrapCell(x, y);
+		if (c < 0) return;
 		if (!this.legalPlot(c, i)) return;
 		m.wood[i] += m.settlements.forest[c];
 		m.settlements.felled += m.settlements.forest[c];
@@ -138,9 +142,13 @@ class FarmSystem {
 		const share = this.plots[i] ? crew / this.plots[i] : 0;
 		const cx = i % ECONOMY_WIDTH, cy = Math.floor(i / ECONOMY_WIDTH);
 		let food = 0;
-		for (let y = Math.max(0, cy - FARM_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, cy + FARM_RADIUS); y++) {
-			for (let x = Math.max(0, cx - FARM_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, cx + FARM_RADIUS); x++) {
-				const c = economyIndex(x, y);
+		for (let y = cy - FARM_RADIUS, yEnd = cy + FARM_RADIUS; y <= yEnd; y++) {
+			const wy = MAP_WRAP ? wrapY(y) : y;
+			if (wy < 0 || wy >= ECONOMY_HEIGHT) continue;
+			for (let x = cx - FARM_RADIUS, xEnd = cx + FARM_RADIUS; x <= xEnd; x++) {
+				const wx = MAP_WRAP ? wrapX(x) : x;
+				if (wx < 0 || wx >= ECONOMY_WIDTH) continue;
+				const c = economyIndex(wx, wy);
 				if (this.plotOwner[c] === i + 1) food += FARM_YIELD * this.quality(c) * share;
 			}
 		}
@@ -157,14 +165,14 @@ class FarmSystem {
 
 	pushWaste(i, amount) {
 		const cx = i % ECONOMY_WIDTH, cy = Math.floor(i / ECONOMY_WIDTH);
-		// Reservoir sampling keeps edge farms on-map without exempting neighboring farmland.
+		// Reservoir sampling keeps edge farms on-map (wrapping on a torus) without exempting neighboring farmland.
 		let chosen = -1, count = 0;
 		for (let dy = -3; dy <= 3; dy++) {
 			for (let dx = -3; dx <= 3; dx++) {
 				if (Math.max(Math.abs(dx), Math.abs(dy)) !== 3) continue;
-				const x = cx + dx, y = cy + dy;
-				if (x < 0 || y < 0 || x >= ECONOMY_WIDTH || y >= ECONOMY_HEIGHT) continue;
-				if (this.random(++count) === 0) chosen = economyIndex(x, y);
+				const c = wrapCell(cx + dx, cy + dy);
+				if (c < 0) continue;
+				if (this.random(++count) === 0) chosen = c;
 			}
 		}
 		if (chosen < 0) return;

@@ -92,9 +92,13 @@ class Settlements {
 		const { actors, land } = this.model;
 		const cx = i % ECONOMY_WIDTH, cy = Math.floor(i / ECONOMY_WIDTH);
 		this.pledged = true;
-		for (let y = Math.max(0, cy - FOUND_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, cy + FOUND_RADIUS); y++) {
-			for (let x = Math.max(0, cx - FOUND_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, cx + FOUND_RADIUS); x++) {
-				const n = economyIndex(x, y);
+		for (let y = cy - FOUND_RADIUS, yEnd = cy + FOUND_RADIUS; y <= yEnd; y++) {
+			const wy = MAP_WRAP ? wrapY(y) : y;
+			if (wy < 0 || wy >= ECONOMY_HEIGHT) continue;
+			for (let x = cx - FOUND_RADIUS, xEnd = cx + FOUND_RADIUS; x <= xEnd; x++) {
+				const wx = MAP_WRAP ? wrapX(x) : x;
+				if (wx < 0 || wx >= ECONOMY_WIDTH) continue;
+				const n = economyIndex(wx, wy);
 				this.gather[n] += amount;
 				const score = this.gather[n] * land.site[n];
 				if (actors[n] || this.model.farms.plotOwner[n] || this.model.forage.plotOwner[n] || score <= this.bestScore) continue;
@@ -129,8 +133,14 @@ class Settlements {
 	sumAround(field, i) {
 		const cx = i % ECONOMY_WIDTH, cy = Math.floor(i / ECONOMY_WIDTH);
 		let total = 0;
-		for (let y = Math.max(0, cy - FOUND_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, cy + FOUND_RADIUS); y++) {
-			for (let x = Math.max(0, cx - FOUND_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, cx + FOUND_RADIUS); x++) total += field[economyIndex(x, y)];
+		for (let y = cy - FOUND_RADIUS, yEnd = cy + FOUND_RADIUS; y <= yEnd; y++) {
+			const wy = MAP_WRAP ? wrapY(y) : y;
+			if (wy < 0 || wy >= ECONOMY_HEIGHT) continue;
+			for (let x = cx - FOUND_RADIUS, xEnd = cx + FOUND_RADIUS; x <= xEnd; x++) {
+				const wx = MAP_WRAP ? wrapX(x) : x;
+				if (wx < 0 || wx >= ECONOMY_WIDTH) continue;
+				total += field[economyIndex(wx, wy)];
+			}
 		}
 		return total;
 	}
@@ -140,8 +150,14 @@ class Settlements {
 		if (total <= 1e-12) return;
 		const share = Math.min(1, wood / total);
 		const cx = i % ECONOMY_WIDTH, cy = Math.floor(i / ECONOMY_WIDTH);
-		for (let y = Math.max(0, cy - FOUND_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, cy + FOUND_RADIUS); y++) {
-			for (let x = Math.max(0, cx - FOUND_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, cx + FOUND_RADIUS); x++) this.forest[economyIndex(x, y)] *= 1 - share;
+		for (let y = cy - FOUND_RADIUS, yEnd = cy + FOUND_RADIUS; y <= yEnd; y++) {
+			const wy = MAP_WRAP ? wrapY(y) : y;
+			if (wy < 0 || wy >= ECONOMY_HEIGHT) continue;
+			for (let x = cx - FOUND_RADIUS, xEnd = cx + FOUND_RADIUS; x <= xEnd; x++) {
+				const wx = MAP_WRAP ? wrapX(x) : x;
+				if (wx < 0 || wx >= ECONOMY_WIDTH) continue;
+				this.forest[economyIndex(wx, wy)] *= 1 - share;
+			}
 		}
 	}
 
@@ -155,7 +171,8 @@ class Settlements {
 			const wc = workers.cell[w];
 			if (m.actors[wc]) continue;
 			const wx = wc % ECONOMY_WIDTH, wy = Math.floor(wc / ECONOMY_WIDTH);
-			if (Math.abs(wx - cx) <= FOUND_RADIUS && Math.abs(wy - cy) <= FOUND_RADIUS) {
+			const dx = Math.abs(torusDelta(wx - cx, ECONOMY_WIDTH)), dy = Math.abs(torusDelta(wy - cy, ECONOMY_HEIGHT));
+			if (dx <= FOUND_RADIUS && dy <= FOUND_RADIUS) {
 				settlers += workers.amount[w];
 				wealthSum += workers.gold[w];
 			}

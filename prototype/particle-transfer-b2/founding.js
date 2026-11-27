@@ -58,9 +58,13 @@ class FirmFounding {
 			const c = workers.cell[w];
 			const cx = c % ECONOMY_WIDTH, cy = Math.floor(c / ECONOMY_WIDTH);
 			this.hadIdle = true;
-			for (let y = Math.max(0, cy - FIRM_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, cy + FIRM_RADIUS); y++) {
-				for (let x = Math.max(0, cx - FIRM_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, cx + FIRM_RADIUS); x++) {
-					const n = economyIndex(x, y);
+			for (let y = cy - FIRM_RADIUS, yEnd = cy + FIRM_RADIUS; y <= yEnd; y++) {
+				const wy = MAP_WRAP ? wrapY(y) : y;
+				if (wy < 0 || wy >= ECONOMY_HEIGHT) continue;
+				for (let x = cx - FIRM_RADIUS, xEnd = cx + FIRM_RADIUS; x <= xEnd; x++) {
+					const wx = MAP_WRAP ? wrapX(x) : x;
+					if (wx < 0 || wx >= ECONOMY_WIDTH) continue;
+					const n = economyIndex(wx, wy);
 					this.idle[n] += workers.amount[w];
 					if (this.idle[n] > bestCount) {
 						bestCount = this.idle[n];
@@ -84,7 +88,8 @@ class FirmFounding {
 				if (workers.state[w] !== WORKER_STILL || workers.tired[w] >= workers.amount[w] - 1e-6) continue;
 				const wc = workers.cell[w];
 				const wx = wc % ECONOMY_WIDTH, wy = Math.floor(wc / ECONOMY_WIDTH);
-				if (Math.abs(wx - sx) > FIRM_SEARCH_RADIUS || Math.abs(wy - sy) > FIRM_SEARCH_RADIUS) continue;
+				if (Math.abs(torusDelta(wx - sx, ECONOMY_WIDTH)) > FIRM_SEARCH_RADIUS
+					|| Math.abs(torusDelta(wy - sy, ECONOMY_HEIGHT)) > FIRM_SEARCH_RADIUS) continue;
 				const work = Math.min(workers.amount[w] - workers.tired[w], FOUNDER_BUILD_RATE * ECONOMY_DT);
 				workers.tired[w] += work;
 				m.workedLabor += work;
@@ -106,9 +111,13 @@ class FirmFounding {
 		const m = this.model, { actors, land, forage } = m;
 		const ax = anchor % ECONOMY_WIDTH, ay = Math.floor(anchor / ECONOMY_WIDTH);
 		let bestCell = -1, bestKind = 0, bestValue = 0.03;
-		for (let y = Math.max(0, ay - FIRM_SEARCH_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, ay + FIRM_SEARCH_RADIUS); y++) {
-			for (let x = Math.max(0, ax - FIRM_SEARCH_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, ax + FIRM_SEARCH_RADIUS); x++) {
-				const i = economyIndex(x, y);
+		for (let y = ay - FIRM_SEARCH_RADIUS, yEnd = ay + FIRM_SEARCH_RADIUS; y <= yEnd; y++) {
+			const wy = MAP_WRAP ? wrapY(y) : y;
+			if (wy < 0 || wy >= ECONOMY_HEIGHT) continue;
+			for (let x = ax - FIRM_SEARCH_RADIUS, xEnd = ax + FIRM_SEARCH_RADIUS; x <= xEnd; x++) {
+				const wx = MAP_WRAP ? wrapX(x) : x;
+				if (wx < 0 || wx >= ECONOMY_WIDTH) continue;
+				const i = economyIndex(wx, wy);
 				if (actors[i] || land.terrain[i] === TERRAIN_WATER || forage.plotOwner[i] || m.farms.plotOwner[i]) continue;
 				if (land.claim[i] > 0.72) continue;
 				if (m.priceFood[i] > FARM_MIN_PRICE && m.farms.canSite(i)) {

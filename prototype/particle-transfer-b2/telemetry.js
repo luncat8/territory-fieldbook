@@ -33,7 +33,6 @@ class EconomyTelemetry {
 		this.vaultHeld = $('vault-held');
 		this.forageGarden = $('forage-garden');
 		this.forageWild = $('forage-wild');
-		this.watchedBox = $('watched-worker');
 	}
 
 	reset(model) {
@@ -117,31 +116,8 @@ class EconomyTelemetry {
 		this.vaultHeld.textContent = model.money.vault.toFixed(2);
 		this.forageGarden.textContent = model.forage.gardenFed.toFixed(2);
 		this.forageWild.textContent = model.forage.wildPicked.toFixed(2);
-		this.refreshWatched(model);
 		const seconds = Math.floor(model.ticks * ECONOMY_DT);
 		this.clock.textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
-	}
-
-	refreshWatched(model) {
-		if (!this.watchedBox) return;
-		const { workers } = model, w = workers.indexOfId(workers.watchedId);
-		if (w < 0) {
-			this.watchedBox.textContent = 'Click near any worker in Inspect mode to watch its wallet, food and state.';
-			return;
-		}
-		const head = `Watched worker #${workers.id[w]} · ${WORKER_STATE_NAMES[workers.state[w]]} @ (${cellName(workers.cell[w])}) · Wallet ${workers.gold[w].toFixed(2)}g · Tired ${(workers.tired[w] * 100).toFixed(0)}% · Food ${(workers.food[w] * 100).toFixed(0)}%`;
-		if (!workers.logCount) {
-			this.watchedBox.textContent = head;
-			return;
-		}
-		const events = [];
-		for (let n = 0; n < workers.logCount; n++) {
-			const idx = (workers.logHead - workers.logCount + n + WATCH_LOG_CAP) % WATCH_LOG_CAP;
-			const kind = workers.logKind[idx], val = workers.logVal[idx];
-			const tag = kind === EVT_WAGE ? `+${val.toFixed(2)}g wage` : kind === EVT_TAX ? `-${val.toFixed(2)}g tax` : kind === EVT_RATION ? `-${val.toFixed(2)}g ration` : kind === EVT_FORAGE ? `forage (${val.toFixed(1)}g)` : kind === EVT_FED ? `fed ${(val * 100).toFixed(0)}%` : EVT_NAMES[kind];
-			events.push(tag);
-		}
-		this.watchedBox.textContent = `${head}\nEvents: ${events.join(' → ')}`;
 	}
 
 	sparkline(card) {

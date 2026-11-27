@@ -57,11 +57,13 @@ class WorkerLife {
 		pool.paidRest[w] = Math.min(pool.paidRest[w], pool.tired[w]);
 		this.needs[child] = this.needs[w];
 		this.splitAge[w] = 0;
+		this.model.tracker.onSplit(w, child);
 		return true;
 	}
 
 	remove(w) {
 		const m = this.model, pool = m.workers;
+		this.model.tracker.onRemove(w);
 		m.money.vault += pool.gold[w];
 		this.deaths += pool.amount[w];
 		this.removedTired += pool.tired[w];

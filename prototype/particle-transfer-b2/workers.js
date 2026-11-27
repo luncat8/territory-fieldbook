@@ -117,7 +117,7 @@ class WorkerPool {
 	pickNear(gx, gy, maxDist = 1.4) {
 		let best = -1, bestD = maxDist;
 		for (let w = 0; w < this.count; w++) {
-			const d = Math.hypot(this.x[w] - gx, this.y[w] - gy);
+			const d = Math.hypot(torusDelta(this.x[w] - gx, ECONOMY_WIDTH), torusDelta(this.y[w] - gy, ECONOMY_HEIGHT));
 			if (d < bestD) { bestD = d; best = this.id[w]; }
 		}
 		return best;
@@ -167,7 +167,9 @@ class WorkerPool {
 		if (weight <= 0) return;
 		for (let w = 0; w < this.count; w++) {
 			if (this.cell[w] === cell && (this.state[w] === WORKER_SHIFT || this.state[w] === WORKER_FIRM_POOL)) {
-				this.gold[w] += totalPay * (this.amount[w] / weight);
+				const share = totalPay * (this.amount[w] / weight);
+				this.gold[w] += share;
+				this.model.tracker.income(w, share, cell);
 			}
 		}
 	}
@@ -226,13 +228,12 @@ class WorkerPool {
 		for (let w = 0; w < this.count; w++) {
 			if (this.cell[w] !== cell || this.state[w] !== WORKER_SHIFT) continue;
 			const cap = Math.min(this.amount[w] - this.tired[w], WORK_RATE * this.amount[w] * ECONOMY_DT);
-			const work = cap * ratio;
-			this.tired[w] = Math.min(this.amount[w], this.tired[w] + work);
-			actual += work;
-			if (this.tired[w] >= this.amount[w] - 1e-7) {
-				this.tired[w] = this.amount[w];
-				this.setState(w, WORKER_WALK_HOME);
-			}
+			const before = this.tired[w];
+			this.tired[w] = Math.min(this.amount[w], before + cap * ratio);
+			// Credit the real tired delta — including the full-tired snap — so workedLabor stays the exact complement of totalTired.
+			if (this.tired[w] >= this.amount[w] - 1e-7) this.tired[w] = this.amount[w];
+			actual += this.tired[w] - before;
+			if (this.tired[w] >= this.amount[w] - 1e-7) this.setState(w, WORKER_WALK_HOME);
 		}
 		this.model.workedLabor += actual;
 	}
@@ -282,7 +283,9 @@ class WorkerPool {
 		if (paid > 0) {
 			m.money.payTown(c, paid);
 			this.logEvent(w, EVT_TAX, paid);
+			m.tracker.expense(w, paid, c);
 		}
+		m.tracker.visit(this.id[w], c, paid);
 		m.roomCount[c] += this.amount[w];
 		this.setState(w, WORKER_ROOM);
 		towns.buyRation(c, w);
@@ -337,11 +340,12 @@ class WorkerPool {
 				}
 			} else if (st === WORKER_STILL) {
 				if (this.tired[w] > 1e-9) {
-					const rest = Math.min(this.tired[w], this.amount[w] * shelterShare * land.rest[c]);
-					this.tired[w] = Math.max(0, this.tired[w] - rest);
-					tickRested += rest;
-					if (this.tired[w] <= 1e-8) this.tired[w] = 0;
-					this.relaunchTired(w);
+				const rest = Math.min(this.tired[w], this.amount[w] * shelterShare * land.rest[c]);
+				this.tired[w] = Math.max(0, this.tired[w] - rest);
+				tickRested += rest;
+				// Zeroing a residual credits it too: restedDepleted must match every tired decrement exactly.
+				if (this.tired[w] <= 1e-8) { tickRested += this.tired[w]; this.tired[w] = 0; }
+				this.relaunchTired(w);
 				} else {
 					this.relaunchFresh(w);
 				}
@@ -361,7 +365,7 @@ class WorkerPool {
 		if (this.tired[w] > 1e-9) {
 			rested = Math.min(this.tired[w], this.amount[w] * shelterShare * land.rest[c] * 0.55);
 			this.tired[w] = Math.max(0, this.tired[w] - rested);
-			if (this.tired[w] <= 1e-8) this.tired[w] = 0;
+			if (this.tired[w] <= 1e-8) { rested += this.tired[w]; this.tired[w] = 0; }
 		}
 		if (this.food[w] >= FOOD_FULL) {
 			this.logEvent(w, EVT_FED, this.food[w]);
@@ -432,10 +436,11 @@ class WorkerPool {
 			return 0;
 		}
 		const rate = m.towns.roomRestRate(c);
-		const recover = Math.min(this.tired[w], this.paidRest[w], rate * this.amount[w] * ECONOMY_DT);
+		let recover = Math.min(this.tired[w], this.paidRest[w], rate * this.amount[w] * ECONOMY_DT);
 		this.tired[w] = Math.max(0, this.tired[w] - recover);
 		this.paidRest[w] = Math.max(0, this.paidRest[w] - recover);
 		if (this.tired[w] <= 1e-8) {
+			recover += this.tired[w];
 			this.tired[w] = 0;
 			this.paidRest[w] = 0;
 			this.logEvent(w, EVT_LEAVE, this.gold[w]);

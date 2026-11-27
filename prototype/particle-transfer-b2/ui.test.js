@@ -41,6 +41,9 @@ function makeNode(tag = 'DIV', id = '', depth = 0) {
 		style: {}, dataset: {}, children: [], parent: null, nextElementSibling: null,
 		classList: { toggle() {} },
 		setAttribute() {},
+		appendChild() {},
+		select() {},
+		remove() {},
 		getContext() { return this._ctx || (this._ctx = makeCtx()); },
 		getBoundingClientRect() { return { left: 0, top: 0, right: 480, bottom: 280, width: 480, height: 280 }; },
 		addEventListener(type, fn) { (listeners[type] || (listeners[type] = [])).push(fn); },
@@ -52,7 +55,8 @@ function makeNode(tag = 'DIV', id = '', depth = 0) {
 		close() { this.open = false; },
 		querySelector(sel) {
 			if (sel === 'canvas') return makeNode('CANVAS', '', 1);
-			return makeNode('SPAN', '', 1);
+			node._q = node._q || {};
+			return node._q[sel] || (node._q[sel] = makeNode('SPAN', '', 1));
 		}
 	};
 	if (!depth) {
@@ -64,10 +68,10 @@ function makeNode(tag = 'DIV', id = '', depth = 0) {
 
 const cardStub = { querySelector() { return makeNode('SPAN', '', 1); } };
 
-test('index.html boots all 17 scripts, renders every resource tab, places a Garden/Farm and updates watched worker', () => {
+test('index.html boots all 21 scripts, renders every resource tab, places a Garden/Farm and updates watched worker', () => {
 	const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 	const scripts = Array.from(html.matchAll(/<script src="([^"]+)"><\/script>/g), m => m[1]);
-	assert.equal(scripts.length, 17);
+	assert.equal(scripts.length, 22);
 	const byId = new Map();
 	for (const [, id] of html.matchAll(/\bid="([^"]+)"/g)) {
 		const node = makeNode(id.includes('map') || id.includes('relief') ? 'CANVAS' : 'DIV', id);
@@ -87,12 +91,14 @@ test('index.html boots all 17 scripts, renders every resource tab, places a Gard
 		requestAnimationFrame(cb) { rafCb = cb; },
 		document: {
 			fonts: null,
+			body: makeNode('BODY'),
 			getElementById(id) {
 				assert.ok(byId.has(id), `Missing id in index.html: ${id}`);
 				return byId.get(id);
 			},
 			createElement(tag) { return makeNode(tag.toUpperCase()); },
 			addEventListener() {},
+			execCommand() {},
 			querySelectorAll(sel) {
 				if (sel === '[data-icon]') return [];
 				if (sel === '.metric') return metrics;
@@ -107,7 +113,7 @@ test('index.html boots all 17 scripts, renders every resource tab, places a Gard
 		vm.runInContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), sandbox, { filename: file });
 	}
 	assert.ok(typeof rafCb === 'function', 'bootEconomy should schedule animation frame');
-	assert.match(byId.get('watched-worker').textContent, /Watched worker #1/);
+	assert.match(byId.get('watched-worker').querySelector('[data-track-head]').textContent, /Watched worker #1/);
 	assert.match(byId.get('actor-count').textContent, /1 A/);
 	for (const btn of resources) {
 		btn.click();

@@ -66,14 +66,16 @@ const STOCK_RGB = buildRgbStops(STOCK_COLORS);
 
 class FieldPlot {
 	constructor(canvas, isStock) {
-		this.canvas = canvas;
-		this.ctx = canvas.getContext('2d', { alpha: false });
-		this.isStock = isStock;
-		this.resource = 'coal';
-		this.tooltip = canvas.nextElementSibling;
-		this.view = new Float64Array(ECONOMY_SIZE);
-		this.scale = 1;
-		this.legendKey = '';
+			this.canvas = canvas;
+			this.ctx = canvas.getContext('2d', { alpha: false });
+			this.isStock = isStock;
+			this.resource = 'coal';
+			this.shape = 'triangles';
+			this.tooltip = canvas.nextElementSibling;
+			this.view = new Float64Array(ECONOMY_SIZE);
+			this.goldFlow = { flowX: new Float64Array(ECONOMY_SIZE), flowY: new Float64Array(ECONOMY_SIZE) };
+			this.scale = 1;
+			this.legendKey = '';
 		this.scaleLabel = canvas.closest('.field-card').querySelector('.scale-label');
 		const colors = isStock ? STOCK_COLORS : PRICE_COLORS;
 		this.palette = fieldPalette(colors);
@@ -216,7 +218,10 @@ class FieldPlot {
 		g.drawImage(this.grid, 0, 0, this.w, this.h);
 		g.save();
 		g.translate(left, top);
-		if (isStock && showParticles) this.drawParticles(model);
+		if (isStock && showParticles) {
+			if (this.resource === 'gold') this.drawFlows(model);
+			this.drawParticles(model, showParticles);
+		}
 		for (const marker of this.markers) this.drawMarker(marker, model);
 		this.drawWatchedRing(model);
 		if (selection >= 0) {
@@ -226,55 +231,132 @@ class FieldPlot {
 		g.restore();
 	}
 
-	drawParticles(model) {
+	// Goods: delivered unit price -> color; workers: carried wallet per worker -> color; amount -> size.
+	// Shape follows this.shape: heading triangles (default), single-pixel points, or a large triangle on every 8th particle.
+	drawParticles(model, vectors) {
+		const { ctx: g } = this;
+		g.lineWidth = 1.1;
+		g.lineCap = 'round';
 		if (this.resource === 'coal' || this.resource === 'food' || this.resource === 'goods') {
-			this.drawGoodsParticles(model, this.resource === 'coal' ? ITEM_COAL : this.resource === 'food' ? ITEM_FOOD : ITEM_GOODS);
+			const kind = this.resource === 'coal' ? ITEM_COAL : this.resource === 'food' ? ITEM_FOOD : ITEM_GOODS;
+			const pool = model.goodsPool;
+			const priceRef = Math.max(1, START_PRICE * 1.6);
+			for (let p = 0; p < pool.count; p++) {
+				if (pool.kind[p] !== kind) continue;
+				const priceIdx = Math.min(63, Math.max(0, Math.round((pool.unitPrice(p) / priceRef) * 63)));
+				this.drawParticle(pool, p, ITEM_CSS[priceIdx], Math.sqrt(pool.amount[p] / SPAWN_UNIT), vectors);
+			}
 			return;
 		}
-		this.drawWorkerParticles(model);
-	}
-
-	drawGoodsParticles(model, kind) {
-		const { ctx: g, cw, ch } = this, pool = model.goodsPool;
-		const priceRef = Math.max(1, START_PRICE * 1.6);
-		g.strokeStyle = '#14131ad8';
-		g.lineWidth = 1;
-		for (let p = 0; p < pool.count; p++) {
-			if (pool.kind[p] !== kind) continue;
-			const priceIdx = Math.min(63, Math.max(0, Math.round((pool.unitPrice(p) / priceRef) * 63)));
-			const radius = Math.max(2.1, Math.min(4.8, cw * 0.26 * Math.sqrt(pool.amount[p] / SPAWN_UNIT)));
-			const px = pool.x[p] * cw, py = pool.y[p] * ch;
-			g.fillStyle = ITEM_CSS[priceIdx];
-			g.beginPath();
-			g.arc(px, py, radius, 0, Math.PI * 2);
-			g.fill();
-			g.stroke();
-		}
-	}
-
-	drawWorkerParticles(model) {
-		const { ctx: g, cw, ch } = this, { workers } = model;
+		const { workers } = model;
 		const goldRef = SEED_WORKER_GOLD * 2.5;
-		g.lineWidth = 1.1;
 		for (let w = 0; w < workers.count; w++) {
 			const st = workers.state[w];
 			if (!workers.isWalking(st)) continue;
 			if (this.resource === 'forage' && st !== WORKER_FORAGE) continue;
-			const px = workers.x[w] * cw, py = workers.y[w] * ch;
-			const r = Math.max(2.4, Math.min(4.2, cw * 0.27));
-			if (st === WORKER_FORAGE) {
-				g.fillStyle = '#84f3a9';
-				g.strokeStyle = '#143822';
-			} else {
-				const idx = Math.min(63, Math.max(0, Math.round((workers.gold[w] / goldRef) * 63)));
-				g.fillStyle = WALLET_CSS[idx];
-				g.strokeStyle = '#181522';
-			}
-			g.beginPath();
-			g.arc(px, py, r, 0, Math.PI * 2);
-			g.fill();
-			g.stroke();
+			const color = st === WORKER_FORAGE
+				? '#84f3a9'
+				: WALLET_CSS[Math.min(63, Math.max(0, Math.round((workers.gold[w] / goldRef) * 63)))];
+			this.drawParticle(workers, w, color, 1, vectors);
 		}
+	}
+
+	drawParticle(pool, p, color, size, vectors) {
+		const { ctx: g, cw, ch, shape } = this;
+		if (size <= 0 || (shape === 'large' && (p & 7))) return;
+		const px = pool.x[p] * cw, py = pool.y[p] * ch;
+		const hx = pool.hx[p], hy = pool.hy[p];
+		if (vectors && hx * hx + hy * hy > 0.04) {
+			g.strokeStyle = '#14131ad8';
+			g.globalAlpha = 0.55;
+			g.beginPath();
+			g.moveTo(px, py);
+			g.lineTo(px - hx * cw * 0.12, py - hy * ch * 0.12);
+			g.stroke();
+			g.globalAlpha = 1;
+		}
+		g.fillStyle = color;
+		if (shape === 'points') {
+			g.fillRect(px, py, 1 / this.dpr, 1 / this.dpr);
+			return;
+		}
+		const unit = Math.max(3, Math.min(cw, ch) * 0.5);
+		const len = (shape === 'large' ? 1.9 : 1) * unit * (0.72 + 0.4 * Math.min(1, size));
+		this.drawTriangle(px, py, hx, hy, len);
+	}
+
+	// One flock-style triangle: tip along the smoothed heading, base across it; a parked particle points up.
+	drawTriangle(px, py, hx, hy, len) {
+		const g = this.ctx;
+		const speed2 = hx * hx + hy * hy;
+		let ux = 0, uy = -1;
+		if (speed2 > 1e-6) {
+			const inv = 1 / Math.sqrt(speed2);
+			ux = hx * inv;
+			uy = hy * inv;
+		}
+		const tip = len * 0.5, wing = len * 0.3;
+		g.beginPath();
+		g.moveTo(px + ux * tip, py + uy * tip);
+		g.lineTo(px - ux * tip - uy * wing, py - uy * tip + ux * wing);
+		g.lineTo(px - ux * tip + uy * wing, py - uy * tip - ux * wing);
+		g.closePath();
+		g.fill();
+	}
+
+	// Gold arrows show goods-particle value flux plus gold-weighted walking wallets heading across the map.
+	buildGoldFlows(model) {
+		const { flowX, flowY } = this.goldFlow;
+		const { goodsPool, workers } = model;
+		flowX.fill(0);
+		flowY.fill(0);
+		for (let p = 0; p < goodsPool.count; p++) {
+			const i = economyIndex(Math.floor(goodsPool.x[p]), Math.floor(goodsPool.y[p]));
+			const value = goodsPool.amount[p] * goodsPool.unitPrice(p);
+			flowX[i] += goodsPool.hx[p] * value;
+			flowY[i] += goodsPool.hy[p] * value;
+		}
+		for (let w = 0; w < workers.count; w++) {
+			if (!workers.isWalking(workers.state[w])) continue;
+			const i = workers.cell[w];
+			flowX[i] += workers.hx[w] * workers.gold[w];
+			flowY[i] += workers.hy[w] * workers.gold[w];
+		}
+		return this.goldFlow;
+	}
+
+	drawFlows(model) {
+		this.drawVectors(model, this.buildGoldFlows(model));
+	}
+
+	drawVectors(model, scratch) {
+		const { ctx: g, cw, ch } = this;
+		g.strokeStyle = '#fff0ca';
+		g.lineWidth = 1;
+		g.lineCap = 'round';
+		const time = model.ticks * ECONOMY_DT;
+		for (let y = 0; y < ECONOMY_HEIGHT; y += 2) {
+			for (let x = (y / 2) % 2; x < ECONOMY_WIDTH; x += 2) {
+				const i = economyIndex(x, y);
+				const vx = scratch.flowX[i], vy = scratch.flowY[i], mag = Math.hypot(vx, vy);
+				if (mag < 0.0002) continue;
+				const screenLength = Math.hypot(vx * cw, vy * ch);
+				const dx = vx * cw / screenLength, dy = vy * ch / screenLength;
+				const offset = ((time * 1.3 + i * .618) % 1 - 0.5) * cw * 0.75;
+				const cx = (x + 0.5) * cw + dx * offset, cy = (y + 0.5) * ch + dy * offset;
+				const len = Math.max(3, Math.min(cw, ch) * 0.57), wing = len * 0.5;
+				const tx = cx + len * dx, ty = cy + len * dy;
+				g.globalAlpha = 0.35 + Math.min(0.55, mag * 16);
+				g.beginPath();
+				g.moveTo(cx - len * dx, cy - len * dy);
+				g.lineTo(tx, ty);
+				g.moveTo(tx - wing * (dx + dy), ty - wing * (dy - dx));
+				g.lineTo(tx, ty);
+				g.lineTo(tx - wing * (dx - dy), ty - wing * (dy + dx));
+				g.stroke();
+			}
+		}
+		g.globalAlpha = 1;
 	}
 
 	drawWatchedRing(model) {

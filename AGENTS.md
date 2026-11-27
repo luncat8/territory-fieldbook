@@ -96,7 +96,15 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 
 - findings-pitfalls-skills.md — notes and pitfalls for LLM agents. write here if found a good way to do something.
 - units-and-scales.md — field units, rate budgets and the single-pass stability rule; read before touching diffusion rates or the tick.
-- archive/ — implemented plans, worklogs.
+- archive/ — implemented plans, worklogs, and the archived B1 prototype labs (economy-demand-product-diffusion, price-model-b, water-humidity).
+
+## prototype labs (B2 ports)
+
+- prototype/shared/lab.css — common visual rules shared by both B2 labs; each lab's styles.css loads after and overrides only what differs.
+- prototype/shared/lab-ui.js — `$` DOM lookup + `ICON_PATHS`/`labIcon(name)` SVG helpers; loaded before each lab's app.js. Per-lab `RESOURCE_TITLES`/`TOOL_KINDS` stay in app.js.
+- prototype/shared/economy-panel.js — `EconomyPanel(diagnostics, rows, watched)` inspector shell (row groups + stall-flag list + clipboard copy); pure view over each lab's `diagnostics.js` contract.
+- prototype/particle-transfer-b2/ — port of the d198120 reference lab: torus wrap, wage-claims + cost relaxation, particle/triangle/gold-flux rendering, Watched Workers audit (track.js/tracked.js), economy diagnostics. Tests: 38.
+- prototype/price-model-b2/ — cell-lab B2 port + economy inspector adapter (diagnostics.js). Tests: 72.
 
 ## drafts = human input
 

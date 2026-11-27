@@ -177,6 +177,7 @@ class TownRules {
 		stockCost[i] *= 1 - bought / avail;
 		m.consumedFood += bought;
 		workers.gold[w] -= cost;
+		if (cost > 0) m.tracker.expense(w, cost, i);
 		this.model.food[i] -= bought;
 		workers.food[w] = Math.min(FOOD_BAG, workers.food[w] + bought);
 		if (cost > 0) {

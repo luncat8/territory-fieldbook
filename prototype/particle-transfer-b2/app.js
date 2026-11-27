@@ -2,23 +2,6 @@
 // Edit for: resource tab titles, tool hints, keyboard bindings and fixed-timestep frame loop.
 'use strict';
 
-const $ = id => document.getElementById(id);
-const ICON_PATHS = {
-	book:'M12 6c-3-2-7-2-10-1v13c3-1 7-1 10 1 3-2 7-2 10-1V5c-3-1-7-1-10 1Zm0 0v13',
-	pause:'M9 5v14M15 5v14',play:'m8 4 12 8-12 8z',step:'m5 5 10 7-10 7zM19 5v14',chevron:'m6 9 6 6 6-6',
-	box:'m3 7 9-5 9 5v10l-9 5-9-5zM3 7l9 5 9-5M12 12v10',
-	up:'M3 17l6-6 4 4 8-10m-7 0h7v7',down:'m3 7 6 6 4-4 8 10m-7 0h7v-7',
-	grid:'M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18',check:'m5 12 4 4L19 6',
-	layers:'m2 8 10-5 10 5-10 5zM2 12l10 5 10-5M2 16l10 5 10-5',
-	contour:'M3 12c0-4 3-4 5-7 4-5 11-2 11 3 0 4 5 6 2 10-2 4-6 1-10 3-5 1-9-3-8-9Zm4 0c0-2 3-3 4-5 3-2 5 0 5 3 0 3 4 5 1 7-2 1-3-1-6 0-3 1-5-2-4-5Zm4 0c1-3 4-3 4 1 0 3-4 3-4-1Z',
-	sliders:'M3 7h4m5 0h9M3 17h10m5 0h3M7 4h5v6H7zM13 14h5v6h-5z',
-	cursor:'m4 3 6.5 18 3.2-7.5L21 10z',crosshair:'M12 3v5m0 8v5M3 12h5m8 0h5M19 12a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z',
-	diamond:'m12 2 10 10-10 10L2 12z',hexagon:'M12 2l8.7 5v10L12 22l-8.7-5V7z',square:'M4 4h16v16H4z',circle:'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z',
-	leaf:'M11 20A7 7 0 0 1 4 13C4 7 11 4 20 4c0 9-3 16-9 16Zm0 0v-7',
-	erase:'m3 14 10-10a2 2 0 0 1 3 0l5 5a2 2 0 0 1 0 3l-8 8H9l-6-6Zm6-6 8 8M12 20h9',
-	reset:'M3 4v6h6M4 9a8 8 0 1 1 .7 8',clear:'M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7',close:'m6 6 12 12M18 6 6 18'
-};
-const labIcon = name => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON_PATHS[name]}"/></svg>`;
 const RESOURCE_TITLES = {
 	coal: ['Coal particles & buffers', 'Live coal particles coloured by cost + haul price', 'Coal price', 'Diffused buyer bid per cell'],
 	food: ['Food particles & farmland', 'Commercial harvests, bazaar food stocks and deliveries', 'Food price', 'Town bazaar bids attract farms and food'],
@@ -46,10 +29,14 @@ function bootEconomy() {
 	const model = new PriceEconomy();
 	const plots = [new FieldPlot($('resource-map'), true), new FieldPlot($('price-map'), false)];
 	const stats = new EconomyTelemetry();
+	const diagnostics = new EconomyDiagnostics(model);
+	const tracked = new TrackedPanel(model, diagnostics);
+	const panel = new EconomyPanel(diagnostics, PANEL_ROWS, () => model.tracker.list);
 	const guide = $('field-guide'), runButton = $('run-button'), runState = $('run-state');
 	const speedSelect = $('speed'), decay = $('price-decay'), derived = $('derived-bid'), suppression = $('stock-suppression'), flow = $('show-flow');
 	const toolButtons = document.querySelectorAll('[data-tool]'), clearButton = $('clear-towns');
 	const resourceButtons = document.querySelectorAll('[data-resource]');
+	const edgeButtons = document.querySelectorAll('[data-map-edge]');
 	const message = $('edit-message'), stepButton = $('step-button');
 	let running = !matchMedia('(prefers-reduced-motion: reduce)').matches;
 	let rate = Number(speedSelect.value), tool = 'inspect';
@@ -58,7 +45,10 @@ function bootEconomy() {
 	model.decay = decay.checked;
 	model.derived = derived.checked;
 	model.suppression = suppression.checked;
-	$('grid-size').textContent = `${ECONOMY_WIDTH} × ${ECONOMY_HEIGHT} (forage ${model.forage.cw} × ${model.forage.ch})`;
+	function syncEdgeLabel() {
+		$('grid-size').textContent = `${ECONOMY_WIDTH} × ${ECONOMY_HEIGHT} (forage ${model.forage.cw} × ${model.forage.ch}) · ${MAP_WRAP ? 'wrap' : 'bounded'}`;
+	}
+	syncEdgeLabel();
 	$('source-note').textContent = SOURCE_RATE.toFixed(2);
 	$('uptake-note').textContent = NEED_RATE.toFixed(2);
 	$('start-price-note').textContent = START_PRICE.toFixed(0);
@@ -107,7 +97,7 @@ function bootEconomy() {
 				const pickedWorker = model.workers.pickNear(gx, gy, 1.8);
 				if (pickedWorker > 0) {
 					model.workers.watch(pickedWorker);
-					stats.refreshWatched(model);
+					tracked.refresh();
 				}
 			}
 			pinned = !(pinned && owner === plot && selected === i);
@@ -127,7 +117,7 @@ function bootEconomy() {
 
 	function tick() {
 		const townFounded = model.settlements.founded, firmFounded = model.founding.founded;
-		model.step(); stats.record(model); dirty = true;
+		model.step(); stats.record(model); diagnostics.record(); tracked.tick(); dirty = true;
 		if (model.settlements.founded !== townFounded || model.founding.founded !== firmFounded) syncActors();
 	}
 
@@ -139,7 +129,10 @@ function bootEconomy() {
 			while (accumulator >= ECONOMY_DT) { tick(); accumulator -= ECONOMY_DT; }
 		}
 		if (dirty && now - lastPaint >= 1000 / 30) { paint(); lastPaint = now; }
-		if (running && now - lastStats >= 250) { stats.refresh(model); readings(); lastStats = now; }
+		if (now - lastStats >= 250) {
+			if (running) stats.refresh(model);
+			tracked.refresh(); panel.refresh(); readings(); lastStats = now;
+		}
 		requestAnimationFrame(frame);
 	}
 
@@ -156,10 +149,10 @@ function bootEconomy() {
 	function toggleRun() { running = !running; syncPlayback(); stats.refresh(model); readings(); }
 
 	function reset() {
-		model.reset(); stats.reset(model); syncActors(); clearSelection();
+		model.reset(); stats.reset(model); tracked.reset(); syncActors(); clearSelection();
 		accumulator = 0; lastFrame = performance.now();
 		message.textContent = 'Reset · goods and workers run as conserved SoA particles.';
-		stats.refresh(model); paint();
+		stats.refresh(model); tracked.refresh(); panel.refresh(); paint();
 	}
 
 	for (const plot of plots) {
@@ -201,6 +194,21 @@ function bootEconomy() {
 	derived.addEventListener('change', () => { model.derived = derived.checked; message.textContent = `Derived bid ${model.derived ? 'enabled' : 'disabled'}.`; });
 	suppression.addEventListener('change', () => { model.suppression = suppression.checked; message.textContent = `Stock suppression ${model.suppression ? 'enabled' : 'disabled'}.`; });
 	flow.addEventListener('change', () => { dirty = true; paint(); });
+	$('particle-shape').addEventListener('change', event => {
+		for (const plot of plots) plot.shape = event.target.value;
+		dirty = true; paint();
+	});
+	for (const button of edgeButtons) button.addEventListener('click', () => {
+		const wrap = button.dataset.mapEdge === 'wrap';
+		for (const candidate of edgeButtons) candidate.setAttribute('aria-pressed', candidate === button);
+		setMapWrap(wrap);
+		model.land.refresh();
+		model.forage.rebuildCoarse();
+		model.forage.warm();
+		syncEdgeLabel();
+		message.textContent = wrap ? 'Map wraps X and Y: goods, workers and prices cross the edges.' : 'Map bounded: edges and corners reflect prices.';
+		dirty = true;
+	});
 	$('new-map').addEventListener('click', reset);
 	clearButton.addEventListener('click', () => { model.clearTowns(); syncActors(); readings(); paint(); message.textContent = 'Towns removed. Tired workers shelter-rest, forage and found a young town.'; });
 	$('guide-button').addEventListener('click', () => guide.showModal());
@@ -223,6 +231,9 @@ function bootEconomy() {
 	for (let n = 0; n < Math.round(12 / ECONOMY_DT); n++) tick();
 	syncActors(); syncPlayback(); fit();
 	if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+	tracked.tick();
+	tracked.refresh();
+	panel.refresh();
 	requestAnimationFrame(frame);
 }
 

@@ -48,11 +48,18 @@ class ForageSystem {
 		for (let ci = 0; ci < this.cn; ci++) {
 			const cx = ci % this.cw, cy = Math.floor(ci / this.cw);
 			for (let k = 0; k < DEGREE; k++) {
-				const nx = cx + DIRECTIONS[k].x, ny = cy + DIRECTIONS[k].y;
-				if (nx >= 0 && nx < this.cw && ny >= 0 && ny < this.ch) res[ci * DEGREE + k] = ny * this.cw + nx;
+				let nx = cx + DIRECTIONS[k].x, ny = cy + DIRECTIONS[k].y;
+				if (MAP_WRAP) { nx = ((nx % this.cw) + this.cw) % this.cw; ny = ((ny % this.ch) + this.ch) % this.ch; }
+				else if (nx < 0 || nx >= this.cw || ny < 0 || ny >= this.ch) continue;
+				res[ci * DEGREE + k] = ny * this.cw + nx;
 			}
 		}
 		return res;
+	}
+
+	// Topology swaps rebuild the coarse neighbour table; the field itself re-diffuses via warm().
+	rebuildCoarse() {
+		this.coarseNeighbors = this.buildCoarseNeighbors();
 	}
 
 	reset() {
@@ -84,9 +91,13 @@ class ForageSystem {
 	claimPlots(g) {
 		const { actors, land, settlements } = this.model;
 		const gx = g % ECONOMY_WIDTH, gy = Math.floor(g / ECONOMY_WIDTH), tag = g + 1;
-		for (let y = Math.max(0, gy - GARDEN_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, gy + GARDEN_RADIUS); y++) {
-			for (let x = Math.max(0, gx - GARDEN_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, gx + GARDEN_RADIUS); x++) {
-				const i = economyIndex(x, y);
+		for (let y = gy - GARDEN_RADIUS, yEnd = gy + GARDEN_RADIUS; y <= yEnd; y++) {
+			const wy = MAP_WRAP ? wrapY(y) : y;
+			if (wy < 0 || wy >= ECONOMY_HEIGHT) continue;
+			for (let x = gx - GARDEN_RADIUS, xEnd = gx + GARDEN_RADIUS; x <= xEnd; x++) {
+				const wx = MAP_WRAP ? wrapX(x) : x;
+				if (wx < 0 || wx >= ECONOMY_WIDTH) continue;
+				const i = economyIndex(wx, wy);
 				if (land.terrain[i] === TERRAIN_WATER || (actors[i] && i !== g) || this.plotOwner[i] !== 0 || this.model.farms.plotOwner[i]) continue;
 				this.plotOwner[i] = tag;
 				settlements.forest[i] *= 0.25;
@@ -105,9 +116,13 @@ class ForageSystem {
 	plotCount(g) {
 		const gx = g % ECONOMY_WIDTH, gy = Math.floor(g / ECONOMY_WIDTH), tag = g + 1;
 		let count = 0;
-		for (let y = Math.max(0, gy - GARDEN_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, gy + GARDEN_RADIUS); y++) {
-			for (let x = Math.max(0, gx - GARDEN_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, gx + GARDEN_RADIUS); x++) {
-				if (this.plotOwner[economyIndex(x, y)] === tag) count++;
+		for (let y = gy - GARDEN_RADIUS, yEnd = gy + GARDEN_RADIUS; y <= yEnd; y++) {
+			const wy = MAP_WRAP ? wrapY(y) : y;
+			if (wy < 0 || wy >= ECONOMY_HEIGHT) continue;
+			for (let x = gx - GARDEN_RADIUS, xEnd = gx + GARDEN_RADIUS; x <= xEnd; x++) {
+				const wx = MAP_WRAP ? wrapX(x) : x;
+				if (wx < 0 || wx >= ECONOMY_WIDTH) continue;
+				if (this.plotOwner[economyIndex(wx, wy)] === tag) count++;
 			}
 		}
 		return count;
@@ -155,9 +170,13 @@ class ForageSystem {
 		this.gardenCrop[g] = 0;
 		const gx = g % ECONOMY_WIDTH, gy = Math.floor(g / ECONOMY_WIDTH), tag = g + 1;
 		let harvest = 0;
-		for (let y = Math.max(0, gy - GARDEN_RADIUS); y <= Math.min(ECONOMY_HEIGHT - 1, gy + GARDEN_RADIUS); y++) {
-			for (let x = Math.max(0, gx - GARDEN_RADIUS); x <= Math.min(ECONOMY_WIDTH - 1, gx + GARDEN_RADIUS); x++) {
-				const i = economyIndex(x, y);
+		for (let y = gy - GARDEN_RADIUS, yEnd = gy + GARDEN_RADIUS; y <= yEnd; y++) {
+			const wy = MAP_WRAP ? wrapY(y) : y;
+			if (wy < 0 || wy >= ECONOMY_HEIGHT) continue;
+			for (let x = gx - GARDEN_RADIUS, xEnd = gx + GARDEN_RADIUS; x <= xEnd; x++) {
+				const wx = MAP_WRAP ? wrapX(x) : x;
+				if (wx < 0 || wx >= ECONOMY_WIDTH) continue;
+				const i = economyIndex(wx, wy);
 				if (this.plotOwner[i] === tag) harvest += GARDEN_CELL_YIELD * this.plotQuality(i) * workShare;
 			}
 		}
@@ -225,12 +244,21 @@ class ForageSystem {
 		if (this.model.land.terrain[i] === TERRAIN_WATER) return 0;
 		const fx = (i % ECONOMY_WIDTH + 0.5) / FORAGE_SCALE - 0.5;
 		const fy = (Math.floor(i / ECONOMY_WIDTH) + 0.5) / FORAGE_SCALE - 0.5;
-		const x0 = Math.max(0, Math.min(this.cw - 1, Math.floor(fx)));
-		const y0 = Math.max(0, Math.min(this.ch - 1, Math.floor(fy)));
-		const x1 = Math.min(this.cw - 1, x0 + 1);
-		const y1 = Math.min(this.ch - 1, y0 + 1);
-		const tx = Math.max(0, Math.min(1, fx - x0));
-		const ty = Math.max(0, Math.min(1, fy - y0));
+		let x0 = Math.floor(fx), y0 = Math.floor(fy), x1, y1, tx, ty;
+		if (MAP_WRAP) {
+			tx = fx - x0; ty = fy - y0;
+			x0 = ((x0 % this.cw) + this.cw) % this.cw;
+			y0 = ((y0 % this.ch) + this.ch) % this.ch;
+			x1 = (x0 + 1) % this.cw;
+			y1 = (y0 + 1) % this.ch;
+		} else {
+			x0 = Math.max(0, Math.min(this.cw - 1, x0));
+			y0 = Math.max(0, Math.min(this.ch - 1, y0));
+			x1 = Math.min(this.cw - 1, x0 + 1);
+			y1 = Math.min(this.ch - 1, y0 + 1);
+			tx = Math.max(0, Math.min(1, fx - x0));
+			ty = Math.max(0, Math.min(1, fy - y0));
+		}
 		const f = this.field;
 		const top = f[y0 * this.cw + x0] * (1 - tx) + f[y0 * this.cw + x1] * tx;
 		const bot = f[y1 * this.cw + x0] * (1 - tx) + f[y1 * this.cw + x1] * tx;
