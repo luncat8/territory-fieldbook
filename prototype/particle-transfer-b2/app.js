@@ -28,7 +28,8 @@ const TOOL_HINTS = {
 function bootEconomy() {
 	for (const node of document.querySelectorAll('[data-icon]')) node.outerHTML = labIcon(node.dataset.icon);
 	const toolKinds = { inspect: 0, erase: 0, mine: ECONOMY_MINE, factory: ECONOMY_FACTORY, town: ECONOMY_TOWN, gold: ECONOMY_GOLD, garden: ECONOMY_GARDEN, farm: ECONOMY_FARM, sawmill: ECONOMY_SAWMILL };
-	const model = new PriceEconomy();
+	const settings = new LabSettings(typeof localStorage === 'undefined' ? null : localStorage);
+	const model = new PriceEconomy(settings.data.goldPerWorker, settings.data.bankCapital);
 	const plots = [new FieldPlot($('resource-map'), true), new FieldPlot($('price-map'), false)];
 	const stats = new EconomyTelemetry();
 	const diagnostics = new EconomyDiagnostics(model);
@@ -47,6 +48,38 @@ function bootEconomy() {
 	model.decay = decay.checked;
 	model.derived = derived.checked;
 	model.suppression = suppression.checked;
+	// Saved preferences are not a saved world: a reload starts a fresh scene with the same policy.
+	const creditBox = $('credit-money');
+	$('initial-gold').value = settings.data.goldPerWorker;
+	$('bank-capital').value = settings.data.bankCapital;
+	$('transport-preset').value = String(settings.data.transportPreset);
+	model.money.transportPreset = settings.data.transportPreset;
+	model.creditMoney = settings.data.creditMoney;
+	creditBox.checked = model.creditMoney;
+	function persistPrefs() {
+		settings.data.goldPerWorker = Number($('initial-gold').value);
+		settings.data.bankCapital = Number($('bank-capital').value);
+		settings.data.transportPreset = Number($('transport-preset').value);
+		settings.data.creditMoney = creditBox.checked;
+		settings.save();
+	}
+	function setCreditMoney(on) {
+		const outstanding = model.currencies.totalOutstanding();
+		if (!on) {
+			model.creditMoney = false;
+			message.textContent = outstanding > 0
+				? `Credit money off: new note issuance stops, ${outstanding.toFixed(2)} outstanding notes keep settling and redeeming.`
+				: 'Credit money off: the economy settles in gold only.';
+		} else {
+			model.creditMoney = true;
+			model.banks.syncIssuer();
+			message.textContent = model.banks.noteIssuer() >= 0
+				? 'Credit money on: the chartered bank can issue bounded note loans. No notes, gold or wallets were created.'
+				: 'Credit money on: charter or fund a bank first — Fund transfers owner gold, nothing mints.';
+		}
+		persistPrefs();
+		texts();
+	}
 	function syncEdgeLabel() {
 		$('grid-size').textContent = `${ECONOMY_WIDTH} × ${ECONOMY_HEIGHT} (forage ${model.forage.cw} × ${model.forage.ch}) · ${MAP_WRAP ? 'wrap' : 'bounded'}`;
 	}
@@ -167,6 +200,7 @@ function bootEconomy() {
 		model.goldPerWorker = capital;
 		model.bankCapital = bankCapital;
 		model.reset(); stats.reset(model); tracked.reset(); syncActors(); clearSelection();
+		persistPrefs();
 		accumulator = 0; lastFrame = performance.now();
 		message.textContent = model.banks.exists
 			? `Reset · gold bank chartered with ${model.banks.gold.toFixed(2)} g transferred from firm owners.`
@@ -215,8 +249,12 @@ function bootEconomy() {
 		message.textContent = model.money.transportPreset === TRANSPORT_T0
 			? 'T0 · haul fees drip back to towns (an explicit redistribution rule).'
 			: 'T1 · haul fees accumulate in the Transport Company account.';
+		persistPrefs();
 		texts();
 	});
+	creditBox.addEventListener('change', () => setCreditMoney(creditBox.checked));
+	$('initial-gold').addEventListener('change', persistPrefs);
+	$('bank-capital').addEventListener('change', persistPrefs);
 	$('fund-button').addEventListener('click', () => {
 		const amount = Number($('loan-amount').value);
 		const owner = selected >= 0 ? model.owners.ownerAt(selected) : 0;

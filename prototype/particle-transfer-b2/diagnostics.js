@@ -189,6 +189,12 @@ class EconomyDiagnostics {
 		s.bankWrittenDown = b.writtenDown;
 		s.bankArrears = b.arrearsAmount();
 		s.bankEquity = b.equity();
+		const issuer = b.noteIssuer() >= 0 ? m.currencies.issuers[b.noteIssuer()] : null;
+		s.notesIssued = issuer ? issuer.issued : 0;
+		s.notesRetired = issuer ? issuer.retired : 0;
+		s.notesOutstanding = issuer ? issuer.issued - issuer.retired : 0;
+		s.notesError = issuer ? m.currencies.invariantError(b.noteIssuer()) : 0;
+		s.creditMoney = m.creditMoney;
 	}
 
 	countWages(s, m) {
@@ -330,6 +336,7 @@ class EconomyDiagnostics {
 		if (s.bazaarEmpty) out.push(`${s.bazaarEmpty} town bazaar(s) are empty while populated: food bids go dead until a farm delivers`);
 		if (s.idleFarms) out.push(`${s.idleFarms} farm(s) hold fields but no crew on this tick`);
 		if (s.bankArrears > 1e-9) out.push(`loan arrears ${s.bankArrears.toFixed(2)} g: overdue principal at the gold bank (grace before default)`);
+		if (s.notesError > 1e-9) out.push(`note ledger error ${s.notesError.toExponential(1)}: issued − retired no longer matches outstanding balances (defect)`);
 		if (s.goldTimberOut) out.push(`${s.goldTimberOut} gold mine(s) out of timber: extraction pauses until a wood delivery arrives`);
 		if (s.bankDefaults > 0) out.push(`${s.bankDefaults} loan default(s) wrote down ${s.bankWrittenDown.toFixed(2)} g of bank equity; wage claims and other creditors stay whole`);
 		if (s.goldTotal > 1 && s.transport > 0.2 * s.goldTotal) out.push(`transport company holds ${pct(s.transport / s.goldTotal)} of all gold (${s.transport.toFixed(2)} g): fees are liquidity away from firms${s.redistributed > 0 ? `, ${s.redistributed.toFixed(2)} g redistributed under T0` : ''}`);
@@ -422,6 +429,12 @@ class EconomyDiagnostics {
 		const rows = ['## gold bank', 'reserves_g funded_g originated_g repaid_g interest_g arrears_g defaults_g written_g equity_g'];
 		rows.push(`${b.gold.toFixed(6)} ${b.funded.toFixed(6)} ${b.originated.toFixed(6)} ${b.repaid.toFixed(6)} ${b.interestPaid.toFixed(6)} ${b.arrearsAmount().toFixed(6)} ${b.defaults} ${b.writtenDown.toFixed(6)} ${b.equity().toFixed(6)}`);
 		if (!b.exists) rows.push('no bank chartered in this scene');
+		const issuer = b.noteIssuer() >= 0 ? this.model.currencies.issuers[b.noteIssuer()] : null;
+		rows.push('## notes', 'issued_n retired_n outstanding_n custody_n bank_held_n ledger_error_n');
+		if (issuer) {
+			const k = b.noteIssuer();
+			rows.push(`${issuer.issued.toFixed(6)} ${issuer.retired.toFixed(6)} ${(issuer.issued - issuer.retired).toFixed(6)} ${this.model.currencies.custody[k].toFixed(6)} ${issuer.bankHeld.toFixed(6)} ${this.model.currencies.invariantError(k).toExponential(1)}`);
+		} else rows.push('no note issuer: credit money off or no chartered bank');
 		return rows.join('\n');
 	}
 
@@ -457,6 +470,8 @@ class EconomyDiagnostics {
 			`wallet_share=${f(s.walletShare * 100, 1)}% wallet_mean=${f(s.walletMean, 4)} wallet_median=${f(s.walletMedian, 4)} wallet_max=${f(s.walletMax)} broke_workers=${s.walletBroke} firm_owed=${f(s.firmOwed)} unpaid_wage_claims=${f(s.unpaidWages)} inputs_paid=${f(s.inputsPaid)} redistributed=${f(s.redistributed)} loan_debt=${f(s.loanDebt)}`,
 			'## gold bank',
 			`chartered=${s.bankExists} reserves=${f(s.bankGold)} funded=${f(s.bankFunded)} originated=${f(s.bankOriginated)} repaid=${f(s.bankRepaid)} interest=${f(s.bankInterest)} arrears=${f(s.bankArrears)} defaults=${s.bankDefaults} written_down=${f(s.bankWrittenDown)} equity=${f(s.bankEquity)}`,
+			'## notes',
+			`credit_money=${s.creditMoney} outstanding=${f(s.notesOutstanding, 4)} issued=${f(s.notesIssued, 4)} retired=${f(s.notesRetired, 4)} ledger_error=${s.notesError.toExponential(1)}`,
 			'## wages & taxes',
 			`wage_field_at_firms=${f(s.wageAtFirms, 4)} wage_field_max=${f(s.wageFieldMax, 4)} entry_wage_per_worker=${f(s.entryWage, 4)} pay_per_labor_unit=${f(s.payPerLabor, 4)}`,
 			`wages_paid=${f(s.wagesPaid, 2)} taxes_paid=${f(s.taxesPaid, 2)} wages_rate=${f(s.wageRate, 4)} g/s taxes_rate=${f(s.taxRate, 4)} g/s`,
@@ -507,6 +522,12 @@ const PANEL_ROWS = [
 		['Defaults · written down', s => `${s.bankDefaults} · ${s.bankWrittenDown.toFixed(2)} g`, s => s.bankDefaults > 0],
 		['Interest · repaid', s => `${s.bankInterest.toFixed(3)} · ${s.bankRepaid.toFixed(2)} g`],
 		['Equity (gold + loans)', s => `${s.bankEquity.toFixed(2)} g`]
+	]],
+	['Notes', [
+		['Credit money', s => s.creditMoney ? 'on' : 'off'],
+		['Notes outstanding', s => `${s.notesOutstanding.toFixed(2)} n`, s => s.notesOutstanding > 1e-6],
+		['Issued · retired', s => `${s.notesIssued.toFixed(2)} · ${s.notesRetired.toFixed(2)} n`],
+		['Ledger error', s => s.notesError.toExponential(1), s => s.notesError > 1e-9]
 	]],
 	['Wages', [
 		['Wage at firms', s => `${s.wageAtFirms.toFixed(3)} g/u`, s => s.workers > 0 && s.wageAtFirms < 1e-6],

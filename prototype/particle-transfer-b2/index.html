@@ -61,6 +61,7 @@
 			<article class="panel"><div class="panel-heading"><i data-icon="sliders"></i><h2>Experiment settings</h2></div>
 				<div class="setting"><div><h3>New map</h3><p>Reset the reference chain. Starting gold is split equally between worker wallets and owner capital; no later placement grants gold or wood. Each scenario gold mine starts with a recorded timber reserve (a real asset, not money); 0 gold/worker is the strict bootstrap.</p></div><div class="presets"><label>Gold / worker <input id="initial-gold" type="number" min="0" step="0.1" value="1" style="width:5em" aria-label="Starting gold per worker on reset"></label><button id="new-map" type="button" aria-label="New map"><i data-icon="reset"></i>Reset</button></div></div>
 				<div class="setting"><div><h3>Gold bank</h3><p>Bank capital transfers existing owner gold — on reset proportionally from firm owners, or by hand with Fund from the selected cell's owner — and never mints. Borrow lends bank gold to the selected firm: loans carry a fixed owner debt limit, simple interest, a repayment term and default after grace.</p></div><div class="presets"><label>Capital <input id="bank-capital" type="number" min="0" step="0.5" value="0" style="width:5em" aria-label="Bank capital transferred on reset"></label><label>Amount <input id="loan-amount" type="number" min="0" step="0.5" value="4" style="width:5em" aria-label="Fund or loan amount"></label><button id="fund-button" type="button">Fund</button><button id="borrow-button" type="button">Borrow</button></div></div>
+				<label class="setting pressure-setting" for="credit-money"><span><strong>Credit money</strong><small>Off by default: lending settles in bank gold. Enabling lets the chartered bank issue bounded credit-note loans — new spendable notes, never new gold; with notes outstanding, unchecking only stops new issuance and settlement continues.</small></span><input id="credit-money" type="checkbox"><span class="switch" aria-hidden="true"></span></label>
 				<label class="setting" for="transport-preset"><span><strong>Transport &amp; custody</strong><small>T0 drips haul fees back to towns; T1 retains them as company liquidity. Custody holds orphaned wallets and unclaimed estates and funds nothing.</small></span><span class="speed-box"><select id="transport-preset" aria-label="Transport revenue rule"><option value="0" selected>T0 · town drip</option><option value="1">T1 · company retained</option></select><i data-icon="chevron"></i></span></label>
 				<label class="setting pressure-setting" for="price-decay"><span><strong>Price &amp; haul decay</strong><small>Bids fade with distance and hauled particles accrue terrain-effort transport cost.</small></span><input id="price-decay" type="checkbox" checked><span class="switch" aria-hidden="true"></span></label>
 				<label class="setting pressure-setting" for="derived-bid"><span><strong>Derived bid &amp; sell floor</strong><small>Firms and towns derive bids from margins and worker wealth; output respects cost basis.</small></span><input id="derived-bid" type="checkbox" checked><span class="switch" aria-hidden="true"></span></label>
@@ -93,6 +94,7 @@
 	<script src="owners.js"></script>
 	<script src="gold.js"></script>
 	<script src="banks.js"></script>
+	<script src="currencies.js"></script>
 	<script src="goods.js"></script>
 	<script src="workforce.js"></script>
 	<script src="workers.js"></script>
@@ -103,6 +105,7 @@
 	<script src="settlement.js"></script>
 	<script src="founding.js"></script>
 	<script src="track.js"></script>
+	<script src="settings.js"></script>
 	<script src="diagnostics.js"></script>
 	<script src="tracked.js"></script>
 	<script src="fields.js"></script>
