@@ -17,6 +17,7 @@ function makeContext2d() {
 		lineWidth: 1,
 		calls: 0,
 		fillRect() { this.calls++; },
+		clearRect() { this.clears = (this.clears || 0) + 1; this.calls++; },
 		fillText() { this.textCalls = (this.textCalls || 0) + 1; this.calls++; },
 		strokeRect() { this.calls++; },
 		beginPath() { this.calls++; },
@@ -168,9 +169,14 @@ const windowStub = {
 	}
 };
 
+const navigatorStub = {
+	copied: '',
+	clipboard: { writeText(text) { navigatorStub.copied = text; return Promise.resolve(); } }
+};
+
 function loadDom(query) {
 	windowStub.location.search = query;
-	const context = vm.createContext({ console, document: documentStub, window: windowStub, requestAnimationFrame, URLSearchParams });
+	const context = vm.createContext({ console, document: documentStub, window: windowStub, navigator: navigatorStub, requestAnimationFrame, setTimeout, URLSearchParams });
 	for (const file of scripts) {
 		const code = fs.readFileSync(path.join(root, file), 'utf8');
 		vm.runInContext(code, context, { filename: file });
@@ -178,4 +184,4 @@ function loadDom(query) {
 	return context;
 }
 
-module.exports = { elements, makeElement, loadDom, rafQueue, windowStub, documentStub };
+module.exports = { elements, makeElement, loadDom, rafQueue, windowStub, documentStub, navigatorStub };

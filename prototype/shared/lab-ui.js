@@ -1,5 +1,5 @@
-// Owns: shared lab UI helpers — the DOM id lookup and the inline SVG icon set both B2 labs draw from.
-// Edit for: icon path data and helper signatures only. Resource titles and tool kinds stay per lab.
+// Owns: shared lab UI helpers — the DOM id lookup, the inline SVG icon set and ⧉ clipboard copy buttons.
+// Edit for: icon path data, copy flash and helper signatures only. Resource titles and tool kinds stay per lab.
 'use strict';
 
 const $ = id => document.getElementById(id);
@@ -21,3 +21,30 @@ const ICON_PATHS = {
 	reset:'M3 4v6h6M4 9a8 8 0 1 1 .7 8',clear:'M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7',close:'m6 6 12 12M18 6 6 18'
 };
 const labIcon = name => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON_PATHS[name]}"/></svg>`;
+
+const LAB_COPY_GLYPH = '⧉';
+const LAB_COPY_FLASH_MS = 1200;
+const labCopyHtml = title => `<button type="button" class="copy-button" data-copy title="${title}" aria-label="${title}">${LAB_COPY_GLYPH}</button>`;
+
+function labBindCopy(button, read) {
+	button.addEventListener('click', () => labCopy(read()).then(ok => {
+		button.textContent = ok ? '✓' : '✕';
+		setTimeout(() => { button.textContent = LAB_COPY_GLYPH; }, LAB_COPY_FLASH_MS);
+	}));
+}
+
+function labCopy(text) {
+	if (!navigator.clipboard) return Promise.resolve(labCopyFallback(text));
+	return navigator.clipboard.writeText(text).then(() => true, () => labCopyFallback(text));
+}
+
+// file:// pages in some browsers lack clipboard permission; a selected textarea still copies.
+function labCopyFallback(text) {
+	const area = document.createElement('textarea');
+	area.value = text;
+	document.body.appendChild(area);
+	area.select();
+	const ok = document.execCommand('copy');
+	area.remove();
+	return ok;
+}

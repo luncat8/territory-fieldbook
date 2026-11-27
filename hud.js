@@ -50,6 +50,7 @@ function hudInit() {
 	hudSceneInit();
 	hudDisplayInit();
 	hudTuneInit();
+	hudCopyInit();
 	hud.key = '';
 	hud.logVersion = -1;
 	hud.statusVersion = -1;
@@ -214,13 +215,16 @@ function hudRefresh(force) {
 	hudUpdateActions(force);
 }
 
-function hudUpdateClock() {
+function hudClockText() {
 	const sec = Math.floor(clock.seconds + 1e-8);
 	const day = sec + 1;
 	const speedText = clock.speed === 0 ? 'paused' : HUD_SPEED_LABEL[clock.speed];
-	let text = mapScene.id ? clock.seconds.toFixed(2) + 's · ' + speedText : 'day ' + day + ' · ' + sec + 's · ' + speedText;
-	if (!party.alive) text += ' · lost';
-	hud.clockEl.textContent = text;
+	const text = mapScene.id ? clock.seconds.toFixed(2) + 's · ' + speedText : 'day ' + day + ' · ' + sec + 's · ' + speedText;
+	return party.alive ? text : text + ' · lost';
+}
+
+function hudUpdateClock() {
+	hud.clockEl.textContent = hudClockText();
 	for (let k = 0; k < hud.timeButtons.length; k++) hud.timeButtons[k].className = clock.speed === k ? 'ui-chip on' : 'ui-chip';
 }
 

@@ -167,7 +167,7 @@ dialog h2{font-size:28px;margin:3px 0 16px;letter-spacing:-.045em}
 .economy-flags{list-style:none;margin:8px 0 0;padding:7px 0 0;border-top:1px solid #2c2a36;display:grid;gap:4px}
 .economy-flags li{font-size:10px;line-height:1.45}
 .economy-flags li.calm{color:#8fbf9d}
-.economy-foot{margin-top:7px;font-size:9px;color:#8b8899;min-height:12px}
+.tracked-top{display:flex;align-items:flex-start;justify-content:space-between;gap:6px}
 .tracked-head{font:650 12px var(--sans);margin-bottom:5px;color:#e7e3f2}
 .watched-box select[data-track-select]{width:100%;background:#202127;border:1px solid #383842;border-radius:5px;color:#e7e5ef;padding:4px 7px;font:11px var(--mono);margin-bottom:5px}
 .watched-box canvas[data-track-purse]{display:block;width:100%;height:34px;margin-bottom:5px;background:#14141a;border:1px solid #2c2a36;border-radius:4px}
@@ -183,3 +183,7 @@ dialog h2{font-size:28px;margin:3px 0 16px;letter-spacing:-.045em}
 .tracked-controls button{border:1px solid #393a45;background:#222329;color:#c5c5d0;border-radius:5px;font:600 11px var(--sans);padding:3px 9px}
 .tracked-controls button:hover{background:#292a34;border-color:#535561}
 .tracked-count{margin-top:5px;font-size:9px;color:#8b8899;text-align:right}
+/* ⧉ copy buttons (lab-ui.js labBindCopy) on panels worth pasting into chat. */
+.copy-button{flex:none;display:inline-grid;place-items:center;width:22px;height:20px;padding:0;border:1px solid #393a45;border-radius:5px;background:#222329;color:#c5c5d0;font:13px/1 var(--mono);cursor:pointer}
+.copy-button:hover{background:#292a34;border-color:#535561;color:#efe9fb}
+.copy-button:focus-visible{outline:2px solid #b6a0ff;outline-offset:1px}

@@ -11,14 +11,13 @@ file mounts a global and is loaded by each lab's `index.html` **before** that la
   own `styles.css` loads **after** it and overrides only what differs. The shared sheet is
   byte-safe to cascade: the unique rules in each lab file are disjoint from the shared set,
   so common-first then lab-second never clobbers a lab-specific rule.
-- `lab-ui.js` — `$(id)` DOM lookup and `ICON_PATHS` / `labIcon(name)` inline-SVG helpers.
-  Both labs share the full icon set (particle adds `leaf`; cell adds `triangle`, `pentagon`,
-  `radio`). Per-lab data that legitimately differs — `RESOURCE_TITLES`, `TOOL_KINDS` — stays
-  in each `app.js` and is **not** hoisted.
+- `lab-ui.js` — `$(id)` DOM lookup, `ICON_PATHS` / `labIcon(name)` inline-SVG helpers, and the
+  ⧉ copy helpers: `labCopyHtml(title)` markup plus `labBindCopy(button, read)`, which copies `read()`
+  as plain text (textarea fallback on file://) and flashes ✓. Per-lab data that legitimately differs —
+  `RESOURCE_TITLES`, `TOOL_KINDS` — stays in each `app.js` and is **not** hoisted.
 - `economy-panel.js` — `EconomyPanel`, the shared Economy Inspector shell. Constructor
   `(diagnostics, rows, watched)`; `refresh()` renders the grouped stat rows + stall-flag
-  list; `copy()` dumps `diagnostics.text(watched())` to the clipboard with a textarea
-  fallback. Row definitions and the snapshot come from each lab's `diagnostics.js`, so the
+  list; its ⧉ button copies `diagnostics.text(watched())`. Row definitions and the snapshot come from each lab's `diagnostics.js`, so the
   panel is a pure view over the diagnostics contract.
 
 ## The diagnostics contract

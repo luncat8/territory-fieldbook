@@ -40,12 +40,23 @@ function inputReadCell(event, mark) {
 }
 
 function inputHover(event) {
-	if (!inputReadCell(event, false)) inputLeave();
+	const x = input.hoverX;
+	const y = input.hoverY;
+	if (!inputReadCell(event, false)) input.hoverX = input.hoverY = -1;
+	if (x !== input.hoverX || y !== input.hoverY) inputHoverRepaint();
 }
 
 function inputLeave() {
-	input.hoverX = -1;
-	input.hoverY = -1;
+	if (input.hoverX < 0) return;
+	input.hoverX = input.hoverY = -1;
+	inputHoverRepaint();
+}
+
+// Running frames already repaint at HUD rate; a paused page only changes on input.
+function inputHoverRepaint() {
+	if (clock.speed !== 0) return;
+	hudRefresh(false);
+	renderDraw();
 }
 
 function inputClearSelection() {

@@ -56,6 +56,7 @@ class FieldPlot {
 		this.image = this.rasterCtx.createImageData(ECONOMY_WIDTH, ECONOMY_HEIGHT);
 		this.pixels = new Uint32Array(this.image.data.buffer);
 		this.grid = document.createElement('canvas');
+		this.labels = document.createElement('canvas');
 		this.ex = new Float64Array(4);
 		this.ey = new Float64Array(4);
 		this.markers = [];
@@ -66,8 +67,8 @@ class FieldPlot {
 		this.w = canvas.clientWidth;
 		this.h = canvas.clientHeight;
 		this.dpr = Math.min(3, window.devicePixelRatio || 1);
-		canvas.width = this.grid.width = Math.round(this.w * this.dpr);
-		canvas.height = this.grid.height = Math.round(this.h * this.dpr);
+		canvas.width = this.grid.width = this.labels.width = Math.round(this.w * this.dpr);
+		canvas.height = this.grid.height = this.labels.height = Math.round(this.h * this.dpr);
 		this.left = 22;
 		this.top = 9;
 		this.pw = this.w - this.left - 10;
@@ -76,6 +77,7 @@ class FieldPlot {
 		this.ch = this.ph / ECONOMY_HEIGHT;
 		this.ctx.setTransform(this.dpr,0,0,this.dpr,0,0);
 		this.cacheGrid();
+		this.cacheLabels();
 	}
 
 	cacheGrid() {
@@ -105,6 +107,27 @@ class FieldPlot {
 		for (let y = 0; y < ECONOMY_HEIGHT; y += 8) g.fillText(String(y).padStart(2,'0'),-5,(y+0.5)*ch+3);
 	}
 
+	// Labels are text and only move when actors change, so they are drawn here once, never per paint.
+	// readActors() runs before the first fit(); fit() caches again once the canvas is sized.
+	cacheLabels() {
+		if (!this.w) return;
+		const g = this.labels.getContext('2d');
+		const { dpr, left, top, cw, ch } = this;
+		const r = Math.max(3.5, Math.min(6.5, cw * 0.55));
+		g.setTransform(1, 0, 0, 1, 0, 0);
+		g.clearRect(0, 0, this.labels.width, this.labels.height);
+		g.setTransform(dpr, 0, 0, dpr, left * dpr, top * dpr);
+		g.font = '9px monospace'; g.textBaseline = 'middle'; g.textAlign = 'left';
+		for (const marker of this.markers) {
+			const x = (marker.i % ECONOMY_WIDTH + 0.5) * cw, y = (Math.floor(marker.i / ECONOMY_WIDTH) + 0.5) * ch;
+			const labelWidth = marker.label.length * 5.5 + 5;
+			const lx = x + r + labelWidth + 2 < this.pw ? x + r + 3 : x - r - labelWidth - 3;
+			g.fillStyle = '#15141be3'; g.fillRect(lx, y - 7, labelWidth, 13);
+			g.fillStyle = ACTOR_INK[marker.kind][2];
+			g.fillText(marker.label, lx + 2.5, y - 0.3);
+		}
+	}
+
 	readActors(actors) {
 		const counts = [0,0,0,0,0,0,0];
 		this.markers.length = 0;
@@ -112,6 +135,7 @@ class FieldPlot {
 			const kind = actors[i];
 			if (kind) this.markers.push({ i, kind, label: `${ACTOR_TAGS[kind]}${++counts[kind]}` });
 		}
+		this.cacheLabels();
 	}
 
 	fieldFor(model) {
@@ -174,6 +198,7 @@ class FieldPlot {
 		g.translate(left,top);
 		if (isStock && vectors) this.drawFlows(model);
 		for (const marker of this.markers) this.drawMarker(marker);
+		g.drawImage(this.labels,-left,-top,this.w,this.h);
 		if (selection >= 0) {
 			g.strokeStyle = '#fff3d9'; g.lineWidth = 1.5;
 			g.strokeRect((selection%ECONOMY_WIDTH)*cw,Math.floor(selection/ECONOMY_WIDTH)*ch,cw,ch);
@@ -304,11 +329,6 @@ class FieldPlot {
 		g.fill(); g.stroke();
 		g.fillStyle = g.strokeStyle;
 		g.beginPath(); g.arc(x,y,r*0.29,0,Math.PI*2); g.fill();
-		const labelWidth = marker.label.length*5.5+5;
-		const lx = x+r+labelWidth+2 < this.pw ? x+r+3 : x-r-labelWidth-3;
-		g.fillStyle = '#15141be3'; g.fillRect(lx,y-7,labelWidth,13);
-		g.fillStyle = ink[2];
-		g.font = '9px monospace'; g.textBaseline = 'middle'; g.textAlign = 'left'; g.fillText(marker.label,lx+2.5,y-0.3);
 	}
 
 	polygon(x, y, r, sides, phase) {

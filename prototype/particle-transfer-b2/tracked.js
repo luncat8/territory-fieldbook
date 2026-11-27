@@ -1,4 +1,4 @@
-// Owns: Watched Workers audit panel — worker picker, purse sparkline, personal ledger props and the event feed.
+// Owns: Watched Workers audit panel — worker picker, purse sparkline, personal ledger props, the event feed and its ⧉ copy.
 // Edit for: panel layout, sparkline sampling and the spawn/fund debug controls.
 'use strict';
 
@@ -16,7 +16,7 @@ class TrackedPanel {
 
 	build() {
 		this.root.innerHTML =
-			'<div class="tracked-head" data-track-head></div>' +
+			'<div class="tracked-top"><div class="tracked-head" data-track-head></div>' + labCopyHtml('Copy the watched worker ledger and events for chat') + '</div>' +
 			'<select data-track-select aria-label="Watched worker"></select>' +
 			'<canvas data-track-purse width="240" height="34"></canvas>' +
 			'<div class="tracked-props" data-track-props></div>' +
@@ -35,6 +35,7 @@ class TrackedPanel {
 			const idx = Number(this.select.value);
 			if (Number.isInteger(idx) && list[idx]) this.choose(idx);
 		});
+		labBindCopy(this.root.querySelector('[data-copy]'), () => this.copyText());
 		this.root.querySelector('[data-track-fund]').addEventListener('click', () => this.fund());
 		this.root.querySelector('[data-track-spawn]').addEventListener('click', () => this.spawn());
 	}
@@ -129,6 +130,11 @@ class TrackedPanel {
 			: '<li class="calm">no events yet</li>';
 		this.drawSpark(entry.history);
 		this.count.textContent = `tracked ${this.model.tracker.list.length}/${TRACK_CAP}`;
+	}
+
+	copyText() {
+		const entry = this.model.tracker.list[this.choice];
+		return entry ? this.diagnostics.workerText(entry) : 'Watched worker: nobody tracked yet';
 	}
 
 	drawSpark(history) {

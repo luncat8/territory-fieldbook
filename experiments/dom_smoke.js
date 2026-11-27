@@ -2,7 +2,7 @@
 // run: node experiments/dom_smoke.js
 
 const vm = require('vm');
-const { elements, makeElement, loadDom, rafQueue, windowStub, documentStub } = require('./dom_fixture');
+const { elements, makeElement, loadDom, rafQueue, windowStub, documentStub, navigatorStub } = require('./dom_fixture');
 
 let context;
 let bootError = '';
@@ -134,8 +134,35 @@ if (!bootError) {
 		windowStub.listeners.keydown[0]({ key: '7', preventDefault() {} });
 		result.viewAfterKey = run('render.view');
 		result.viewRadioChecked = group.children[6].children[0].checked;
+		run('render.showLabels = true');
+		const mapCtx = elements.get('ui-canvas').ctx;
+		const labelCtx = run('renderMarkers.layers[0].ctx');
+		mapCtx.textCalls = labelCtx.textCalls = labelCtx.clears = 0;
+		for (let f = 1; f <= 30; f++) frame(2100 + f * 16.7);
+		result.mapTextCalls = mapCtx.textCalls;
+		result.labelText = labelCtx.textCalls;
+		result.labelBuilds = labelCtx.clears;
+		run('render.showLabels = false');
+
 		windowStub.listeners.keydown[0]({ key: ' ', preventDefault() {} });
 		result.speedAfterSpace = run('clock.speed');
+
+		const inspect = elements.get('ui-inspect');
+		const mapCalls = mapCtx.calls;
+		inspect.textContent = 'sentinel';
+		for (let f = 1; f <= 30; f++) frame(2700 + f * 16.7);
+		result.pausedIdle = mapCtx.calls === mapCalls && inspect.textContent === 'sentinel';
+		canvas.dispatch('pointermove', { clientX: 3.5 * 12, clientY: 4.5 * 12 });
+		result.pausedHover = /Cell 3,4/.test(inspect.textContent) && mapCtx.calls > mapCalls;
+		canvas.dispatch('pointerleave', {});
+		const copyButton = elements.get('ui-copy-inspect');
+		copyButton.onclick();
+		result.copyInspect = navigatorStub.copied === '# inspector · ' + run('hudClockText()') + '\n' + inspect.textContent;
+		elements.get('ui-copy-log').onclick();
+		result.copyLog = /^# events · day \d+/.test(navigatorStub.copied) && navigatorStub.copied.split('\n').length >= run('events.list.length') + 1;
+		elements.get('ui-copy-party').onclick();
+		result.copyParty = /\n## stats\nCondition/.test(navigatorStub.copied) && /\n## victory\n/.test(navigatorStub.copied);
+		result.copyGlyphs = run('HUD_COPY_PANELS.every(panel => $(panel[0]).textContent === HUD_COPY_GLYPH)');
 
 		const buttons = run('$("ui-actions").children.slice()');
 		let clicked = 0;
@@ -302,6 +329,10 @@ check('victory_panel', (result.victoryText || '').length > 5);
 check('feed_rendered', result.logItems > 0);
 check('click_moved_party', result.moved === true);
 check('pause_key', result.speedAfterSpace === 0);
+check('labels_cached_layer', result.mapTextCalls === 0 && result.labelText > 0 && result.labelBuilds >= 1 && result.labelBuilds <= 3, 'builds=' + result.labelBuilds);
+check('paused_frames_idle', result.pausedIdle === true);
+check('paused_hover_repaints', result.pausedHover === true);
+check('copy_buttons', result.copyInspect && result.copyLog && result.copyParty && result.copyGlyphs);
 check('tune_panel', result.tuneKnobs === 31 && result.tuneForest === 2 && /\ntune: forest=2$/.test(result.tuneSummary || ''));
 check('all_buttons_safe', (result.buttonsClicked || 0) >= 4);
 check('new_survey_restarts', result.restartState === 'true:0');

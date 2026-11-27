@@ -258,6 +258,19 @@ button.ui-act.primary { background: #1d3a3f; border-color: #2f6a70; }
 button.ui-act:hover:not(:disabled) { border-color: #4a6f84; }
 button.ui-act:disabled { opacity: 0.38; cursor: default; }
 #ui-status { min-height: 18px; color: #ffd166; }
+.ui-block-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.ui-block-head h2 { margin-bottom: 4px; }
+button.ui-copy {
+	padding: 0 5px;
+	background: transparent;
+	color: #7f93a6;
+	border: 1px solid transparent;
+	border-radius: var(--ui-radius-sm);
+	font: 13px/1.3 ui-monospace, monospace;
+	cursor: pointer;
+}
+button.ui-copy:hover { color: var(--ui-text-strong); border-color: var(--ui-line); }
+button.ui-copy:focus-visible { outline: 2px solid var(--ui-accent-line); outline-offset: 1px; }
 #ui-log {
 	margin: 0;
 	padding: 0 0 0 16px;
@@ -304,7 +317,7 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 		<p class="ui-help">Multipliers act live on the running map, 0.1× to 10×. A group row scales every kind under it. Double-click a slider for ×1. Settings stay in this browser.</p>
 	</aside>
 	<aside id="ui-site-panel" aria-labelledby="ui-site-panel-title" class="ui-collapsed">
-		<h2 id="ui-site-panel-title">selected site</h2>
+		<div class="ui-block-head"><h2 id="ui-site-panel-title">selected site</h2><button id="ui-copy-site" type="button" class="ui-copy" title="Copy the selected site text for chat" aria-label="Copy the selected site text for chat">⧉</button></div>
 		<div id="ui-jobsite"></div>
 	</aside>
 	<main id="ui-mapwrap">
@@ -335,7 +348,7 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 				<div id="ui-demand-legend" class="ui-field-legend"><i id="ui-demand-scale" class="ui-scale demand" aria-hidden="true"></i><span id="ui-demand-range">Low → high pull</span><span class="ui-map-key" id="ui-demand-key"></span></div>
 			</section>
 		</div>
-		<section id="ui-around-panel" class="ui-block"><h2>around</h2><div id="ui-nearby"></div></section>
+		<section id="ui-around-panel" class="ui-block"><div class="ui-block-head"><h2>around</h2><button id="ui-copy-around" type="button" class="ui-copy" title="Copy the around list for chat" aria-label="Copy the around list for chat">⧉</button></div><div id="ui-nearby"></div></section>
 	</main>
 	<aside id="ui-panel">
 		<div id="ui-clock">day 1 · 0s · 4×</div>
@@ -359,7 +372,7 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 			<p class="ui-help">Looks set field colors and overlay defaults only. Engine and stock stay unchanged.</p>
 		</section>
 		<section class="ui-block">
-			<h2>economy</h2>
+			<div class="ui-block-head"><h2>economy</h2><button id="ui-copy-inspect" type="button" class="ui-copy" title="Copy the inspector readout for chat" aria-label="Copy the inspector readout for chat">⧉</button></div>
 			<div id="ui-engine" class="ui-row"></div>
 			<p id="ui-engine-note" aria-live="polite"></p>
 			<div class="ui-economy-toggles">
@@ -374,27 +387,30 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 			<div id="ui-inspect"></div>
 		</section>
 		<section class="ui-block" aria-labelledby="ui-workforce-title">
-			<h2 id="ui-workforce-title">workforce</h2>
+			<div class="ui-block-head"><h2 id="ui-workforce-title">workforce</h2><button id="ui-copy-workforce" type="button" class="ui-copy" title="Copy the workforce stats for chat" aria-label="Copy the workforce stats for chat">⧉</button></div>
 			<div id="ui-workforce" class="ui-row"></div>
 			<p id="ui-workforce-note" class="ui-help"></p>
 			<div id="ui-workforce-stats"></div>
 		</section>
 		<div id="ui-survey-panel">
-			<section class="ui-block"><h2>party</h2><div id="ui-stats"></div></section>
+			<section class="ui-block"><div class="ui-block-head"><h2>party</h2><button id="ui-copy-party" type="button" class="ui-copy" title="Copy party, skills, members, here and victory for chat" aria-label="Copy party, skills, members, here and victory for chat">⧉</button></div><div id="ui-stats"></div></section>
 			<section class="ui-block"><h2>skills</h2><div id="ui-skills"></div></section>
 			<section class="ui-block"><h2>members</h2><div id="ui-members"></div></section>
 			<section class="ui-block"><h2>here</h2><div id="ui-site"></div><div id="ui-actions"></div></section>
 			<section class="ui-block"><h2>victory</h2><div id="ui-victory"></div></section>
 		</div>
-		<div id="ui-status"></div>
-		<ol id="ui-log"></ol>
+		<section class="ui-block" aria-labelledby="ui-log-title">
+			<div class="ui-block-head"><h2 id="ui-log-title">events</h2><button id="ui-copy-log" type="button" class="ui-copy" title="Copy the status line and every kept event for chat" aria-label="Copy the status line and every kept event for chat">⧉</button></div>
+			<div id="ui-status"></div>
+			<ol id="ui-log"></ol>
+		</section>
 	</aside>
 </div>
 <script src="random.js"></script>
 <script src="tuning.js"></script>
 <script src="world.js"></script>
-<script src="prototype/water-humidity/terrain.js"></script>
-<script src="prototype/water-humidity/simulation.js"></script>
+<script src="prototype/archive/water-humidity/terrain.js"></script>
+<script src="prototype/archive/water-humidity/simulation.js"></script>
 <script src="hydrology.js"></script>
 <script src="events.js"></script>
 <script src="land.js"></script>
@@ -431,6 +447,7 @@ button.ui-act:disabled { opacity: 0.38; cursor: default; }
 <script src="hud-display.js"></script>
 <script src="hud-scenes.js"></script>
 <script src="hud-tune.js"></script>
+<script src="hud-copy.js"></script>
 <script src="actions.js"></script>
 <script src="main.js"></script>
 </body>

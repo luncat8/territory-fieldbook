@@ -81,16 +81,16 @@ function mainBoot() {
 function mainFrame(now) {
 	const dt = clock.last === 0 ? 0 : Math.min(Math.max(0, (now - clock.last) / 1000), FRAME_MAX_SECONDS);
 	clock.last = now;
-	if (clock.speed > 0) {
-		clock.acc = Math.min(FRAME_MAX_ACC, clock.acc + dt * CLOCK_RATES[clock.speed]);
-		while (clock.acc + 1e-9 >= SIM_STEP_SEC) {
-			mainStep(SIM_STEP_SEC);
-			clock.acc = Math.max(0, clock.acc - SIM_STEP_SEC);
-		}
+	requestAnimationFrame(mainFrame);
+	// Paused: nothing moves, so idle frames repaint neither map nor text; input handlers repaint what they change.
+	if (clock.speed === 0) return;
+	clock.acc = Math.min(FRAME_MAX_ACC, clock.acc + dt * CLOCK_RATES[clock.speed]);
+	while (clock.acc + 1e-9 >= SIM_STEP_SEC) {
+		mainStep(SIM_STEP_SEC);
+		clock.acc = Math.max(0, clock.acc - SIM_STEP_SEC);
 	}
 	renderDraw();
 	hudTick(dt);
-	requestAnimationFrame(mainFrame);
 }
 
 if (typeof document !== 'undefined') mainBoot();

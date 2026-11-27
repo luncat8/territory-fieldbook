@@ -4,13 +4,22 @@
 const FACTORY_KIND_CSS = ['#e0a458', '#60c89a', '#777f91', '#b58bd4', '#d8b13f'];
 const FARM_FIELD_CSS = '#8a6b2f';
 const FARM_FIELD_EDGE = '#d8b13f';
-const renderMarkers = { towns: [], mines: [], workshops: [], factories: [] };
+const RENDER_LABEL_REFRESH_MS = 250;
+const renderMarkers = { towns: [], mines: [], workshops: [], factories: [], layers: [] };
 
 function renderMarkersInit() {
 	for (let k = 0; k < world.n; k++) renderMarkers.towns[k] = 'C' + (k + 1);
 	for (let k = 0; k < MAPE_MINE_CAP; k++) renderMarkers.mines[k] = 'S' + (k + 1);
 	for (let k = 0; k < MAPE_WORKSHOP_CAP; k++) renderMarkers.workshops[k] = 'W' + (k + 1);
 	for (let k = 0; k < MAPE_FACTORY_CAP; k++) renderMarkers.factories[k] = 'F' + (k + 1);
+	renderMarkers.layers[0] = renderLabelLayer();
+	renderMarkers.layers[1] = renderLabelLayer();
+}
+
+function renderLabelLayer() {
+	const canvas = document.createElement('canvas');
+	canvas.width = canvas.height = render.size;
+	return { canvas: canvas, ctx: canvas.getContext('2d'), time: -1, item: -1, style: -1, settle: false, sources: false };
 }
 
 function renderSettlementRing() {
@@ -180,8 +189,30 @@ function renderWorkshops(ctx, field) {
 	ctx.stroke();
 }
 
+// Labels are text: rebuilt into a layer at most 4×/s while running, blitted every frame.
+// A paused map only repaints on input, so every paused paint rebuilds them.
 function renderActorLabels(ctx, view) {
+	const layer = renderMarkers.layers[view === VIEW.DEMAND ? 1 : 0];
 	const item = view === VIEW.DEMAND ? mape.viewItemDemand : mape.viewItem;
+	if (renderLabelsStale(layer, item)) renderBuildLabels(layer, view, item);
+	ctx.drawImage(layer.canvas, 0, 0);
+}
+
+function renderLabelsStale(layer, item) {
+	const age = clock.last - layer.time;
+	if (clock.speed === 0 || age < 0 || age >= RENDER_LABEL_REFRESH_MS) return true;
+	if (layer.item !== item || layer.style !== render.fieldStyle) return true;
+	return layer.settle !== render.showSettlements || layer.sources !== render.showSources;
+}
+
+function renderBuildLabels(layer, view, item) {
+	const ctx = layer.ctx;
+	layer.time = clock.last;
+	layer.item = item;
+	layer.style = render.fieldStyle;
+	layer.settle = render.showSettlements;
+	layer.sources = render.showSources;
+	ctx.clearRect(0, 0, render.size, render.size);
 	ctx.font = '500 14px ui-monospace, monospace';
 	ctx.textBaseline = 'middle';
 	ctx.textAlign = 'left';

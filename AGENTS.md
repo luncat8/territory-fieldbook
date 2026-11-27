@@ -33,6 +33,12 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 - guard module.exports so files also run under node.
 - no internet links: vendor any lib as a local js file.
 
+## ui text (game and prototypes)
+
+- do not redraw text on pause: paused frames touch neither DOM text nor canvas text; the input handler that changes something repaints it.
+- do not redraw text every frame: DOM panels and canvas labels refresh at 2..5 fps; canvas labels go to a cached layer that is blitted per frame.
+- logs and data worth to copy to chat (logs, info panel, inspector) get a ⧉ button that copies plain text to the clipboard.
+
 ## architecture
 
 - index.html defines script load order. plain top-level globals, no per-file IIFE, no modules.
@@ -51,7 +57,7 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	random.js — seeded LCG streams for generation, sites, rivals.
 	tuning.js — live playtest multipliers: knob table, group × kind products, shareable `tune:` text.
 	world.js — 64x64 terrain grid, seeded generation, soil baseline and map queries.
-	hydrology.js — survey water cycle, terrain adapter and root-zone moisture. Shares prototype/water-humidity/{terrain,simulation}.js with the lab.
+	hydrology.js — survey water cycle, terrain adapter and root-zone moisture. Shares prototype/archive/water-humidity/{terrain,simulation}.js with the lab.
 	events.js — event feed and status line.
 	land.js — disturbed fraction, productivity, waste spreading, recovery, restoration.
 	economy.js — resources, recipes, biosphere, conservation ledger.
@@ -87,6 +93,7 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 	hud-display.js — look radios, overlay controls and paired-map layout.
 	hud-scenes.js — scene controls, readouts and actor tools.
 	hud-tune.js — left tuning panel: sliders, copy/apply settings text, saved knobs.
+	hud-copy.js — ⧉ copy buttons on inspector, site, workforce, party, around and events panels; clipboard fallback.
 	actions.js — player verbs spanning features (move, work, sell, hire, restore, declare).
 	experiments/ — smoke (sim), dom_smoke + dom_fixture (boot/UI), map_views (display),
 	mape_compare (engines), mape_sites (site engine), mape_scenes (scenes), mape_population (settlements), mape_fluid (workforce), mape_fluid_migration (capacity and migration), mape_forestry (logs and forest production), mape_factory (placement scan), mape_farm (farms), mape_diffusion_speed (single-pass mix budget audit and reach), mape_co2 (CO2 sources, demand band, flow trails and ledger), mape_money (money ledger, minting, payment flows, purses); never loaded by the page.
@@ -101,9 +108,9 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 ## prototype labs (B2 ports)
 
 - prototype/shared/lab.css — common visual rules shared by both B2 labs; each lab's styles.css loads after and overrides only what differs.
-- prototype/shared/lab-ui.js — `$` DOM lookup + `ICON_PATHS`/`labIcon(name)` SVG helpers; loaded before each lab's app.js. Per-lab `RESOURCE_TITLES`/`TOOL_KINDS` stay in app.js.
-- prototype/shared/economy-panel.js — `EconomyPanel(diagnostics, rows, watched)` inspector shell (row groups + stall-flag list + clipboard copy); pure view over each lab's `diagnostics.js` contract.
-- prototype/particle-transfer-b2/ — port of the d198120 reference lab: torus wrap, growable FIFO wage-claims + cost relaxation, particle/triangle/gold-flux rendering, Watched Workers audit (track.js/tracked.js), economy diagnostics with coal/goods/food in-flight asks. Tests: 41.
+- prototype/shared/lab-ui.js — `$` DOM lookup + `ICON_PATHS`/`labIcon(name)` SVG helpers + `labBindCopy(button, read)` ⧉ clipboard buttons; loaded before each lab's app.js. Per-lab `RESOURCE_TITLES`/`TOOL_KINDS` stay in app.js.
+- prototype/shared/economy-panel.js — `EconomyPanel(diagnostics, rows, watched)` inspector shell (row groups + stall-flag list + ⧉ copy); pure view over each lab's `diagnostics.js` contract.
+- prototype/particle-transfer-b2/ — port of the d198120 reference lab: torus wrap, growable FIFO wage-claims + cost relaxation, particle/triangle/gold-flux rendering, Watched Workers audit (track.js/tracked.js), economy diagnostics with coal/goods/food in-flight asks. Tests: 42.
 - prototype/price-model-b2/ — cell-lab B2 port + economy inspector adapter (diagnostics.js). Tests: 72.
 
 ## drafts = human input

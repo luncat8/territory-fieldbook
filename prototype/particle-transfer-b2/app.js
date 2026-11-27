@@ -40,7 +40,7 @@ function bootEconomy() {
 	const message = $('edit-message'), stepButton = $('step-button');
 	let running = !matchMedia('(prefers-reduced-motion: reduce)').matches;
 	let rate = Number(speedSelect.value), tool = 'inspect';
-	let selected = -1, owner = null, pinned = false, dirty = true;
+	let selected = -1, owner = null, readingPlot = plots[0], pinned = false, dirty = true;
 	let lastFrame = performance.now(), lastPaint = 0, lastStats = 0, accumulator = 0;
 	model.decay = decay.checked;
 	model.derived = derived.checked;
@@ -76,12 +76,18 @@ function bootEconomy() {
 		stats.fit(); stats.refresh(model); paint(); readings();
 	}
 
+	// Text panels refresh at 4 Hz while running; when paused only the handler that changed something calls this.
+	function texts() {
+		stats.refresh(model); tracked.refresh(); panel.refresh(); readings();
+	}
+
 	function readings() {
 		for (const plot of plots) plot.showReading(plot === owner ? selected : -1, model, pinned);
 	}
 
 	function selectCell(plot, i) {
 		owner = plot; selected = i; dirty = true;
+		if (plot && i >= 0) readingPlot = plot;
 		readings();
 	}
 
@@ -112,7 +118,7 @@ function bootEconomy() {
 			return;
 		}
 		message.textContent = `${kind ? ACTOR_NAMES[kind] + ' placed' : 'Actor removed'} at ${cellName(i)}.`;
-		syncActors(); selectCell(plot, i);
+		syncActors(); selectCell(plot, i); texts();
 	}
 
 	function tick() {
@@ -129,10 +135,7 @@ function bootEconomy() {
 			while (accumulator >= ECONOMY_DT) { tick(); accumulator -= ECONOMY_DT; }
 		}
 		if (dirty && now - lastPaint >= 1000 / 30) { paint(); lastPaint = now; }
-		if (now - lastStats >= 250) {
-			if (running) stats.refresh(model);
-			tracked.refresh(); panel.refresh(); readings(); lastStats = now;
-		}
+		if (running && now - lastStats >= 250) { texts(); lastStats = now; }
 		requestAnimationFrame(frame);
 	}
 
@@ -146,13 +149,13 @@ function bootEconomy() {
 		lastFrame = performance.now();
 	}
 
-	function toggleRun() { running = !running; syncPlayback(); stats.refresh(model); readings(); }
+	function toggleRun() { running = !running; syncPlayback(); texts(); }
 
 	function reset() {
 		model.reset(); stats.reset(model); tracked.reset(); syncActors(); clearSelection();
 		accumulator = 0; lastFrame = performance.now();
 		message.textContent = 'Reset · goods and workers run as conserved SoA particles.';
-		stats.refresh(model); tracked.refresh(); panel.refresh(); paint();
+		texts(); paint();
 	}
 
 	for (const plot of plots) {
@@ -188,7 +191,7 @@ function bootEconomy() {
 		dirty = true; paint();
 	});
 	runButton.addEventListener('click', toggleRun);
-	stepButton.addEventListener('click', () => { tick(); stats.refresh(model); readings(); paint(); });
+	stepButton.addEventListener('click', () => { tick(); texts(); paint(); });
 	speedSelect.addEventListener('change', () => { rate = Number(speedSelect.value); });
 	decay.addEventListener('change', () => { model.decay = decay.checked; message.textContent = `Price decay ${model.decay ? 'enabled' : 'disabled'}.`; });
 	derived.addEventListener('change', () => { model.derived = derived.checked; message.textContent = `Derived bid ${model.derived ? 'enabled' : 'disabled'}.`; });
@@ -209,8 +212,9 @@ function bootEconomy() {
 		message.textContent = wrap ? 'Map wraps X and Y: goods, workers and prices cross the edges.' : 'Map bounded: edges and corners reflect prices.';
 		dirty = true;
 	});
+	labBindCopy($('copy-reading'), () => `# cell reading · ${plots[0].resource} · t=${$('sim-time').textContent}\n${readingPlot.tooltip.textContent || 'Hover or pin a cell on either map first.'}`);
 	$('new-map').addEventListener('click', reset);
-	clearButton.addEventListener('click', () => { model.clearTowns(); syncActors(); readings(); paint(); message.textContent = 'Towns removed. Tired workers shelter-rest, forage and found a young town.'; });
+	clearButton.addEventListener('click', () => { model.clearTowns(); syncActors(); texts(); paint(); message.textContent = 'Towns removed. Tired workers shelter-rest, forage and found a young town.'; });
 	$('guide-button').addEventListener('click', () => guide.showModal());
 	$('close-guide').addEventListener('click', () => guide.close());
 	guide.addEventListener('click', event => {

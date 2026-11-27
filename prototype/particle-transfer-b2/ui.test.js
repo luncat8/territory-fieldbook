@@ -68,7 +68,7 @@ function makeNode(tag = 'DIV', id = '', depth = 0) {
 
 const cardStub = { querySelector() { return makeNode('SPAN', '', 1); } };
 
-test('index.html boots all 21 scripts, renders every resource tab, places a Garden/Farm and updates watched worker', () => {
+function bootLab() {
 	const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 	const scripts = Array.from(html.matchAll(/<script src="([^"]+)"><\/script>/g), m => m[1]);
 	assert.equal(scripts.length, 22);
@@ -81,7 +81,8 @@ test('index.html boots all 21 scripts, renders every resource tab, places a Gard
 	const metrics = Array.from({ length: 5 }, () => makeNode('DIV'));
 	const resources = ['coal', 'food', 'goods', 'labor', 'depleted', 'forage', 'gold', 'land'].map(r => { const b = makeNode('BUTTON'); b.dataset.resource = r; return b; });
 	const tools = ['inspect', 'mine', 'factory', 'town', 'gold', 'garden', 'farm', 'erase'].map(t => { const b = makeNode('BUTTON'); b.dataset.tool = t; return b; });
-	let rafCb = null;
+	let rafCb = null, copied = '';
+	const asides = [];
 	const sandbox = {
 		console, Math, Number, String, Array, Object, Float64Array, Float32Array, Int32Array, Int16Array, Uint32Array, Uint16Array, Uint8Array, Uint8ClampedArray,
 		window: { devicePixelRatio: 2, addEventListener() {} },
@@ -89,6 +90,8 @@ test('index.html boots all 21 scripts, renders every resource tab, places a Gard
 		matchMedia: () => ({ matches: false }),
 		getComputedStyle: () => ({ color: '#eab864' }),
 		requestAnimationFrame(cb) { rafCb = cb; },
+		setTimeout,
+		navigator: { clipboard: { writeText(text) { copied = text; return Promise.resolve(); } } },
 		document: {
 			fonts: null,
 			body: makeNode('BODY'),
@@ -96,7 +99,11 @@ test('index.html boots all 21 scripts, renders every resource tab, places a Gard
 				assert.ok(byId.has(id), `Missing id in index.html: ${id}`);
 				return byId.get(id);
 			},
-			createElement(tag) { return makeNode(tag.toUpperCase()); },
+			createElement(tag) {
+				const node = makeNode(tag.toUpperCase());
+				if (tag === 'aside') asides.push(node);
+				return node;
+			},
 			addEventListener() {},
 			execCommand() {},
 			querySelectorAll(sel) {
@@ -113,6 +120,11 @@ test('index.html boots all 21 scripts, renders every resource tab, places a Gard
 		vm.runInContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), sandbox, { filename: file });
 	}
 	assert.ok(typeof rafCb === 'function', 'bootEconomy should schedule animation frame');
+	return { byId, resources, tools, asides, frame: now => rafCb(now), copiedText: () => copied };
+}
+
+test('index.html boots all 22 scripts, renders every resource tab, places a Garden/Farm and updates watched worker', () => {
+	const { byId, resources, tools, frame } = bootLab();
 	assert.match(byId.get('watched-worker').querySelector('[data-track-head]').textContent, /Watched worker #1/);
 	assert.match(byId.get('actor-count').textContent, /1 A/);
 	for (const btn of resources) {
@@ -128,7 +140,25 @@ test('index.html boots all 21 scripts, renders every resource tab, places a Gard
 	byId.get('resource-map').dispatch('click', { clientX: 350, clientY: 150 });
 	assert.match(byId.get('actor-count').textContent, /1 H/, 'Farm tool should place a commercial farm');
 	byId.get('clear-towns').click();
-	rafCb(1250);
+	frame(1250);
 	assert.ok(!byId.get('gold-held').textContent.includes('NaN'));
 	assert.ok(!byId.get('forage-garden').textContent.includes('NaN'));
+});
+
+test('paused frames leave panel text alone and ⧉ buttons copy inspector, watched worker and cell reading', () => {
+	const { byId, asides, frame, copiedText } = bootLab();
+	byId.get('run-button').click();
+	const props = asides[0].querySelector('[data-props]');
+	props.innerHTML = 'sentinel';
+	frame(1600); frame(2000);
+	assert.equal(props.innerHTML, 'sentinel', 'paused frames must not redraw inspector text');
+	byId.get('step-button').click();
+	assert.notEqual(props.innerHTML, 'sentinel', 'a manual step refreshes the inspector');
+	asides[0].querySelector('[data-copy]').click();
+	assert.match(copiedText(), /^# particle-transfer B2 stats/);
+	byId.get('watched-worker').querySelector('[data-copy]').click();
+	assert.match(copiedText(), /^## watched worker /);
+	byId.get('resource-map').dispatch('pointermove', { clientX: 205, clientY: 160 });
+	byId.get('copy-reading').click();
+	assert.match(copiedText(), /^# cell reading · coal · t=\d\d:\d\d\n.*Food /s);
 });

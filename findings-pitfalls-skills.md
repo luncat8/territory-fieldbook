@@ -555,3 +555,14 @@ Carried over from the particle-transfer lab; these govern the persistent-worker 
   Requiring 45 uninterrupted near-full seconds with refill at 75% silently disables reproduction.
 - Worker pool compaction must copy lifecycle columns as well as motion/wallet columns. Reverse traversal
   lets splits append and deaths swap-remove without processing a survivor or newborn twice that tick.
+
+## idle pause, cached labels and ⧉ copy
+
+- Skipping paused frames entirely (no `renderDraw`, no `hudTick`) is only safe when every input path repaints
+  itself. Clicks, keys and buttons already did; pointer hover relied on the frame loop. `inputHoverRepaint()`
+  repaints on hover-cell change, but only while paused — running frames cover it at HUD rate.
+- A text layer keyed only on age goes stale on paused edits (frame clock frozen, age stays 0). Rebuild every
+  paused paint: a paused paint only happens on input, so that is still input-rate, never frame-rate.
+- Clipboard flashes run in a promise `.then`; assert on the copied text, not on the ✓ glyph.
+- Moving a lab to `prototype/archive/` must grep `index.html` for its `<script src>`: the game shared
+  `water-humidity/{terrain,simulation}.js` and boot failed with ENOENT until the paths followed the move.
