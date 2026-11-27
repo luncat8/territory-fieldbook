@@ -44,7 +44,7 @@ class TownRules {
 	initTown(i) {
 		this.model.food[i] = 0;
 		this.revenueTick[i] = 0;
-		this.model.localWealth[i] = SEED_WORKER_GOLD;
+		this.model.localWealth[i] = WALLET_REFERENCE;
 	}
 
 	clearTown(i) {
@@ -58,7 +58,7 @@ class TownRules {
 	}
 
 	observeWallet(i, perWorkerGold) {
-		const cur = this.model.localWealth[i] || SEED_WORKER_GOLD;
+		const cur = this.model.localWealth[i] || WALLET_REFERENCE;
 		this.model.localWealth[i] = cur + 0.18 * (perWorkerGold - cur);
 	}
 
@@ -96,8 +96,8 @@ class TownRules {
 	wealthRatio(i) {
 		const m = this.model;
 		if (!m.derived) return 1;
-		const w = m.localWealth[i] > 1e-6 ? m.localWealth[i] : SEED_WORKER_GOLD;
-		return Math.max(0.45, w / SEED_WORKER_GOLD);
+		const w = m.localWealth[i] > 1e-6 ? m.localWealth[i] : WALLET_REFERENCE;
+		return Math.max(0.45, w / WALLET_REFERENCE);
 	}
 
 	taxRate(i) {
