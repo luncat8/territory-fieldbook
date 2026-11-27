@@ -1,7 +1,7 @@
 # Gold circulation and competing paper currencies — prototype plan
 
 Status: proposed design; implementation requires agreement on the open choices in
-[draft/gold-and-paper-money.md](draft/gold-and-paper-money.md). No monetary rules in this document imply
+[draft/economy-money-bank.md](draft/economy-money-bank.md). No monetary rules in this document imply
 that a bank, tax obligation or currency has already been implemented.
 
 ## M.0 Scope and design boundaries
@@ -14,9 +14,12 @@ The gold-only economy must work without banks. Paper money is optional and story
 competition, credit and faction authority are independently selectable experiments, not one mandatory system.
 All numerical policy settings below are initial experiment parameters, not price floors or immutable law.
 
-This plan owns gold origin/distribution, monetary transport accounting, issuer policy, note acceptance,
-exchange, saved monetary settings and comparison experiments. `plan-particle-transfer.md` owns worker life,
-production and movement; construction and wood requirements also follow `draft/company/`.
+This plan owns gold origin/distribution, facility ownership and funding, monetary transport accounting,
+issuer policy, lending, note acceptance, exchange, saved monetary settings and comparison experiments.
+It also defines the proposed output-depot experiment; physical production and goods movement remain with
+the particle plan. Human requirements live in the source draft; recommendations here are not approvals.
+`plan-particle-transfer.md` owns worker life, production and movement; construction and wood requirements
+also follow `draft/company/`.
 
 ### Inspection findings and implications
 
@@ -27,9 +30,11 @@ production and movement; construction and wood requirements also follow `draft/c
 | Gold overlay | Particle `fields.js`, `fieldFor`: purses plus worker wallets; the other pane blends home/wage signals | This is holdings, not saleable gold. Keep it and label the second pane as a signal, not a gold price. |
 | Initial money | Particle `gold.js` seeds town/firm purses on reset; `workers.js` seeds wallets | Make historical stock explicit and fixed at scenario initialization. |
 | Placement | Particle `simulation.js`, `setActor`: placing a town calls `seedTown` | Placement is an extra gold source today. Remove that source in the baseline; editing must not silently subsidize towns. |
+| Ownership | `gold.js` uses cell-indexed purses; `goods.js` stores producer cell as `owner` | Introduce stable facility and owner identities before sharing purses; a cell is not an economic owner. |
+| Output storage | `goods.js` retains `spawnAmount`/`spawnCost` until a payable uphill route exists | Internal producer storage partly exists; compare dispatch policies, not an invented missing inventory system. |
 | Mining distribution | `GoldMoney.dig` credits mine purse; `settleFirm` pays wage claims and on-site surplus after reserves | Preserve claim ownership/FIFO, but specify the mine's payout budget and avoid indiscriminate on-site bonuses. |
 | Mine recipe | Labor only; no purchased wood | A wood-input slice is required; a knob without delivery/consumption is insufficient. |
-| Wood infrastructure | Particle `simulation.js` has `wood`, but `GOODS_ITEMS` contains only coal/goods/food; `farms.js` obtains local wood | Do not assume a sawmill/wood delivery market exists in this lab. Reuse the goods path for a minimal wood chain. |
+| Wood infrastructure | Particle sawmill recipe produces `ITEM_WOOD`; `goods.js` transports it to towns/farms; `farms.js` owns forest cutting | Reuse the existing market; extend mine admission, input caps and consumption rather than add another sawmill/wood resource. |
 | Transport | `goods.js` accrues haul cost; on arrival buyer pays transport share to `GoldMoney.vault`, remainder to producer | Haul cost is not already-paid wages. Distinguish quote, settlement and actual transport operating costs. |
 | Vault | `gold.js` combines transport income, erased-actor balances and orphan receipts; `step` drips it to towns by population weight | Conservation holds but economic ownership is blurred. Separate company revenue from estate/escrow money. |
 | Persistence | No save/load or localStorage path in either lab's `app.js`/`simulation.js` | A saved checkbox requires new settings persistence, not an assumed existing world-save system. |
@@ -48,6 +53,8 @@ printing notes in exchange for gold cannot create initial demand when nobody nee
 - No `ITEM_GOLD` enters the ordinary goods pool. No gold-for-gold demand gradient is generated.
 - Wallet gold travels with its worker. Mine/town/company balances remain owned accounts.
 - Mine markers and deposits remain visible; hiding gold cargo must not hide either mines or wealth.
+- Paper unlock does not automatically turn reserve gold into generic goods particles. A bank gold purchase is
+  an explicit financial exchange; visible owned currency transport is deferred, not a demand-field resource.
 
 Two quantities must be distinct:
 
@@ -63,21 +70,27 @@ travel, an unpaid wage claim, worker splitting, founding, ordinary actor placeme
 - Actual productive work and available deposit/materials bound output, not the wage promised on entry.
 - Miners may accept an unpaid entry-wage claim before extraction. The claim belongs to the original stable
   worker ID, is not spendable currency, and is settled FIFO from actual mine gold. No wage promise mints gold.
-- Order for available mine cash: due wage claims; bounded upcoming wage/input reserves; current input bills;
-  discretionary wage bonus from surplus. Set a maximum reserve horizon so a mine does not accumulate forever.
+- Proposed cash waterfall: due earned wages and accepted input bills; bounded next-shift wage/input reserves;
+  scheduled debt service from remaining cash; then discretionary reinvestment or earned-worker bonuses.
+  Reserve budgets cannot defer arrears forever: missed installments trigger visible arrears/default, not new
+  money. Set a maximum reserve horizon so a mine does not accumulate forever.
 - Reserve allocation must leave both staffing and essential wood replenishment viable. Do not let automatic
   surplus payout drain tomorrow's input budget. Insolvent mines stop ordering goods they cannot pay for.
 - Bonusing is for workers who earned the productive shift, proportional to credited work, not whoever happens
   to be on site when delayed receipts arrive. Existing entry-wage claims remain separate from bonuses.
-- Baseline: no mine owner dividends, treasury tribute or free grants. Retained excess and the resulting slower
-  circulation are visible outcomes; an owner-dividend policy is a later explicit comparison if desired.
+- Baseline: no personal owner dividends, treasury tribute or free grants. Retained cash can repay bank debt
+  or fund approved construction at another owned facility; these are distinct from dividends and new issuance.
+  Shared-purse allocation cannot bypass wages/reserves/debt commitments. Compare retention and productive
+  reinvestment explicitly; capacity upgrades, machines, knowledge and negotiated site purchases are deferred.
 - Receipts elsewhere recirculate: miners buy rest/food → towns buy goods → firms buy inputs/pay wages → workers
   buy services again. Mine wood purchases additionally fund sawmills and their workers.
 
 ### The first mine cannot require money that only the mine can produce
 
-Reference scenario: fixed historical gold distributed once to named wallets/accounts. Record it as
-`initialHistoricalGold`, never as recurring town income or free money for newly founded actors.
+Gold-funded reference scenario: fixed historical mined gold assigned once to named owners/workers and a
+bank capital account. Record it as `initialHistoricalGold`, never recurring town income or automatic new-firm
+wealth. Firms obtain startup cash through owner capital transfers or recorded bank loans; an approved loan
+is not automatic on placement. A historical per-firm grant remains only a labeled legacy control.
 
 Strict bootstrap scenario: all accounts start at zero; founders contribute sweat equity and locally gathered
 construction wood, or the scenario starts with one built mine. Workers can forage and shelter-rest for free.
@@ -89,13 +102,68 @@ Do not expand barter into a second economy for this slice. Zero-start mine place
 reachable: the current auto-founder scan finds coal mines/factories/farms, not gold mines. First use an explicit
 bootstrap scene; automatic gold-deposit discovery/founding is a separate small extension.
 
-### Minimal wood slice
+### Minimal mine wood extension
 
-Add one wood resource, one simple sawmill supplier and a mine construction/operating wood buffer. Sawmill
-labor converts real nearby forest into owned wood batches. Founders can gather only the small startup wood
-allowance; normal operation buys transported wood. Mine capacity/uptime depends on consumption; an empty
-buffer pauses the wood-dependent work, never generates unpaid deliveries. Forest clearing conserves wood
-and waste under the construction draft. Reuse goods admission, costs and delivery; avoid a new transport engine.
+Reuse the existing sawmill, `ITEM_WOOD`, forest depletion, goods pool and cost accounting. Extend gold-mine
+buyer eligibility (currently towns/farms for wood), joint cash admission, input buffer and operating recipe.
+Mine construction also consumes real wood under the construction draft; do not require purchased wood before
+zero-start extraction unless founder gathering or recorded initial material stocks make that reachable.
+An empty operating buffer pauses wood-dependent production; resupply restarts it. Wood is not payment.
+
+### M.1a Owners, facilities and funding
+
+Owner, facility, worker, bank and faction are separate identities. A firm owns/operates facilities; its owner
+account holds spendable currency. Political control is a relationship, not permission to mint or seize money.
+The draft's two ownership settings are selectable treatments, not simultaneous accounting systems:
+
+| Preset | Cash and liabilities | Question tested |
+|--------|----------------------|-----------------|
+| O1 isolated owners | Each new firm gets a distinct owner account; no automatic gold grant | Does each site survive on its own receipts and financing? |
+| O2 portfolio owner | Several facilities share one owner account and owner-level debt | Can existing profits finance new sites, and does one failure endanger the portfolio? |
+
+Recommended architecture: the same owner-account registry for both presets; O1 is one facility per owner,
+not a second implementation. Use stable `ownerId` and `facilityId`, never recycled cell indices as payees.
+A facility keeps local physical stock, productive capacity, cost/revenue attribution and committed orders.
+An owner keeps cash by denomination, loans and a list/index of facilities. Workers retain personal wallets;
+town treasuries, bank reserves and transport accounts remain separate unless an explicit rule transfers funds.
+Do not give a portfolio each facility's full cash as an independent buying budget.
+
+- Compute spendable cash after existing commitments, then allocate bounded per-facility wage/input budgets
+  before bids/admission. Compare simple proportional or priority allocation later, not a global optimizer now.
+- Cross-facility cash allocation under O2 is bookkeeping, not income. Material movement remains physical and
+  uses delivery capacity/cost, even within one owner; stock is not instantly pooled across the map.
+- Loans bind a stable borrower owner; project/facility ID attributes use and results. O2 initially has full
+  owner recourse; limited-liability subsidiaries are a later alternative, not implicit protection.
+- Deleting/replacing a facility preserves the owner cash, debts, earned wage claims and cargo payee IDs.
+  Ownership transfer does not rewrite existing contracts; explicit stock/contract transfers need atomic terms.
+- New owner starts at zero. Startup funding records lender/investor, currency, amount and repayment terms.
+  No approval or insufficient funds means pending/unfunded construction, not a hidden grant.
+- O2 reinvestment can finance a second site only from uncommitted owner cash or an approved loan. Record
+  both facility operating results and owner-wide results; portfolio subsidies must be visible.
+
+### M.1b Output placement and internal depots
+
+The open depot question concerns ordinary products, not monetary gold. Recommended default: bounded,
+facility-local owned output storage, with particles emitted only for a plausible sale route. Existing
+`spawnAmount`/`spawnCost` are the starting point; do not add duplicate physical stock behind those counters.
+
+| Preset | Output policy | Trade-off / comparison purpose |
+|--------|---------------|-------------------------------|
+| D0 speculative map stock | Emit produced batches even at zero gradient, subject to pool capacity | Visible supply before demand, but idle cargo/haul and pool pressure; a new experimental treatment. |
+| D1 local depot | Retain output at zero payable gradient; dispatch when a funded reachable buyer signal appears | Recommended first slice; bounded storage and low particle churn; demand discovery may lag. |
+| D2 reserved dispatch | Buyer reserves quantity and cash, then depot sends owned cargo to that buyer | Reliable delivery and investment estimates, but requires order expiry, escrow and cancellation rules; later. |
+
+Current route-gated emission is the D1 control, not D0. Preserve existing cost relaxation as a separately
+reported policy so storage and inventory valuation effects are not confused. A full depot slows/stops
+production; it must not silently delete output or issue wages against fictional sales. Any later spoilage,
+pool-full loss or write-down has a named ledger counter; dispatch failure leaves stock in the depot.
+
+Planning queries distinguish `availableLocal`, `availableReachable`, `reserved`, `inTransit`, and `delivered`.
+A positive global stock count proves neither access nor affordability. Construction checks reachable free
+stock, delivered price, transport time, capacity and workforce before commitment; it consumes only delivered
+materials (or permitted founder gathering), never stock merely counted at another facility. Same-owner stock
+is excluded from sale availability once reserved for internal use. One unit occupies one inventory bucket;
+production → depot → cargo → buyer stock → consumption/loss preserves quantity and carried cost.
 
 ## M.2 Transport, payment and recirculation
 
@@ -132,7 +200,7 @@ they are not Transport Company earnings. Destruction of an actor must not destro
 UI: **Paper money**, off by default. In the lab this is a sandbox override of story/technology eligibility;
 in the game, eligibility and enabled preference are separate saved values.
 
-Saved settings include `paperMoneyEnabled`, issuer preset, transport preset, scenario seed, issuer parameters
+Saved settings include `paperMoneyEnabled`, ownership/depot/funding/issuer presets, transport preset, scenario seed, issuer parameters
 and unlock state where applicable. Use a namespaced, versioned local settings record and JSON copy/export/import
 for sharing comparisons. Storage failure must not stop the file:// lab; indicate when persistence is unavailable.
 
@@ -145,11 +213,26 @@ for sharing comparisons. Storage failure must not stop the file:// lab; indicate
   not a claim to resume a running economy.
 - A resumable snapshot must additionally contain every gold/note balance, bank reserve, outstanding loan,
   issuance/redemption counter, accepted-currency setting, contract denomination, pending claim/order, worker ID,
-  custody account, RNG state and tick. Derived price fields can be rebuilt deterministically if specified.
+  custody account, owner/facility IDs and mappings, depot stock/cost, reservations, owner budgets, RNG state and tick. Derived price fields can be rebuilt deterministically if specified.
 - Restoring an existing world never repeats scenario funding or issuance. Do not attempt ad-hoc legacy-save
   migration in the initial prototype; validate the declared snapshot/settings version.
 
 ## M.4 Issuer models to implement and compare
+
+Banks are separate firms and can operate **without issuing their own currency**. Select bank operation
+independently of the paper checkbox:
+
+| Funding mode | Source of loan funds | Constraint / purpose |
+|--------------|----------------------|----------------------|
+| F0 owner capital | Existing owner cash transferred to project budgets | No-bank gold-only control; no placement grants. |
+| F1 gold intermediary | Existing bank capital or explicitly lendable term funding | Gold-only credit reference; lending transfers gold and cannot reuse locked backing reserves. |
+| F2 existing-currency intermediary | Bank's owned spendable gold or another bank's notes | Tests a non-issuing bank; it cannot mint the chosen issuer's currency. |
+| F3 own-note lender | Bounded own-note issuance matched by a loan asset | Credit expansion treatment, requiring paper eligibility and acceptance. |
+
+F1 begins with existing bank equity, no runnable customer deposits. Add term deposits only with maturity and
+liquidity rules; fully backed Model A custody is never lendable funding. A strict zero-gold world cannot obtain
+a gold loan from an empty bank: bootstrap mining first. A zero-reserve paper bootstrap is a distinct possible
+experiment, not supported by the reserve-constrained credit rule below and not the first default.
 
 Issuer identity and political control are separate. A bank can be private, town-owned or faction-owned without
 changing the note ledger. Begin with at most two independent issuers, not a universal central bank.
@@ -166,7 +249,8 @@ Banks have operating expenses but cannot print profit without booking an issuanc
 
 ### Recommended sequence
 
-Gold-only → A (one fully backed bank) → B (one credit bank) → B (two competing banks).
+Gold-only owner funding → F1 (gold lender) → A (one fully backed bank) → B/F3 (one credit bank)
+→ B (two competing banks). F2 reuses existing currencies after one issuer works.
 Keep C as a later selectable alternative, not a prerequisite for trying banks. A is worth retaining even if it
 has weak adoption: it distinguishes convenience/trust from genuinely elastic money supply.
 
@@ -211,6 +295,28 @@ For initial testing:
   insufficient) differs from illiquidity (cannot meet today's gold redemptions).
 - At exhausted reserves suspend further redemption/new credit and show a queue and explicit suspension.
   Do not create gold, automatically refinance debt or grant a bailout. Liquidation/recovery can be a later policy.
+
+### Bank pricing, debt service and profit
+
+Start with declared fixed interest, maturity, reserve target and bid/ask quotes. Then compare a bounded
+adaptive controller: update at a fixed simulated-time interval using funded loan applications, unused
+lendable cash, arrears/default losses, redemption pressure and realized service profit. Excess credit demand
+can raise the next offered rate; idle liquidity can lower it, subject to exposure and solvency limits.
+Gold-purchase quotes respond to executable two-sided flow and reserve needs, not an assumed guaranteed peg.
+Quote units are explicit: a gold seller receives notes at the bank's **ask** in `g/note` (`notes = gold/ask`);
+a note seller receives gold at its **bid** (`gold = notes*bid`), subject to available funding/issuance bounds.
+Do not run rate and FX adaptation simultaneously in the first experiment.
+
+A loan fixes denomination, principal, rate per simulation-time unit, due schedule and recourse at acceptance.
+Proposed first contract uses simple interest on outstanding principal, no compounding or automatic rollover;
+rate changes apply to new contracts only. Pay due interest then principal from the allocated debt budget.
+Cash shortage records arrears; default after a declared grace period writes down recoverable loan value.
+Principal is not profit. Interest/fees less operating expenses and credit losses determine realized bank
+profit; extracted gold and new note liabilities are not bank earnings. Owners repay in the contracted
+currency or through an actual funded exchange. Bank lending cannot rescue a real wood/workforce shortage.
+
+Compare fixed versus adaptive rates under identical demand shocks; measure defaults, service reach,
+bank profit, borrower output and volatility together. Keeping every bank profitable is not a simulation rule.
 
 ### Model C: public demand without an adoption deadlock
 
@@ -282,9 +388,10 @@ merely because the economy has little gold. Gold scarcity is a reason to seek cr
 
 Gold invariant (closed map):
 
-`initialHistoricalGold + cumulativeExtractedGold = mineHeld + nonbankWalletsAndPurses + companyGold + bankReserves + custodyGold + goldInTransit`
+`initialHistoricalGold + cumulativeExtractedGold = nonbankOwnerGold + workerGold + townGold + transportGold + bankGold + custodyGold + goldInTransit`
 
-Each gram has exactly one bucket; bank capital is a claim on bank net assets, not an additional pile of gold.
+Mine gold is an attributed part of its owner account, never a second balance. `bankGold` includes locked
+backing reserves and free lending capital exactly once. Each gram has exactly one bucket; bank capital is a claim on bank net assets, not an additional pile of gold.
 `goldInTransit` is zero under immediate clearing. If gold loss/export is introduced later it needs a named counter.
 
 Per issuer:
@@ -308,7 +415,9 @@ Copyable inspector and telemetry (2–5 Hz, no text rewrites on paused frames):
 - gold: extracted, paid by mines as wages / input purchases, retained, historical funding, conservation error;
 - transport: fees quoted / collected / unpaid, company balances by currency, redistribution and real service payouts;
 - each bank: reserves, outstanding notes, principal, defaults, equity, backing ratio, quotes, redemption queue/success;
-- each actor: balances by denomination, accepted tenders, wage/loan denomination, overdue obligations;
+- each owner/facility: account ID, allocated/committed/free cash, balances by denomination, operating result,
+  accepted tenders, wage/loan denomination, overdue obligations, project funding source and debt service;
+- depot: available/reserved stock, in-transit quantities, time full/idle, loss, dispatches and reachable supply;
 - outcomes: trade volume, rejected payments by reason, employment, food/rest access, bankrupt/idle firms,
   gold hoarding, monetary velocity, consumption basket prices and acceptance share by currency;
 - combined wealth display is explicitly mark-to-market and excludes double-counting reserve gold behind notes.
@@ -318,27 +427,36 @@ Copyable inspector and telemetry (2–5 Hz, no text rewrites on paused frames):
 | Slice | Minimal deliverable | Gate before expanding |
 |-------|---------------------|-----------------------|
 | G1 | Gold origin ledger, fixed historical funding, no placement minting; existing wages/claims; explicit holdings labels | Zero repeatable money from town placement, founding, erase/rebuild, split or reset funding replay. |
-| G2 | Mine cash budget, original-worker payouts, strict bootstrap scene and one wood supplier/input loop | Zero-start makes first wages without invented money; delivery uses mined gold; wood outage reduces output. |
+| O1 | Stable owner/facility identities, O1/O2 settings and owner-level budgets; zero-funded new owners | Two sites cannot spend the same cash; erase/rebuild cannot inherit another owner's receipts or drop debts. |
+| D1 | Expose existing internal output buffers and availability query; selectable D0 dispatch experiment | No duplication/loss at dispatch, no sale or construction from inaccessible/reserved stocks. |
+| G2 | Mine cash budget, original-worker payouts, strict bootstrap scene and existing wood-chain extension | Zero-start makes first wages without invented money; delivery uses mined gold; wood outage reduces output. |
 | T1 | Separate transport/custody accounts, switchable T0/T1 rules and diagnostics | Gold invariant holds; T1 reveals rather than hides liquidity trapped in fees. |
+| B0 | F0/F1 funding, one capital-funded gold bank, fixed-rate project loan, debt service/default | Firm funding is a transfer; a profitable mine can repay; empty bank cannot lend and bank placement mints nothing. |
 | P0 | Saved paper-money checkbox, scenario/policy presets, multi-currency ledger and exact settlement API | Off matches G/T baseline; toggle/restore cannot duplicate assets or erase obligations. |
 | P1 | One bank, backed deposits/redemption and consenting merchant loop (A) | No over-issue; holder can reuse/redeem; locked reserve isn't counted as free gold. |
 | P2 | Bounded credit issuance/repayment/default and one productive loan (B) | Expansion adds notes, never gold; an actual repayment path exists; suspension is visible. |
 | P3 | Two issuers, acceptance policies and executable FX; one-bank stress scene | Discount/rejection/run follows liquidity/trust shocks; no hidden gold or cross-currency gains. |
 | P4 | Town/faction alternative (C), then adaptive acceptance and spatial FX if useful | Compare against bank presets before involving main-game influence or porting either lab. |
 
-Do not implement all slices at once. First playable approval target is G1/G2, not a complete banking simulation.
+Do not implement all slices at once. First playable target is G1 + minimal O1/D1 + G2/B0: one gold mine,
+one wood supplier and one loan that can be repaid. Prove O1 before an O2 two-facility comparison;
+D0 is an optional comparison, D2 is deferred. This is not a complete banking simulation.
 T2 real transport payouts require a separate service-provider slice rather than arbitrary subsidies.
 
 ### Proposed code ownership (created only when its slice needs it)
 
-- Existing `gold.js`: gold balances, transfers, extraction and wage claims; factor custody ownership here.
+- Existing `gold.js`: gold extraction/transfers, wage claims and conservation; use owner-account access, not
+  duplicated per-cell purses. Move account storage in a separate step from changing funding behavior.
+- New `owners.js`: stable owner/facility registry, facility mapping, shared accounts and budget commitments.
+- Existing `goods.js`: physical output buffers/costs, depot availability, dispatch and cargo payee IDs.
 - Existing `actors.js`, `workers.js`, `founding.js`: mine work/input budget and original-worker earnings;
   never put worker lifecycle or note issuance into towns.
-- Existing `goods.js`, `farms.js` plus a small `wood.js`: wood production/delivery/consumption; payment calls
-  use the monetary owner rather than duplicating per-currency settlement arithmetic.
+- Existing `actors.js`, `farms.js`, `goods.js`: extend the traded wood chain to mines, not a duplicate `wood.js`;
+  payment calls use the monetary owner rather than duplicating per-currency settlement arithmetic.
 - New `currencies.js`: fixed-cap issuer registry, preallocated actor/worker currency balances, atomic transfer
   and denomination-aware settlement. Preserve stable worker/issuer IDs through compaction and splitting.
-- New `banks.js`: issuance, redemption, reserve commitments, loan principal and default accounting.
+- New `banks.js`: gold/existing-currency lending, issuance, redemption, reserve commitments, principal,
+  interest, default accounting and bounded policy updates; no ownership of physical production.
 - New `exchange.js`: funded quote/order settlement, acceptance valuation and bounded FX liquidity.
 - New `settings.js`: lab preference serialization and explicit snapshot contract; UI lives in `app.js`.
 - Existing diagnostics/telemetry/render owners: labels, ledger views and currency selector. Shared inspector
@@ -353,12 +471,19 @@ Update owning sections of `plan-particle-transfer.md` alongside implementation t
 ### Controlled experiments
 
 Run the same seed, actors, real stocks, historical gold, preferences and simulation duration for each monetary
-preset. Transfer bank seed capital from named existing owners. Do not give banking scenes extra gold or wood.
+preset. Change one axis at a time (O, D, F, issuer A/B/C, transport T, fixed/adaptive policy), then test
+selected interactions rather than every Cartesian combination. Compare identical initial goods whether stored
+in depots or emitted as cargo; use identical demand-shock schedules. Transfer bank seed capital from named existing owners. Do not give banking scenes extra gold or wood.
 Credit limits and acceptance networks are explicit treatment variables. Report at fixed simulation time, not
 frame count or wall-clock speed. A fair baseline can fail: do not secretly add money until a scene survives.
 
 | Scene/shock | Comparison | Evidence sought |
 |-------------|------------|-----------------|
+| Two sites, one profitable/one failing | O1 vs O2 with equal total starting wealth | Productive reinvestment versus contagion; shared cash never spent twice. |
+| New mine/project funding | F0 vs F1, then F3 | Who funds construction, wages and inputs; actual principal/interest repayment; unfunded projects remain unfunded. |
+| Zero gradient, then demand appears | D0 vs D1; D2 later | Dispatch latency, idle cargo, depot saturation, spoilage and trade; zero goods duplication. |
+| Remote/reserved stock near proposed consumer | Availability query vs global count | Inaccessible or committed stock cannot justify consumption/construction. |
+| Loan-demand/redemption shock | Fixed vs adaptive rates, then fixed vs adaptive FX | Demand response, realized bank profit, arrears and volatility; no retroactive contract changes. |
 | Low gold, functioning production | Gold-only vs A vs B | Does trade improve from reuse/convenience or genuine credit expansion? Track basket inflation too. |
 | Gold-only strict zero start | Built/bootstrap mine vs no reachable mine | Wages arise from work; inability to start without real assets is diagnosed, not subsidized. |
 | Mine wood route interrupted | Same money, different real input access | Money does not conjure wood or prevent an input-caused shutdown. |
@@ -377,6 +502,12 @@ invariant errors. Judge trade, welfare, inflation and failure exposure together;
 ### Automated acceptance tests (introduced with owning slices)
 
 - Conservation of physical gold per tick, nonnegative balances, bounded extraction and no item-gold spawning.
+- Stable owner/facility IDs across cell reuse; two facilities share a bounded owner cash budget; owner cash,
+  debt and wage/cargo payees survive facility removal; account and overlay totals do not double-count.
+- Depot → cargo → buyer stock identity and costs, zero-gradient retention, full-pool retention, finite capacity,
+  no sale of reserved stock and construction refusal for unreachable/undelivered materials.
+- Gold lending with no paper, insufficient capital refusal, fixed interest by simulation time, debt service,
+  arrears/default; existing-currency bank cannot issue someone else's notes; new rates affect new loans only.
 - Gold historical funding once; ordinary new actor/founder never seeds; mine payout is a transfer, not extraction.
 - FIFO wage claims pay original IDs after movement; compaction/split/despawn and removal preserve ownership
   under a declared estate policy. New identities cannot collect the same earned shift twice.
@@ -397,6 +528,11 @@ suite and boot/UI gates for load-order/shared changes. Run cell-lab tests only w
 
 ### Manual playtest checklist
 
+- Inspect owner and facility views; compare one-owner-per-site with a shared two-site purse; identify
+  startup funding, project debt, cash allocations and any cross-subsidy.
+- Remove/replace a facility with cargo and debt outstanding; receipts go to the original owner, not the new site.
+- At zero demand see output stored; add demand and observe physical delivery; full storage stops production.
+- Borrow actual bank gold with paper off; watch mine receipts pay interest/principal; an empty bank refuses.
 - Gold mine exists, pays worked wages and buys delivered wood; there is no gold cargo sale marker.
 - Gold holdings overlay is intelligible and distinct from wages/home demand; inspector explains money sources.
 - Watch one miner's wallet through wage → town rest/food → firm inputs/wages; conservation remains copyable.
@@ -409,6 +545,24 @@ suite and boot/UI gates for load-order/shared changes. Run cell-lab tests only w
 
 ## M.9 Approval checkpoints
 
-Confirm the five choices in the source draft before G1/G2 behavior work. Agree on the minimum bank model and
-whether settings-only persistence is sufficient before P0/P1. Review measured gold-only and transport outcomes
-before enabling credit; review one-bank failure before adding faction influence or wider currency routing.
+Human input: [economy, money and banks](draft/economy-money-bank.md). Keep that draft minimally changed;
+record confirmed answers there before behavior work. Suggested decisions, not assumed approvals:
+
+1. **Ownership:** expose O1/O2, default O1 first. Under O2 use one true shared purse and owner-level debt;
+   no personal dividends yet. Confirm whether owners also need personal worker consumption now (recommend defer).
+2. **Funding/bootstrap:** use historical mined gold in named bank/owner accounts for the reference, loans
+   rather than per-firm grants; retain strict zero-start mining as a separate scene. Confirm historical stock.
+3. **Output:** D1 bounded local depots by default, D0 as comparison, D2 later. Count reachable unreserved stock,
+   not global inventory, when evaluating construction. Confirm whether forest-cut logs are an exception that
+   must first appear at the cut cell per `draft/company/all.md` (recommend preserve that distinction).
+4. **Banking:** gold-only F1 first, then backed A and credit B; fixed terms before adaptive rates/FX. Confirm
+   credit-note risk (defaults/runs) is intended, rather than requiring all notes to stay fully backed.
+5. **Mine surplus:** pay due obligations/reserve next shift, service debt, allow productive reinvestment;
+   defer expansion capacity, machinery/fuel, knowledge/ore efficiency and site-purchase letter dialogs.
+6. **Persistence/transport:** save settings including checkbox first; full world resumption separate. Remote
+   settlement stays explicit; physical money couriers via roads or straight lines remain deferred.
+
+Global recommendation: one accounting/settlement kernel and orthogonal small policy presets, not separate
+copies of the economy for every model. Freeze production, geography and transport when comparing monetary
+rules. First review the end-to-end mine → wages/wood → town → supplier → bank-repayment loop; only then add
+competing issuers, adaptive bank policy or main-game influence. No implementation is authorized by this plan.

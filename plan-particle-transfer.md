@@ -10,10 +10,15 @@ particles) under them. All numbers live in the owning source file; numbers below
 ## Monetary design extension (proposed)
 
 [Gold circulation and competing paper currencies](plan-gold-and-paper-money.md), sourced from
-[draft/gold-and-paper-money.md](draft/gold-and-paper-money.md), owns the proposed mine-only gold origin,
+[draft/economy-money-bank.md](draft/economy-money-bank.md), owns the proposed mine-only gold origin,
+stable facility/owner accounts (isolated or shared purses), bank-funded startup and debt service,
 wood-funded mine operation, transport/custody accounting and optional bank/town/faction note experiments.
+It also defines output-depot comparisons: current route-gated buffers are the local-depot control;
+speculative map output and reserved dispatch are alternatives, not existing approved behavior. Reuse the
+traded sawmill/wood path for mine inputs. A bank can lend existing gold with paper disabled.
 Its approval checkpoints precede implementation; the gold/vault rules below describe the existing baseline,
-not approval of paper money or indefinite town redistribution.
+not approval of paper money, shared purses or indefinite town redistribution. Compare ownership, storage,
+funding and currency policies independently before combining them.
 
 ## Scope
 
