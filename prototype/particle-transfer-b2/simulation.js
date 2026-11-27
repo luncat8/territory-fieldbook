@@ -12,12 +12,14 @@ const ECONOMY_TOWN = 3;
 const ECONOMY_GOLD = 4;
 const ECONOMY_GARDEN = 5;
 const ECONOMY_FARM = 6;
+const ECONOMY_SAWMILL = 7;
 const ITEM_COAL = 0;
 const ITEM_GOODS = 1;
 const ITEM_LABOR = 2;
 const ITEM_DEPLETED = 3;
 const ITEM_FOOD = 4;
-const GOODS_ITEMS = [ITEM_COAL, ITEM_GOODS, ITEM_FOOD];
+const ITEM_WOOD = 5;
+const GOODS_ITEMS = [ITEM_COAL, ITEM_GOODS, ITEM_FOOD, ITEM_WOOD];
 const SOURCE_RATE = 0.34;
 const FACTORY_RATE = 0.34;
 const FACTORY_YIELD = 1;
@@ -88,6 +90,7 @@ const REFERENCE_FACTORIES = [[13, 13], [33, 10]];
 const REFERENCE_TOWNS = [[9, 20], [28, 12]];
 const REFERENCE_GOLD = [[3, 13]];
 const REFERENCE_GARDENS = [[19, 15]];
+const REFERENCE_SAWMILLS = [[6, 6]];
 
 function buildEconomyNeighbors() {
 	const result = new Int16Array(ECONOMY_SIZE * DEGREE).fill(-1);
@@ -152,7 +155,9 @@ class PriceEconomy {
 		this.wood = new Float64Array(ECONOMY_SIZE);
 		this.priceFood = new Float64Array(ECONOMY_SIZE);
 		this.nextPriceFood = new Float64Array(ECONOMY_SIZE);
-		this.stocks = [this.coal, this.goods, this.labor, this.depleted, this.food];
+		this.priceWood = new Float64Array(ECONOMY_SIZE);
+		this.nextPriceWood = new Float64Array(ECONOMY_SIZE);
+		this.stocks = [this.coal, this.goods, this.labor, this.depleted, this.food, this.wood];
 		this.decay = true;
 		this.derived = true;
 		this.suppression = true;
@@ -174,7 +179,7 @@ class PriceEconomy {
 	}
 
 	pricesAt(item) {
-		return item === ITEM_FOOD ? this.priceFood : item === ITEM_COAL ? this.priceCoal : item === ITEM_GOODS ? this.priceGoods : item === ITEM_LABOR ? this.priceLabor : this.priceHome;
+		return item === ITEM_FOOD ? this.priceFood : item === ITEM_COAL ? this.priceCoal : item === ITEM_GOODS ? this.priceGoods : item === ITEM_LABOR ? this.priceLabor : item === ITEM_WOOD ? this.priceWood : this.priceHome;
 	}
 
 	unitCostAt(item, i) {
@@ -227,6 +232,7 @@ class PriceEconomy {
 		this.ticks = this.producedCoal = this.burnedCoal = this.producedGoods = this.consumedGoods = 0;
 		this.workedLabor = this.restedDepleted = 0;
 		this.coalRate = this.goodsRate = this.uptakeRate = 0;
+		this.producedWood = this.consumedWood = 0;
 		this.rebuildCellView();
 		this.land.refresh();
 		this.forage.warm();
