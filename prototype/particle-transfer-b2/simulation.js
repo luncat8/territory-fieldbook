@@ -26,8 +26,9 @@ const FACTORY_YIELD = 1;
 const MINE_LABOR = 1.1;
 const FACTORY_LABOR = 1.1;
 const GOLD_LABOR = 1.1;
-const GOLD_WOOD = 0.05;
 const GOLD_RATE = 0.4;
+const GOLD_WOOD = 0.12;
+const GOLD_START_WOOD = 0.6;
 const START_PRICE = 4;
 const INPUT_SHARE = 0.65;
 const BUFFER_SECONDS = 1.8;
@@ -51,6 +52,8 @@ const PRICE_GATE = 0.01;
 const NEED_RESPONSE = 2;
 const GRADIENT_KNEE = 0.006;
 const DOCK_SLOPE = 0.0006;
+const REL_KNEE = GRADIENT_KNEE / START_PRICE;
+const REL_DOCK = DOCK_SLOPE / START_PRICE;
 const STEERING_BLEND = ECONOMY_DT / (0.18 + ECONOMY_DT);
 const economyIndex = (x, y) => y * ECONOMY_WIDTH + x;
 
@@ -114,11 +117,7 @@ function setMapWrap(wrap) {
 }
 
 class PriceEconomy {
-	constructor(goldPerWorker = INITIAL_GOLD_PER_WORKER, bankCapital = 0) {
-		if (!Number.isFinite(goldPerWorker) || goldPerWorker < 0) throw new RangeError('Starting gold must be finite and nonnegative');
-		if (!Number.isFinite(bankCapital) || bankCapital < 0) throw new RangeError('Bank capital must be finite and nonnegative');
-		this.goldPerWorker = goldPerWorker;
-		this.bankCapital = bankCapital;
+	constructor() {
 		this.actors = new Uint8Array(ECONOMY_SIZE);
 		this.coal = new Float64Array(ECONOMY_SIZE);
 		this.goods = new Float64Array(ECONOMY_SIZE);
@@ -169,9 +168,10 @@ class PriceEconomy {
 		this.land = new Land(this);
 		this.steering = new Steering(this);
 		this.forage = new ForageSystem(this);
-		this.owners = new OwnerAccounts(this);
 		this.money = new GoldMoney(this);
-		this.banks = new GoldBank(this);
+		this.bank = new GoldBank(this);
+		this.owners = new OwnerRegistry(this);
+		this.scenario = { goldPerWorker: START_GOLD_PER_WORKER, shares: START_SHARES };
 		this.goodsPool = new GoodsPool(this);
 		this.workers = new WorkerPool(this);
 		this.workerLife = new WorkerLife(this);
@@ -187,6 +187,26 @@ class PriceEconomy {
 
 	pricesAt(item) {
 		return item === ITEM_FOOD ? this.priceFood : item === ITEM_COAL ? this.priceCoal : item === ITEM_GOODS ? this.priceGoods : item === ITEM_LABOR ? this.priceLabor : item === ITEM_WOOD ? this.priceWood : this.priceHome;
+	}
+
+	peakFor(field) {
+		if (field === this.priceCoal) return this.peakCoal;
+		if (field === this.priceGoods) return this.peakGoods;
+		if (field === this.priceFood) return this.peakFood;
+		if (field === this.priceWood) return this.peakWood;
+		if (field === this.priceLabor) return this.peakLabor;
+		return 0;
+	}
+
+	fieldKnee(field) {
+		if (!this.derived || field === this.priceHome || field === this.priceRest) return GRADIENT_KNEE;
+		return REL_KNEE * this.peakFor(field);
+	}
+
+	fieldDock(field) {
+		if (!this.derived || field === this.priceHome || field === this.priceRest) return DOCK_SLOPE;
+		if (field === this.priceLabor) return 2.5e-3 * this.peakLabor;
+		return REL_DOCK * this.peakFor(field);
 	}
 
 	unitCostAt(item, i) {
@@ -228,29 +248,39 @@ class PriceEconomy {
 		this.workerLife.reset();
 		this.food.fill(0);
 		this.wood.fill(0);
-		this.seededTimber = 0;
 		this.priceFood.fill(0);
 		this.nextPriceFood.fill(0);
 		this.priceWood.fill(0);
 		this.nextPriceWood.fill(0);
+		this.peakCoal = this.peakGoods = this.peakFood = this.peakWood = this.peakLabor = 0;
 		this.producedFood = this.consumedFood = 0;
 		this.goodsPool.reset();
-		this.optimizer.laborCost.fill(0);
+		this.optimizer.reset();
 		this.workers.reset();
 		this.towns.reset();
 		this.founding.reset();
-		this.banks.reset();
+		this.owners.reset();
 		this.money.reset();
 		this.workers.seedReference();
-		this.money.initializeScenario(this.goldPerWorker);
-		this.banks.initializeScenario(this.bankCapital);
 		this.ticks = this.producedCoal = this.burnedCoal = this.producedGoods = this.consumedGoods = 0;
 		this.workedLabor = this.restedDepleted = 0;
 		this.coalRate = this.goodsRate = this.uptakeRate = 0;
-		this.producedWood = this.consumedWood = 0;
+		this.producedWood = this.consumedWood = this.seededWood = 0;
+		this.founding.assignReferenceOwners();
+		this.seedTimber();
+		this.money.fundScenario(this.scenario.goldPerWorker, this.scenario.shares);
 		this.rebuildCellView();
 		this.land.refresh();
 		this.forage.warm();
+	}
+
+	// Gold mines open with a small recorded timber reserve (a real asset, not gold) so the first shift can extract.
+	seedTimber() {
+		for (let i = 0; i < ECONOMY_SIZE; i++) {
+			if (this.actors[i] !== ECONOMY_GOLD) continue;
+			this.wood[i] += GOLD_START_WOOD;
+			this.seededWood += GOLD_START_WOOD;
+		}
 	}
 
 	setActor(i, kind) {
@@ -261,12 +291,12 @@ class PriceEconomy {
 			if (prev === ECONOMY_FARM) this.farms.release(i);
 			this.workers.evictCell(i);
 			this.goodsPool.flushOwner(i);
-			this.money.release(i);
+			this.money.releaseTown(i);
+			this.owners.detach(i);
 			this.coal[i] = this.goods[i] = this.food[i] = this.wood[i] = 0;
 			this.goodsPool.stockCost[ITEM_FOOD][i] = 0;
 			this.goodsPool.stockCost[0][i] = this.goodsPool.stockCost[1][i] = 0;
 			this.goodsPool.stockCost[ITEM_WOOD][i] = 0;
-			this.optimizer.laborCost[i] = 0;
 			this.rooms[i] = this.scale[i] = this.taxMult[i] = this.satCoal[i] = this.satGoods[i] = this.workLoad[i] = this.profit[i] = 0;
 			this.towns.clearTown(i);
 			this.founding.clearSite(i);
@@ -274,7 +304,6 @@ class PriceEconomy {
 			this.vacantTicks[i] = 0;
 		}
 		this.actors[i] = kind;
-		if (kind && kind !== ECONOMY_GARDEN) this.owners.found(i, this.founding.founderId(i));
 		this.settlements.placed(i, kind);
 		if (kind) {
 			this.scale[i] = 1;
@@ -286,10 +315,11 @@ class PriceEconomy {
 			this.wealthClass[i] = wealthClassFor(i);
 			this.vacantTicks[i] = 0;
 			this.towns.initTown(i);
-		} else if (kind === ECONOMY_FARM) {
-			this.farms.init(i);
 		} else if (kind === ECONOMY_GARDEN) {
 			this.forage.claimPlots(i);
+		} else if (kind) {
+			this.founding.assignOwner(i);
+			if (kind === ECONOMY_FARM) this.farms.init(i);
 		}
 		this.rebuildCellView();
 		return true;
@@ -362,10 +392,9 @@ class PriceEconomy {
 	}
 
 	updatePrices() {
-		this.owners.allocate();
-		this.workforce.referenceFee = BASE_REST_FEE * this.towns.walletMean() / WALLET_PRICE_REFERENCE;
 		const { actors, optimizer, towns, workforce, founding, priceCoal, priceGoods, priceLabor, priceHome, priceRest, priceWood, nextPriceCoal, nextPriceGoods, nextPriceLabor, nextPriceHome, nextPriceRest, nextPriceWood } = this;
 		const decay = this.decay ? PRICE_DECAY : 0;
+		let peakCoal = 0, peakGoods = 0, peakFood = 0, peakWood = 0, peakLabor = 0;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			const a = actors[i];
 			let bCoal = -1, bGoods = -1, bLabor = -1, bHome = -1, bRest = -1, bFood = -1, bWood = -1;
@@ -389,14 +418,29 @@ class PriceEconomy {
 					else if (item === ITEM_WOOD) bWood = optimizer.bidOut[m];
 				}
 			}
-			this.nextPriceFood[i] = stepBid(this.priceFood, i, this.priceFood[i], bFood, decay);
-			nextPriceCoal[i] = stepBid(priceCoal, i, priceCoal[i], bCoal, decay);
-			nextPriceGoods[i] = stepBid(priceGoods, i, priceGoods[i], bGoods, decay);
-			nextPriceLabor[i] = stepBid(priceLabor, i, priceLabor[i], bLabor, decay);
+			const nFood = stepBid(this.priceFood, i, this.priceFood[i], bFood, decay);
+			const nCoal = stepBid(priceCoal, i, priceCoal[i], bCoal, decay);
+			const nGoods = stepBid(priceGoods, i, priceGoods[i], bGoods, decay);
+			const nLabor = stepBid(priceLabor, i, priceLabor[i], bLabor, decay);
+			const nWood = stepBid(priceWood, i, priceWood[i], bWood, decay);
+			this.nextPriceFood[i] = nFood;
+			nextPriceCoal[i] = nCoal;
+			nextPriceGoods[i] = nGoods;
+			nextPriceLabor[i] = nLabor;
 			nextPriceHome[i] = stepBid(priceHome, i, priceHome[i], bHome, decay);
 			nextPriceRest[i] = stepBid(priceRest, i, priceRest[i], bRest, decay);
-			nextPriceWood[i] = stepBid(priceWood, i, priceWood[i], bWood, decay);
+			nextPriceWood[i] = nWood;
+			if (nCoal > peakCoal) peakCoal = nCoal;
+			if (nGoods > peakGoods) peakGoods = nGoods;
+			if (nFood > peakFood) peakFood = nFood;
+			if (nWood > peakWood) peakWood = nWood;
+			if (nLabor > peakLabor) peakLabor = nLabor;
 		}
+		this.peakCoal = peakCoal;
+		this.peakGoods = peakGoods;
+		this.peakFood = peakFood;
+		this.peakWood = peakWood;
+		this.peakLabor = peakLabor;
 		const foodSwap = this.priceFood;
 		this.priceFood = this.nextPriceFood;
 		this.nextPriceFood = foodSwap;

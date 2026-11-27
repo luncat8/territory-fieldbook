@@ -1,83 +1,139 @@
-// Owns: scenario gold and timber origin, mined gold, stable-owner FIFO wage claims and transport/custody accounts.
-// Edit for: starting capital allocation, timber reserve and settlement; prices never depend on the scenario gold setting.
+// Owns: conserved gold — scenario starting gold, town purses, owner settlement waterfall, wage claims, transport and custody accounts.
+// Edit for: starting gold per worker and its allocation, entry-wage prepayment, reserve horizon, earned-work bonuses and T0/T1 drip.
 'use strict';
 
 const PURSE_SECONDS = 15;
-const INITIAL_GOLD_PER_WORKER = 1;
-const INITIAL_WALLET_SHARE = 0.5;
-const WAGE_CLAIM_CAP = 128;
+const RESERVE_SECONDS = 4;
+const RESERVE_HORIZON_SECONDS = 16;
+const BONUS_BATCH = 0.2;
+const START_GOLD_PER_WORKER = 1;
+// Scenario allocation of starting gold; shares sum to 1 and every bucket is recorded once as initial gold.
+const START_SHARES = { bank: 0.25, owners: 0.35, towns: 0.2, wallets: 0.2 };
+const WALLET_REFERENCE = 8;
 const VAULT_DRIP_RATE = 0.35;
-const TRANSPORT_T0 = 0;
-const TRANSPORT_T1 = 1;
-const GOLD_TIMBER = 1.5;
+const WAGE_CLAIM_CAP = 128;
 
 class GoldMoney {
 	constructor(model) {
 		this.model = model;
+		this.purse = new Float64Array(ECONOMY_SIZE);
+		// SoA FIFO of unpaid entry wages: debt belongs to the owner and the original hire, even after either moves on.
 		this.claimOwner = new Int32Array(WAGE_CLAIM_CAP);
 		this.claimWorkerId = new Int32Array(WAGE_CLAIM_CAP);
 		this.claimAmount = new Float64Array(WAGE_CLAIM_CAP);
 		this.claimCap = WAGE_CLAIM_CAP;
+		this.claimCount = 0;
+		this.transportPreset = 'T0';
 		this.startTaxPerPop = START_PRICE / (INPUT_SHARE * (GOODS_COMFORT / TOWN_GOODS_NEED));
 		this.dripShare = 1 - Math.exp(-ECONOMY_DT * VAULT_DRIP_RATE);
-		this.transportPreset = TRANSPORT_T0;
 	}
 
+	// Clears every gold balance (owner cash, wage claims, bank book) but keeps owner identities and facility links.
 	reset() {
-		this.model.owners.reset();
+		const { owners, bank } = this.model;
+		this.purse.fill(0);
 		this.claimCount = 0;
-		this.transport = 0;
-		this.custody = 0;
-		this.redistributed = 0;
-		this.inputs = 0;
-		this.seeded = this.mined = this.wages = this.taxes = this.transportEarned = 0;
+		if (owners) for (const col of [owners.cash, owners.capital, owners.owed]) col.fill(0);
+		if (bank) bank.reset();
+		this.transport = this.custody = 0;
+		this.initial = this.mined = this.wages = this.bonuses = this.taxes = this.transportEarned = this.redistributed = 0;
 		this.mineRate = this.wageRate = this.taxRate = 0;
-		this.lastMined = this.lastWages = this.lastTaxes = 0;
-		this.initialized = false;
-		const { actors } = this.model;
+	}
+
+	// Scenario starting gold is recorded once (plan M.1): bank equity, named owners, town treasuries and wallets.
+	// A bucket with no recipients folds into bank equity, so the total always equals perWorker × workers.
+	fundScenario(perWorker, shares) {
+		const m = this.model, { owners, workers, actors } = m;
+		const total = perWorker * workers.count;
+		let towns = 0;
+		for (let i = 0; i < ECONOMY_SIZE; i++) if (actors[i] === ECONOMY_TOWN) towns++;
+		const named = owners.count - 1;
+		const ownerEach = named ? total * shares.owners / named : 0;
+		const townEach = towns ? total * shares.towns / towns : 0;
+		const walletEach = workers.count ? total * shares.wallets / workers.count : 0;
+		const walletSeed = walletEach > 0 ? walletEach : perWorker * 0.2;
+		for (let o = 1; o < owners.count; o++) this.fundOwner(o, ownerEach);
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			if (actors[i] && actors[i] !== ECONOMY_GARDEN) this.model.owners.found(i);
+			if (actors[i] !== ECONOMY_TOWN) continue;
+			this.fund(i, townEach);
+			m.localWealth[i] = walletSeed;
 		}
+		for (let w = 0; w < workers.count; w++) this.fundWorker(w, walletEach);
+		this.fundBank(total - ownerEach * named - townEach * towns - walletEach * workers.count);
 	}
 
-	initializeScenario(goldPerWorker) {
-		if (this.initialized) return false;
-		this.initialized = true;
-		const { workers, owners, actors } = this.model;
-		const capital = workers.totalAmount() * goldPerWorker;
-		this.seeded += capital;
-		for (let w = 0; w < workers.count; w++) workers.gold[w] += workers.amount[w] * goldPerWorker * INITIAL_WALLET_SHARE;
-		const count = owners.accounts.length - 1;
-		if (!count) this.custody += capital * (1 - INITIAL_WALLET_SHARE);
-		for (let id = 1; id <= count; id++) {
-			const a = owners.accounts[id];
-			a.cash += capital * (1 - INITIAL_WALLET_SHARE) / count;
-			if (!a.municipal && workers.count) a.workerId = workers.id[(id - 1) % workers.count];
+	fundOwner(o, amount) {
+		this.model.owners.cash[o] += amount;
+		this.model.owners.capital[o] += amount;
+		this.initial += amount;
+	}
+
+	fundBank(amount) {
+		this.model.bank.fund(amount);
+		this.initial += amount;
+	}
+
+	fundWorker(w, amount) {
+		this.model.workers.gold[w] += amount;
+		this.initial += amount;
+	}
+
+	// Books gold a caller already placed in a wallet (debug grants, test spawns) as initial funding.
+	recordFunding(amount) {
+		this.initial += amount;
+	}
+
+	unitScale() {
+		const count = this.model.workers.count;
+		if (count <= 0) return 1;
+		const supply = this.initial + this.mined;
+		return (supply > 0 ? supply : this.model.workers.totalGold()) / count;
+	}
+
+	eps() {
+		return Math.max(1e-30, (this.initial + this.mined) * 1e-12);
+	}
+
+	// Explicit scenario capital for the account behind a cell; recorded as initial gold, never a placement side effect.
+	fund(cell, amount) {
+		if (this.model.actors[cell] === ECONOMY_TOWN) this.purse[cell] += amount;
+		else {
+			const owners = this.model.owners, o = owners.ownerAt(cell);
+			if (!o) { this.fundBank(amount); return; }
+			owners.cash[o] += amount;
+			owners.capital[o] += amount;
 		}
-		owners.allocate();
-		// Scenario timber is a recorded real asset, not gold: it bridges the first shift until purchases use mined gold.
-		for (let i = 0; i < ECONOMY_SIZE; i++) if (actors[i] === ECONOMY_GOLD) this.seedTimber(i, GOLD_TIMBER);
-		return true;
+		this.initial += amount;
 	}
 
-	seedWorker(gold) {
-		this.seeded += gold;
+	// An erased town's treasury is an estate: it goes to custody, never vanishes and never mints.
+	releaseTown(i) {
+		this.custody += this.purse[i];
+		this.purse[i] = 0;
 	}
 
-	// Timber is a real asset: its grant counter lives beside produced/consumed wood so erase/spoilage keeps the ledger exact.
-	seedTimber(cell, amount) {
-		if (!(amount > 0)) return 0;
-		this.model.seededTimber += amount;
-		this.model.wood[cell] += amount;
-		return amount;
+	isTown(i) {
+		return this.model.actors[i] === ECONOMY_TOWN;
 	}
 
-	cash(i) { return this.model.owners.available(i); }
-	wageDebt(i) { return this.model.owners.accountAt(i)?.wageDebt || 0; }
-	spend(i, amount) { return this.model.owners.spend(i, amount); }
+	// Spendable budget at a cell: a town's purse, or a facility's bounded share of its owner's shared cash.
+	cashAt(i) {
+		return this.isTown(i) ? this.purse[i] : this.model.owners.budgetAt(i);
+	}
 
-	release(i) {
-		this.model.owners.release(i);
+	debit(i, amount) {
+		if (this.isTown(i)) {
+			this.purse[i] = Math.max(0, this.purse[i] - amount);
+			return;
+		}
+		const owners = this.model.owners, o = owners.ownerAt(i);
+		owners.cash[o] = Math.max(0, owners.cash[o] - amount);
+	}
+
+	creditOwner(o, amount) {
+		if (amount <= 0) return;
+		if (o) this.model.owners.cash[o] += amount;
+		else this.custody += amount;
 	}
 
 	growClaims() {
@@ -92,6 +148,7 @@ class GoldMoney {
 		this.claimCap = cap;
 	}
 
+	// Removes the claim at k, shifting later entries down so settlement keeps FIFO order.
 	dropClaim(k) {
 		const last = --this.claimCount;
 		for (let j = k; j < last; j++) {
@@ -102,48 +159,50 @@ class GoldMoney {
 	}
 
 	dig(i, amount) {
-		this.model.owners.accountAt(i).cash += amount;
-		this.model.owners.budget[i] += amount;
+		this.creditOwner(this.model.owners.ownerAt(i), amount);
 		this.mined += amount;
 	}
 
 	creditCool(i, budget) {
-		return 1 + this.wageDebt(i) / Math.max(1e-12, budget);
+		const owed = this.model.owners.owedAt(i);
+		if (owed <= 0) return 1;
+		return budget > 0 ? 1 + owed / budget : Infinity;
 	}
 
 	townCool(i, budget) {
-		const cash = this.cash(i);
-		if (cash <= 1e-12) return Infinity;
-		return Math.max(1, budget / cash) * this.creditCool(i, budget);
+		const cash = this.purse[i];
+		if (cash <= 0) return Infinity;
+		if (budget <= 0) return 1;
+		return (cash >= budget ? 1 : budget / cash) * this.creditCool(i, budget);
 	}
 
-	payEntryWage(cell, worker, bill) {
+	// Prepays the shift at pool entry from the facility budget; any shortfall books an SoA wage claim on the owner
+	// in favour of the original worker, settled FIFO from later owner cash.
+	payEntryWage(firmCell, workerIdx, bill) {
 		if (bill <= 0) return 0;
-		const { workers, owners } = this.model;
-		const account = owners.accountAt(cell);
-		if (account.wageDebt > 0) this.settleOwner(owners.ownerAt(cell));
-		const paid = this.spend(cell, bill);
-		workers.gold[worker] += paid;
-		if (paid > 0) this.model.tracker.income(worker, paid, workers.cell[worker]);
+		const m = this.model, owners = m.owners, o = owners.ownerAt(firmCell), eps = this.eps();
+		const paid = Math.min(bill, owners.budgetAt(firmCell));
+		owners.cash[o] = Math.max(0, owners.cash[o] - paid);
+		m.workers.gold[workerIdx] += paid;
+		if (paid > 0) m.tracker.income(workerIdx, paid, m.workers.cell[workerIdx]);
 		this.wages += paid;
 		const owed = bill - paid;
-		if (owed > 1e-15) {
-			const owner = owners.ownerAt(cell);
-			owners.accounts[owner].wageDebt += owed;
-			this.addWageClaim(owner, workers.id[worker], owed);
+		if (owed > eps) {
+			owners.owed[o] += owed;
+			this.addWageClaim(o, m.workers.id[workerIdx], owed);
 		}
 		return paid;
 	}
 
-	addWageClaim(owner, workerId, amount) {
+	addWageClaim(o, workerId, amount) {
 		for (let k = 0; k < this.claimCount; k++) {
-			if (this.claimOwner[k] !== owner || this.claimWorkerId[k] !== workerId) continue;
+			if (this.claimOwner[k] !== o || this.claimWorkerId[k] !== workerId) continue;
 			this.claimAmount[k] += amount;
 			return;
 		}
 		if (this.claimCount >= this.claimCap) this.growClaims();
 		const k = this.claimCount++;
-		this.claimOwner[k] = owner;
+		this.claimOwner[k] = o;
 		this.claimWorkerId[k] = workerId;
 		this.claimAmount[k] = amount;
 	}
@@ -154,27 +213,25 @@ class GoldMoney {
 		return total;
 	}
 
-	settleOwner(owner) {
-		const { workers, owners } = this.model, account = owners.accounts[owner];
-		for (let k = 0; k < this.claimCount && account.cash > 0;) {
-			if (this.claimOwner[k] !== owner) { k++; continue; }
-			const pay = Math.min(account.cash, this.claimAmount[k]);
+	// Pays an owner's wage claims FIFO to the original hires; despawned workers' shares go to custody.
+	payWageClaims(o, budget) {
+		const workers = this.model.workers, eps = this.eps() * 1e-3;
+		let left = budget;
+		for (let k = 0; k < this.claimCount && left > eps;) {
+			if (this.claimOwner[k] !== o) { k++; continue; }
+			const pay = Math.min(left, this.claimAmount[k]);
 			const w = workers.indexOfId(this.claimWorkerId[k]);
 			if (w >= 0) {
 				workers.gold[w] += pay;
 				this.model.tracker.income(w, pay, workers.cell[w]);
-			} else this.custody += pay; // Unclaimed estates hold in custody: it never funds towns or the company.
-			account.cash -= pay;
-			account.wageDebt = Math.max(0, account.wageDebt - pay);
+			} else this.custody += pay;
 			this.claimAmount[k] -= pay;
-			this.wages += pay;
-			if (this.claimAmount[k] <= 1e-15) this.dropClaim(k);
+			left -= pay;
+			if (this.claimAmount[k] <= eps) this.dropClaim(k);
 			else k++;
 		}
-	}
-
-	settleFirm(i) {
-		this.settleOwner(this.model.owners.ownerAt(i));
+		// The owner already debited the whole budget; unclaimable fp dust keeps the books exact via custody.
+		if (left > 0) this.custody += left;
 	}
 
 	payTransport(amount) {
@@ -183,46 +240,99 @@ class GoldMoney {
 		this.transportEarned += amount;
 	}
 
-	payOwner(owner, amount) {
-		if (amount > 0) this.model.owners.accounts[owner].cash += amount;
-	}
-
-	payTown(cell, amount) {
+	payTown(townCell, amount) {
 		if (amount <= 0) return;
-		this.model.owners.accountAt(cell).cash += amount;
+		this.purse[townCell] += amount;
 		this.taxes += amount;
-		this.model.towns.recordRevenue(cell, amount);
+		this.model.towns.recordRevenue(townCell, amount);
 	}
 
+	// Overlay holdings: a facility shows its budget share, so owner cash is never counted once per site.
 	held(i) {
-		const a = this.model.owners.accountAt(i);
-		return (a ? a.cash / a.sites : 0) + this.model.workerGold[i];
+		return (this.isTown(i) ? this.purse[i] : this.model.owners.budgetAt(i)) + this.model.workerGold[i];
 	}
-	total() { return this.transport + this.custody + this.model.banks.gold + this.model.workers.totalGold() + this.model.owners.total(); }
+
+	townTotal() {
+		let sum = 0;
+		for (let i = 0; i < ECONOMY_SIZE; i++) sum += this.purse[i];
+		return sum;
+	}
+
+	total() {
+		const m = this.model;
+		return this.townTotal() + m.owners.totalCash() + m.bank.reserve + this.transport + this.custody + m.workers.totalGold();
+	}
 
 	step() {
-		const { actors, pop, owners, banks } = this.model;
-		const mined = this.lastMined, wages = this.lastWages, taxes = this.lastTaxes;
-		for (let id = 1; id < owners.accounts.length; id++) this.settleOwner(id);
-		banks.step();
-		// T0 redistributes only Transport Company earnings; custody is never town funding.
-		let townWeight = 0;
-		for (let i = 0; i < ECONOMY_SIZE; i++) if (actors[i] === ECONOMY_TOWN) townWeight += Math.max(1, pop[i]);
-		if (this.transportPreset === TRANSPORT_T0 && townWeight > 0 && this.transport > 0) {
-			const drip = this.transport * this.dripShare;
-			this.transport -= drip;
-			this.redistributed += drip;
-			for (let i = 0; i < ECONOMY_SIZE; i++) {
-				if (actors[i] === ECONOMY_TOWN) owners.accountAt(i).cash += drip * Math.max(1, pop[i]) / townWeight;
-			}
+		const { actors, owners } = this.model;
+		const mined = this.mined, wages = this.wages, taxes = this.taxes;
+		owners.reserve.fill(0);
+		owners.extracts.fill(0);
+		for (let i = 0; i < ECONOMY_SIZE; i++) {
+			const a = actors[i], o = owners.ownerAt(i);
+			if (!o || a === ECONOMY_TOWN || a === ECONOMY_GARDEN) continue;
+			owners.reserve[o] += this.costRate(i, a) * RESERVE_SECONDS;
+			if (a === ECONOMY_GOLD) owners.extracts[o] = 1;
 		}
+		for (let o = 1; o < owners.count; o++) this.settleOwner(o);
+		this.dripToTowns();
 		this.mineRate = (this.mined - mined) / ECONOMY_DT;
 		this.wageRate = (this.wages - wages) / ECONOMY_DT;
 		this.taxRate = (this.taxes - taxes) / ECONOMY_DT;
-		this.lastMined = this.mined;
-		this.lastWages = this.wages;
-		this.lastTaxes = this.taxes;
+	}
+
+	// T0 redistributes transport fees to towns by population; T1 retains them. Custody always escheats to towns.
+	dripToTowns() {
+		const { actors, pop } = this.model;
+		let townWeight = 0;
+		for (let i = 0; i < ECONOMY_SIZE; i++) if (actors[i] === ECONOMY_TOWN) townWeight += Math.max(1, pop[i]);
+		if (townWeight <= 0) return;
+		const fromTransport = this.transportPreset === 'T0' ? this.transport * this.dripShare : 0;
+		const fromCustody = this.custody * this.dripShare;
+		const drip = fromTransport + fromCustody;
+		if (drip <= this.eps()) return;
+		this.transport -= fromTransport;
+		this.custody -= fromCustody;
+		this.redistributed += drip;
+		for (let i = 0; i < ECONOMY_SIZE; i++) {
+			if (actors[i] === ECONOMY_TOWN) this.purse[i] += drip * (Math.max(1, pop[i]) / townWeight);
+		}
+	}
+
+	costRate(i, actor) {
+		const { priceCoal, priceLabor, priceWood, scale } = this.model;
+		if (actor === ECONOMY_FARM) return priceLabor[i] * this.model.farms.crewTarget(i) * WORK_RATE;
+		if (actor === ECONOMY_SAWMILL) return priceLabor[i] * SAWMILL_RATE * SAWMILL_LABOR * (scale[i] || 1);
+		if (actor === ECONOMY_FACTORY) return (priceCoal[i] / FACTORY_YIELD + priceLabor[i] * FACTORY_LABOR) * FACTORY_RATE * (scale[i] || 1);
+		if (actor === ECONOMY_GOLD) return (priceWood[i] * GOLD_WOOD + priceLabor[i] * GOLD_LABOR) * SOURCE_RATE * (scale[i] || 1);
+		return priceLabor[i] * SOURCE_RATE * MINE_LABOR * (scale[i] || 1);
+	}
+
+	// Waterfall (plan M.1): due wage claims, a loan when short of the next-shift reserve (extracting owners self-fund),
+	// debt service from cash above the reserve, then batched bonuses to workers who earned the shifts.
+	// Bonuses come only from earnings: never while a loan is open and never out of paid-in working capital,
+	// otherwise a cold-start reserve near zero pays the scenario capital straight out as bonuses.
+	settleOwner(o) {
+		const m = this.model, owners = m.owners, eps = this.eps();
+		if (owners.owed[o] > eps && owners.cash[o] > eps) {
+			const pay = Math.min(owners.cash[o], owners.owed[o]);
+			owners.cash[o] -= pay;
+			owners.owed[o] -= pay;
+			this.payWageClaims(o, pay);
+			this.wages += pay;
+		}
+		const reserve = owners.reserve[o];
+		if (!owners.extracts[o] && reserve > eps && owners.cash[o] < reserve) m.bank.request(o, reserve / RESERVE_SECONDS);
+		m.bank.service(o, owners.cash[o] - reserve);
+		if (m.bank.principal[o] > eps) return;
+		const surplus = owners.cash[o] - Math.max(owners.capital[o], reserve * (RESERVE_HORIZON_SECONDS / RESERVE_SECONDS));
+		const batch = BONUS_BATCH * this.unitScale();
+		if (surplus <= eps || surplus < batch) return;
+		const paid = m.workers.payCredited(o, surplus);
+		owners.cash[o] -= paid;
+		this.wages += paid;
+		this.bonuses += paid;
 	}
 }
 
-if (typeof module === 'object') module.exports = { GoldMoney, INITIAL_GOLD_PER_WORKER, GOLD_TIMBER, TRANSPORT_T0, TRANSPORT_T1 };
+if (typeof module === 'object') module.exports = { GoldMoney, START_GOLD_PER_WORKER, START_SHARES, WALLET_REFERENCE };

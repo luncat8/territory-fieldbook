@@ -1,120 +1,108 @@
-// Owns: stable owner/facility identities, worker proprietors, owner-level debt limits and shared gold spending envelopes.
-// Edit for: portfolio allocation, capital transfers and facility ownership; physical stock stays at the site.
+// Owns: stable owner and facility identities — shared owner cash, paid-in capital, wage liabilities, facility mapping, budgets and debt limits.
+// Edit for: owner capacity, per-facility budget split and the fixed debt-limit policy.
 'use strict';
 
-const OWNER_DEBT_LIMIT = 10;
+const OWNER_CAP = 64;
+const OWNER_NONE = 0;
+const OWNER_DEBT_LIMIT = 6;
 
-class OwnerAccounts {
+// Per-owner SoA columns grow by copy; owner ids index every column, so ids stay stable across growth.
+function growColumn(old, Type, cap) {
+	const next = new Type(cap);
+	if (old) next.set(old);
+	return next;
+}
+
+// One registry serves both presets: isolated owners are simply one facility per owner (plan M.1a).
+class OwnerRegistry {
 	constructor(model) {
 		this.model = model;
-		this.cell = new Int32Array(ECONOMY_SIZE);
-		this.budget = new Float64Array(ECONOMY_SIZE);
-		this.accounts = [null];
-		this.facilities = [null];
+		this.facilityOwner = new Int32Array(ECONOMY_SIZE);
+		this.facilityId = new Int32Array(ECONOMY_SIZE);
+		this.allocate(OWNER_CAP);
+	}
+
+	allocate(cap) {
+		this.cash = growColumn(this.cash, Float64Array, cap);
+		this.capital = growColumn(this.capital, Float64Array, cap);
+		this.owed = growColumn(this.owed, Float64Array, cap);
+		this.workerId = growColumn(this.workerId, Int32Array, cap);
+		this.facilities = growColumn(this.facilities, Int32Array, cap);
+		this.debtLimit = growColumn(this.debtLimit, Float64Array, cap);
+		this.reserve = growColumn(this.reserve, Float64Array, cap);
+		this.extracts = growColumn(this.extracts, Uint8Array, cap);
+		this.cap = cap;
+		if (this.model.bank) this.model.bank.allocate(cap);
 	}
 
 	reset() {
-		this.cell.fill(0);
-		this.budget.fill(0);
-		this.accounts.length = this.facilities.length = 1;
+		this.facilityOwner.fill(OWNER_NONE);
+		this.facilityId.fill(0);
+		for (const col of [this.cash, this.capital, this.owed, this.workerId, this.facilities, this.debtLimit, this.reserve, this.extracts]) col.fill(0);
+		this.count = 1;
+		this.nextFacility = 0;
 	}
 
-	create(workerId = -1, municipal = false) {
-		const id = this.accounts.length;
-		this.accounts.push({ workerId, municipal, cash: 0, wageDebt: 0, loanDebt: 0, debtLimit: municipal ? 0 : OWNER_DEBT_LIMIT, sites: 0 });
-		return id;
+	// Owner 0 is the "none" sentinel so an Int32Array default never names a real payee.
+	create(workerId) {
+		if (this.count >= this.cap) this.allocate(this.cap * 2);
+		const o = this.count++;
+		this.workerId[o] = workerId;
+		this.debtLimit[o] = OWNER_DEBT_LIMIT;
+		return o;
+	}
+
+	ownerOfWorker(workerId) {
+		if (workerId < 0) return OWNER_NONE;
+		for (let o = 1; o < this.count; o++) if (this.workerId[o] === workerId) return o;
+		return OWNER_NONE;
+	}
+
+	attach(cell, o) {
+		this.facilityOwner[cell] = o;
+		this.facilityId[cell] = ++this.nextFacility;
+		this.facilities[o]++;
+	}
+
+	// The owner keeps cash, wage claims and debt; only the facility link ends.
+	detach(cell) {
+		const o = this.facilityOwner[cell];
+		if (o) this.facilities[o]--;
+		this.facilityOwner[cell] = OWNER_NONE;
+		this.facilityId[cell] = 0;
 	}
 
 	ownerAt(cell) {
-		return this.facilities[this.cell[cell]]?.owner || 0;
+		return this.facilityOwner[cell];
 	}
 
-	accountAt(cell) {
-		return this.accounts[this.ownerAt(cell)];
+	// Bounded per-facility share of the shared purse: a portfolio never bids its full cash at every site.
+	budgetAt(cell) {
+		const o = this.facilityOwner[cell];
+		return o ? this.cash[o] / Math.max(1, this.facilities[o]) : 0;
 	}
 
-	workerOwner(workerId) {
-		for (let id = 1; id < this.accounts.length; id++) {
-			const a = this.accounts[id];
-			if (!a.municipal && workerId > 0 && a.workerId === workerId) return id;
-		}
-		return this.create(workerId);
+	owedAt(cell) {
+		const o = this.facilityOwner[cell];
+		return o ? this.owed[o] / Math.max(1, this.facilities[o]) : 0;
 	}
 
-	found(cell, workerId = -1) {
-		if (this.cell[cell]) return this.cell[cell];
-		const municipal = this.model.actors[cell] === ECONOMY_TOWN;
-		const owner = municipal ? this.create(-1, true) : this.workerOwner(workerId);
-		const id = this.facilities.length;
-		this.facilities.push({ owner, cell });
-		this.cell[cell] = id;
-		this.accounts[owner].sites++;
-		this.allocate();
-		return id;
+	debtHeadroom(o) {
+		const scale = this.model.money ? this.model.money.unitScale() : 1;
+		return Math.max(0, this.debtLimit[o] * scale - this.model.bank.principal[o]);
 	}
 
-	release(cell) {
-		const id = this.cell[cell];
-		if (!id) return;
-		const f = this.facilities[id];
-		this.accounts[f.owner].sites--;
-		f.cell = -1;
-		this.cell[cell] = 0;
-		this.budget[cell] = 0;
+	totalCash() {
+		let sum = 0;
+		for (let o = 1; o < this.count; o++) sum += this.cash[o];
+		return sum;
 	}
 
-	allocate() {
-		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			const a = this.accountAt(i);
-			this.budget[i] = a ? a.cash / a.sites : 0;
-		}
-	}
-
-	available(cell) {
-		const a = this.accountAt(cell);
-		return a ? Math.min(a.cash, this.budget[cell]) : 0;
-	}
-
-	spend(cell, amount) {
-		const paid = Math.min(Math.max(0, amount), this.available(cell));
-		if (!paid) return 0;
-		this.accountAt(cell).cash -= paid;
-		this.budget[cell] -= paid;
-		return paid;
-	}
-
-	invest(worker, cell, amount) {
-		const { workers } = this.model, a = this.accountAt(cell);
-		if (!a || a.workerId !== workers.id[worker] || amount <= 0) return 0;
-		const paid = Math.min(workers.gold[worker], amount);
-		workers.gold[worker] -= paid;
-		a.cash += paid;
-		this.budget[cell] += paid / a.sites;
-		this.model.tracker.expense(worker, paid, cell);
-		return paid;
-	}
-
-	buyFacility(cell, worker, price) {
-		const { workers } = this.model, f = this.facilities[this.cell[cell]];
-		if (!f || price < 0 || !Number.isFinite(price) || workers.gold[worker] < price || worker < 0 || worker >= workers.count) return false;
-		const seller = this.accounts[f.owner];
-		const buyer = this.workerOwner(workers.id[worker]);
-		if (buyer === f.owner || seller.municipal) return false;
-		workers.gold[worker] -= price;
-		this.model.tracker.expense(worker, price, cell);
-		seller.cash += price;
-		seller.sites--;
-		f.owner = buyer;
-		this.accounts[buyer].sites++;
-		this.allocate();
-		return true;
-	}
-
-	total() {
-		let total = 0;
-		for (let id = 1; id < this.accounts.length; id++) total += this.accounts[id].cash;
-		return total;
+	totalOwed() {
+		let sum = 0;
+		for (let o = 1; o < this.count; o++) sum += this.owed[o];
+		return sum;
 	}
 }
 
-if (typeof module === 'object') module.exports = { OwnerAccounts, OWNER_DEBT_LIMIT };
+if (typeof module === 'object') module.exports = { OwnerRegistry, growColumn, OWNER_NONE, OWNER_DEBT_LIMIT };

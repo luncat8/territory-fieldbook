@@ -167,7 +167,7 @@ class TrackedPanel {
 		const p = this.model.workers.indexOfId(entry.id);
 		if (p < 0) return;
 		const amount = Math.max(1, Number(this.goldInput.value) || 5);
-		this.model.money.seedWorker(amount);
+		this.model.money.recordFunding(amount);
 		this.model.workers.gold[p] += amount;
 		this.model.tracker.fund(entry, amount);
 		this.renderEntry(entry);
@@ -184,7 +184,7 @@ class TrackedPanel {
 		const amount = Math.max(1, Number(this.goldInput.value) || 5);
 		const w = m.workers.spawn((cell % ECONOMY_WIDTH) + 0.5, Math.floor(cell / ECONOMY_WIDTH) + 0.5, WORKER_STILL, 0, amount, 1, false);
 		if (w < 0) return;
-		m.money.seedWorker(amount);
+		m.money.recordFunding(amount);
 		const entry = m.tracker.track(w, null, amount);
 		if (entry) {
 			m.tracker.note(entry, `spawned at ${m.tracker.place(cell)} with ${amount} g`);

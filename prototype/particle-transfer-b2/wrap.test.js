@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'owners.js', 'gold.js', 'banks.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js'];
+const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'gold.js', 'owners.js', 'banks.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js'];
 for (const file of SCRIPTS) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 
 test('torus gives corner cells all 8 neighbours while bounded edges keep 3', () => {
@@ -74,7 +74,7 @@ test('map edges swap mid-run while positions, gold and headcount stay conserved'
 		assert.ok(goodsPool.x[p] >= 0 && goodsPool.x[p] < ECONOMY_WIDTH, `goods x ${goodsPool.x[p]}`);
 		assert.ok(goodsPool.y[p] >= 0 && goodsPool.y[p] < ECONOMY_HEIGHT, `goods y ${goodsPool.y[p]}`);
 	}
-	assert.ok(Math.abs(money.total() - (money.seeded + money.mined)) < 1e-9, 'gold conserved across edge swaps');
+	assert.ok(Math.abs(money.total() - (money.initial + money.mined)) < 1e-9, 'gold conserved across edge swaps');
 	assert.ok(Math.abs((workers.seededWorkers + workers.births - model.workerLife.deaths) - workers.totalAmount()) < 1e-9, 'headcount conserved across edge swaps');
 	assert.ok(Math.abs((workers.seededTired + model.workedLabor - model.restedDepleted - model.workerLife.removedTired) - workers.totalTired()) < 1e-7, 'tired ledger conserved across edge swaps');
 });

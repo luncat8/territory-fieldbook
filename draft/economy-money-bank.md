@@ -97,8 +97,3 @@ sawmill owner get money from bank to be able pay workers
 ...
 bank-loan repayment
 
-
-
-Starting-price clarification: initial prices only prevent startup singularities and spikes. They must then
-adapt; do not tie a permanent price level to starting gold per worker. Any positive amount of gold should
-permit circulation without fixed nominal price barriers. Paper money is for a later session.

@@ -18,7 +18,7 @@ const TOOL_HINTS = {
 	mine: 'Click walkable land to place a coal mine.',
 	factory: 'Click walkable land to place a goods factory.',
 	town: 'Click walkable land to place a town. Workers buy rest and food; towns never create or remove workers.',
-	gold: 'Click walkable land to place a gold mine. Scenario mines start with a recorded timber reserve; a placed mine buys wood with owner capital or a bank loan.',
+	gold: 'Click walkable land to place a gold mine.',
 	farm: 'Click walkable land to build a food farm. Paid crews clear forest or use local wood, then harvest every seven seconds.',
 	garden: 'Click walkable land to place a Monastery garden: farms surrounding plots and gives free food.',
 	sawmill: 'Click walkable land to place a sawmill. Paid crews fell nearby forest into wood sold to builders.',
@@ -154,23 +154,9 @@ function bootEconomy() {
 	function toggleRun() { running = !running; syncPlayback(); texts(); }
 
 	function reset() {
-		const capital = Number($('initial-gold').value);
-		const bankCapital = Number($('bank-capital').value);
-		if (!Number.isFinite(capital) || capital < 0) {
-			message.textContent = 'Starting gold must be a nonnegative number.';
-			return;
-		}
-		if (!Number.isFinite(bankCapital) || bankCapital < 0) {
-			message.textContent = 'Bank capital must be a nonnegative number.';
-			return;
-		}
-		model.goldPerWorker = capital;
-		model.bankCapital = bankCapital;
 		model.reset(); stats.reset(model); tracked.reset(); syncActors(); clearSelection();
 		accumulator = 0; lastFrame = performance.now();
-		message.textContent = model.banks.exists
-			? `Reset · gold bank chartered with ${model.banks.gold.toFixed(2)} g transferred from firm owners.`
-			: 'Reset · goods and workers run as conserved SoA particles.';
+		message.textContent = 'Reset · goods and workers run as conserved SoA particles.';
 		texts(); paint();
 	}
 
@@ -210,27 +196,6 @@ function bootEconomy() {
 	stepButton.addEventListener('click', () => { tick(); texts(); paint(); });
 	speedSelect.addEventListener('change', () => { rate = Number(speedSelect.value); });
 	decay.addEventListener('change', () => { model.decay = decay.checked; message.textContent = `Price decay ${model.decay ? 'enabled' : 'disabled'}.`; });
-	$('transport-preset').addEventListener('change', event => {
-		model.money.transportPreset = Number(event.target.value);
-		message.textContent = model.money.transportPreset === TRANSPORT_T0
-			? 'T0 · haul fees drip back to towns (an explicit redistribution rule).'
-			: 'T1 · haul fees accumulate in the Transport Company account.';
-		texts();
-	});
-	$('fund-button').addEventListener('click', () => {
-		const amount = Number($('loan-amount').value);
-		const owner = selected >= 0 ? model.owners.ownerAt(selected) : 0;
-		const paid = owner > 0 ? model.banks.fundFrom(owner, amount) : 0;
-		message.textContent = paid > 0
-			? `Bank funded with ${paid.toFixed(2)} g from owner #${owner} (explicit transfer, no minting).`
-			: 'Fund the bank from a selected owner cell that holds cash.';
-		texts();
-	});
-	$('borrow-button').addEventListener('click', () => {
-		const result = model.banks.requestLoan(selected, Number($('loan-amount').value));
-		message.textContent = result.message;
-		texts();
-	});
 	derived.addEventListener('change', () => { model.derived = derived.checked; message.textContent = `Derived bid ${model.derived ? 'enabled' : 'disabled'}.`; });
 	suppression.addEventListener('change', () => { model.suppression = suppression.checked; message.textContent = `Stock suppression ${model.suppression ? 'enabled' : 'disabled'}.`; });
 	flow.addEventListener('change', () => { dirty = true; paint(); });

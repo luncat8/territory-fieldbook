@@ -2,9 +2,11 @@
 // Edit for: service prices, input bids and Cheap/Med/Rich strategies; never worker lifecycle.
 'use strict';
 
-const WALLET_PRICE_REFERENCE = 8;
 const BASE_REST_FEE = 1.05;
 const BASE_RATION_FEE = 0.45;
+const REST_WALLET_SHARE = 0.24;
+const FOOD_BID_VALUE = 0.25;
+const FOOD_NEED = 0.018;
 const ROOM_REST_BASE = 0.22;
 const ROOM_REST_COMFORT = 0.38;
 const WAIT_POOL_FREE = 0.25;
@@ -45,7 +47,7 @@ class TownRules {
 	initTown(i) {
 		this.model.food[i] = 0;
 		this.revenueTick[i] = 0;
-		this.model.localWealth[i] = this.model.workers.count ? this.walletMean() : WALLET_PRICE_REFERENCE;
+		this.model.localWealth[i] = this.model.workers ? this.model.workers.meanGold() : 0;
 	}
 
 	clearTown(i) {
@@ -60,7 +62,7 @@ class TownRules {
 
 	observeWallet(i, perWorkerGold) {
 		const cur = this.model.localWealth[i];
-		this.model.localWealth[i] = cur + 0.18 * (perWorkerGold - cur);
+		this.model.localWealth[i] = cur > 0 ? cur + 0.18 * (perWorkerGold - cur) : perWorkerGold;
 	}
 
 	waitCap(i) {
@@ -77,8 +79,9 @@ class TownRules {
 	drive(i) {
 		const m = this.model;
 		if (!m.derived) return 0;
-		const ref = Math.max(1e-12, this.demandPop(i) * TOWN_GOODS_NEED * m.priceGoods[i]);
-		return Math.tanh(m.profit[i] / ref);
+		const unitGoods = Math.max(m.priceGoods[i], (GOODS_COMFORT / TOWN_GOODS_NEED) * this.taxRate(i));
+		const ref = this.demandPop(i) * TOWN_GOODS_NEED * unitGoods;
+		return ref > 0 ? Math.tanh(m.profit[i] / ref) : 0;
 	}
 
 	popPlan(i) {
@@ -94,19 +97,41 @@ class TownRules {
 		return Math.max(0.25, this.popPlan(i) * TOWN_GOODS_NEED * BUFFER_SECONDS);
 	}
 
-	walletMean() {
-		const { workers } = this.model;
-		return workers.count ? workers.totalGold() / workers.totalAmount() : 0;
+	baseRestFee(i) {
+		const m = this.model;
+		if (!m.derived) return BASE_REST_FEE;
+		const w = m.localWealth[i] > 0 ? m.localWealth[i] : m.workers.meanGold();
+		return w * REST_WALLET_SHARE;
+	}
+
+	refRestFee() {
+		const m = this.model;
+		if (!m.derived) return BASE_REST_FEE;
+		let sum = 0, n = 0;
+		for (let i = 0; i < ECONOMY_SIZE; i++) {
+			if (m.actors[i] !== ECONOMY_TOWN) continue;
+			sum += this.baseRestFee(i);
+			n++;
+		}
+		return n > 0 ? sum / n : m.workers.meanGold() * REST_WALLET_SHARE;
 	}
 
 	wealthRatio(i) {
-		return this.model.derived ? this.model.localWealth[i] / WALLET_PRICE_REFERENCE : 1;
+		const ref = this.refRestFee();
+		return ref > 0 ? this.baseRestFee(i) / ref : 1;
+	}
+
+	baseTaxRate(i) {
+		const m = this.model;
+		const walletFlow = this.baseRestFee(i) * WORK_RATE;
+		const purseFlow = m.money.purse[i] / (Math.max(1, this.demandPop(i)) * PURSE_SECONDS);
+		return Math.max(walletFlow, purseFlow);
 	}
 
 	taxRate(i) {
 		const m = this.model;
 		if (!m.derived) return m.money.startTaxPerPop;
-		return m.money.startTaxPerPop * this.wealthRatio(i) * (m.taxMult[i] || 1);
+		return this.baseTaxRate(i) * (m.taxMult[i] || 1);
 	}
 
 	crowdMult(i) {
@@ -124,9 +149,8 @@ class TownRules {
 	}
 
 	restTax(i) {
-		const m = this.model;
-		if (!m.derived) return BASE_REST_FEE;
-		return BASE_REST_FEE * this.wealthRatio(i) * this.effectiveMult(i);
+		if (!this.model.derived) return BASE_REST_FEE;
+		return this.baseRestFee(i) * this.effectiveMult(i);
 	}
 
 	roomRestRate(i) {
@@ -141,15 +165,19 @@ class TownRules {
 	foodTarget(i) { return Math.max(2, this.demandPop(i) * 0.5); }
 
 	foodFee(i) {
-		return BASE_RATION_FEE * this.wealthRatio(i);
+		const m = this.model, cost = m.unitCostAt(ITEM_FOOD, i);
+		if (!m.derived) return Math.max(BASE_RATION_FEE, cost * 1.15);
+		return cost > 0 ? cost * 1.15 : Math.max(m.priceFood[i] * 1.15, this.restTax(i) * 0.4);
 	}
 
 	foodBid(i) {
 		const m = this.model;
 		const target = this.foodTarget(i);
 		const present = m.food[i] + m.goodsPool.buyerQueue[ITEM_FOOD][i];
-		const cool = m.money.townCool(i, target * this.foodFee(i));
-		return optimalBid(this.foodFee(i) * 2, present, target, cool, m.suppression);
+		if (!m.derived) return optimalBid(BASE_RATION_FEE * 2, present, target, 1, m.suppression);
+		const tax = this.taxRate(i), sh = this.share(i) * 0.5;
+		const cool = m.money.townCool(i, sh * tax * this.demandPop(i) * PURSE_SECONDS);
+		return m.settlements.bidFactor(i) * optimalBid((FOOD_BID_VALUE / FOOD_NEED) * tax, present, target, cool, m.suppression, sh);
 	}
 
 	goodsBid(i) {
@@ -179,17 +207,18 @@ class TownRules {
 		const bid = Number.isFinite(cool)
 			? m.settlements.bidFactor(i) * optimalBid((WOOD_BID_VALUE / WOOD_USE) * tax, m.wood[i] + m.goodsPool.buyerQueue[ITEM_WOOD][i], m.settlements.woodTarget(i), cool, m.suppression, sh)
 			: 0;
-		return m.settlements.isYoungTown(i) ? Math.max(YOUNG_PULL * this.wealthRatio(i) * need, bid) : bid;
+		const youngFloor = this.refRestFee() * YOUNG_PULL * need;
+		return m.settlements.isYoungTown(i) ? Math.max(youngFloor, bid) : bid;
 	}
 
 	// Funded workers refill their food bag from the town's food stock; broke workers or unsupplied towns cannot, triggering FORAGE.
 	buyRation(i, w) {
-		const m = this.model, { workers } = m;
+		const m = this.model, { workers } = m, eps = m.money.eps();
 		const avail = this.model.food[i];
 		const want = FOOD_BAG - workers.food[w];
-		if (avail <= 1e-4 || want <= 1e-4 || workers.gold[w] <= 1e-5) return 0;
+		if (avail <= 1e-4 || want <= 1e-4 || workers.gold[w] <= eps) return 0;
 		const unitFee = this.foodFee(i);
-		const maxBuy = unitFee > 1e-9 ? workers.gold[w] / unitFee : want;
+		const maxBuy = unitFee > 0 ? workers.gold[w] / unitFee : want;
 		const bought = Math.min(want, avail, maxBuy);
 		if (bought <= 1e-5) return 0;
 		const cost = Math.min(workers.gold[w], bought * unitFee);
@@ -238,7 +267,8 @@ class TownRules {
 		m.goodsPool.cap[ITEM_FOOD][i] = Math.max(m.food[i], this.foodTarget(i));
 
 		const occ = m.rooms[i] > 1e-9 ? m.pop[i] / m.rooms[i] : 0;
-		if (occ < VACANT_OCC && this.revenueTick[i] <= 1e-9) m.vacantTicks[i] += ECONOMY_DT;
+		if (m.pop[i] > 0 && m.workerGold[i] > 0) m.localWealth[i] += this.wealthBlend * (m.workerGold[i] / m.pop[i] - m.localWealth[i]);
+		if (occ < VACANT_OCC && this.revenueTick[i] <= m.money.eps()) m.vacantTicks[i] += ECONOMY_DT;
 		else m.vacantTicks[i] = Math.max(0, m.vacantTicks[i] - ECONOMY_DT * 2);
 
 		m.earned[i] += (this.revenueTick[i] - (coalCost + goodsCost)) / ECONOMY_DT;
@@ -269,16 +299,15 @@ class TownRules {
 			if (cls === WEALTH_CHEAP && waitOcc > 0.6) target = Math.max(target, Math.min(popCap, rooms + 2));
 			target = Math.max(target, rooms);
 		}
-		if (m.vacantTicks[i] > VACANT_SECONDS || m.money.cash(i) < 1e-4) target = Math.min(target, rooms * 0.985);
+		const brokeTown = m.money.purse[i] <= m.money.eps() && this.baseRestFee(i) > 0 && m.pop[i] <= 0;
+		if (m.vacantTicks[i] > VACANT_SECONDS || brokeTown) target = Math.min(target, rooms * 0.985);
 		return Math.min(popCap, Math.max(POP_BASE, target));
 	}
 
 	adaptTowns() {
 		const m = this.model;
-		const wallets = this.walletMean();
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			if (m.actors[i] !== ECONOMY_TOWN) continue;
-			m.localWealth[i] += this.wealthBlend * (wallets - m.localWealth[i]);
 			m.profit[i] += this.profitBlend * (m.earned[i] - m.profit[i]);
 			const goalRooms = this.roomTarget(i);
 			m.rooms[i] = Math.min(POP_MAX, Math.max(POP_BASE, m.rooms[i] + ECONOMY_DT * POP_RATE * (goalRooms - m.rooms[i])));
@@ -299,8 +328,8 @@ class TownRules {
 		const cCoal = m.coal[i] > 1e-6 ? m.unitCostAt(ITEM_COAL, i) : m.priceCoal[i];
 		const cGoods = m.goods[i] > 1e-6 ? m.unitCostAt(ITEM_GOODS, i) : m.priceGoods[i];
 		const rationCost = TOWN_COAL_NEED * m.satCoal[i] * cCoal + TOWN_GOODS_NEED * m.satGoods[i] * cGoods;
-		const baseTax = m.money.startTaxPerPop * this.wealthRatio(i);
-		const minProfitTax = baseTax > 1e-9 && comfort > 0.05 ? (rationCost * 1.1) / (baseTax * Math.max(0.25, comfort)) : TAX_MIN;
+		const baseTax = this.baseTaxRate(i);
+		const minProfitTax = baseTax > 0 && comfort > 0.05 ? (rationCost * 1.1) / (baseTax * Math.max(0.25, comfort)) : TAX_MIN;
 		const waitExcess = Math.max(0, poolOcc - WAIT_POOL_FREE);
 		const roomFull = Math.max(0, occ - 0.8) / 0.2;
 		const crowdPush = WAIT_TAX_ADAPT * waitExcess + POP_FULL_TAX * roomFull * roomFull;

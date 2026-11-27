@@ -2,8 +2,7 @@
 
 Status: confirmed design. The open choices in [draft/economy-money-bank.md](draft/economy-money-bank.md)
 are answered and folded into this plan; the remaining forks are comparison axes, not undecided scope.
-The gold-only baseline and slices G1/O2/D1/G2/B0/T1 are implemented in `prototype/particle-transfer-b2/`
-(`banks.js`, `bootstrap-bank.test.js`); credit money (P0–P3) is not implemented.
+No monetary rule in this document implies that a bank, tax obligation or currency has been implemented.
 
 ## Global design
 
@@ -49,15 +48,15 @@ also follow `draft/company/`.
 | Particle gold output | `actors.js`, `ActorOptimizer.stepFirm`: gold recipe has `outItem: -1`; calls `money.dig(i, made)` | Already no gold goods particle; preserve this distinction. |
 | Cell gold output | `price-model-b2/actors.js` also calls `money.dig` | Same monetary principle applies to both labs. |
 | Gold overlay | Particle `fields.js`, `fieldFor`: purses plus worker wallets; the other pane blends home/wage signals | This is holdings, not saleable gold. Keep it and label the second pane as a signal, not a gold price. |
-| Initial money | Particle `gold.js` seeds town/firm purses and the scene's bank capital on reset; `workers.js` seeds wallets | Starting gold is a scenario parameter from a reasonable daily amount (1 g per worker), recorded once as initial owner/bank capital; placement must not mint. |
+| Initial money | Particle `gold.js` seeds town/firm purses on reset; `workers.js` seeds wallets | Starting gold is a scenario parameter from a reasonable daily amount (1 g per worker), recorded once as initial owner/bank capital; placement must not mint. |
 | Placement | Particle `simulation.js`, `setActor`: placing a town calls `seedTown` | Placement is an extra gold source today. Remove that source in the baseline; editing must not silently subsidize towns. |
 | Ownership | `gold.js` uses cell-indexed purses; `goods.js` stores producer cell as `owner` | Introduce stable owner and facility identities; facilities owned by one owner share its cash and debt. A cell is not an economic owner. |
 | Output storage | `goods.js` retains `spawnAmount`/`spawnCost` until a payable uphill route exists | This is the internal-depot control; demand-gate transport, keep demand fields always live. |
 | Mining distribution | `GoldMoney.dig` credits mine purse; `settleFirm` pays wage claims and on-site surplus after reserves | Preserve claim ownership/FIFO, but specify the mine's payout budget and avoid indiscriminate on-site bonuses. |
-| Mine recipe | `actors.js` gold recipe consumes labor + `WOOD 0.05` per batch; wood arrives via `goods.js` admission after a one-time `GOLD_TIMBER` reserve (G2) | Delivered wood gates extraction: outage pauses production and a restock restarts it; the reserve is recorded, never minted. |
+| Mine recipe | Labor only; no purchased wood | A wood-input slice is required; a knob without delivery/consumption is insufficient. |
 | Wood infrastructure | Particle sawmill recipe produces `ITEM_WOOD`; `goods.js` transports it to towns/farms; `farms.js` owns forest cutting | Reuse the existing market; extend mine admission, input caps and consumption rather than add another sawmill/wood resource. |
-| Transport | `goods.js` accrues haul cost; on arrival buyer pays the transport share to the Transport Company account, remainder to producer | Haul cost is not already-paid wages. Distinguish quote, settlement and actual transport operating costs. |
-| Accounts | `gold.js` keeps transport fees, custody (dead-worker wallets) and the gold bank as separate accounts; `step` applies the selected T0 (drip to towns) / T1 (retained) rule to transport only | T1: company revenue, custody and bank reserves no longer blur; custody never drips and the invariant sums every account. |
+| Transport | `goods.js` accrues haul cost; on arrival buyer pays transport share to `GoldMoney.vault`, remainder to producer | Haul cost is not already-paid wages. Distinguish quote, settlement and actual transport operating costs. |
+| Vault | `gold.js` combines transport income, erased-actor balances and orphan receipts; `step` drips it to towns by population weight | Conservation holds but economic ownership is blurred. Separate company revenue from estate/escrow money. |
 | Persistence | No save/load or localStorage path in either lab's `app.js`/`simulation.js` | The prototype needs a settings-persistence path only; a world snapshot is a later contract. |
 
 Previous monetary design: `prototype/archive/price-model-b/03-faction-money-plan.md` proposes faction notes,
@@ -87,44 +86,52 @@ travel, an unpaid wage claim, worker splitting, founding, ordinary actor placeme
 
 ### Starting gold is a scenario amount, not a hardcoded grant
 
-Starting gold is derived from a reasonable daily amount rather than a fixed constant, so the opening
-transient is not distorted. Default: **1 gold per worker** (`INITIAL_GOLD_PER_WORKER`), recorded once at
+Starting gold is an independent scenario quantity, never back-solved from a target goods price. Default: **1 gold per worker** (`START_GOLD_PER_WORKER`), recorded once at
 scenario initialization as `initialHistoricalGold` and allocated to named starting owners and the bank
 capital account. It is historical funding, never recurring income, never per-placement minting.
 
-- The total is `initialHistoricalGold = INITIAL_GOLD_PER_WORKER × workerCount` at scene setup.
-- Allocation is explicit: named owners receive founding capital; a bank scenario assigns lendable equity.
-  The gold-only reference scene assigns half to worker wallets and half equally across initial owner/town
-  accounts. This is one scenario allocation, not a grant on facility creation. Every later investment or
-  purchase transfers existing gold. The zero-start control allocates nothing.
+- The total is `initialHistoricalGold = START_GOLD_PER_WORKER × workerCount` at scene setup.
+- Allocation is explicit: named owners receive founding capital; the bank receives lendable equity.
+  Worker wallets start at zero unless a scenario assigns them.
 - **Workers start with full food in the particle engine.** The opening transient must not be a starvation
   cycle: each seeded worker begins with a full `food` bag, so the first job/walk/rest cycle is not spent
   foraging or starving. Food is a real stock, not money; funding the bag is a scenario real-asset grant,
   recorded in the real-asset ledger, not a gold issuance.
-- The amount is a comparison knob (0.5 / 1 / 2 g per worker) tested against startup transients: too low
-  starves the first firms before extraction pays, too high distorts early prices.
+- The amount is a comparison knob (0.5 / 1 / 2 g per worker), not a minimum financing requirement at a
+  fixed nominal price. Compare startup delay, real throughput, hunger and conservation while prices adapt.
+  A low-gold stall caused by a permanent nominal fee/floor is a pricing defect, not evidence to add gold.
 - A strict zero-start scene remains available as a diagnostic: all accounts at zero, founders contribute
   sweat equity and locally gathered construction wood, or the scene starts with one built mine. Even there,
   seeded workers begin with full food so the bootstrap measures work/financing, not hunger.
 
-### Adaptive prices, independent of starting gold
+### Nominal prices adapt to circulating gold
 
-Initial quotes prevent startup singularities and spikes; they are not permanent price anchors. Never set a
-price-level multiplier from `INITIAL_GOLD_PER_WORKER`, and never require a minimum gold supply by retaining
-absolute rest, food, wage or sell-price floors in the derived economy. More or less gold changes nominal
-prices through current spendable balances, observed wallets, inventories and competing demand.
+Initial/preset prices are transient numerical guards only (zero division and opening spikes). They are not
+an equilibrium target, permanent fee floor or a price-level setting multiplied by starting gold. Scenario
+funding and any fallback price are independent inputs. Bids and fees after startup derive from current
+budgets, earnings, costs and need; a contraction in holdings must allow prices to fall as well as rise.
 
-- Town quotes follow smoothed current worker wealth, including zero, without restoring a seeded-wallet floor.
-  Bazaar rations can sell below historical acquisition cost; cost basis is accounting, not a guaranteed bid.
-- Ordinary firms split output value over joint inputs and cap quotes by the facility's spendable envelope.
-  Diffused competing buyer bids are estimates, not executable supplier asks that may veto every input bid.
-- Express hauling charges relative to live item value and use relative price gradients for movement, so
-  changing monetary units alone cannot change transport speed or create a nominal transport-cost barrier.
-- Sell floors follow carried cost, with proportional inventory write-downs recorded separately from gold.
-  Startup cost must not strand inventory forever merely because nominal prices have fallen.
-- Validate small-money settlement and circulation separately from physical throughput: geography, workforce,
-  capital distribution and a growing mined supply can change real production. Any positive representable
-  gold amount should permit trade; it does not promise identical output or remove physical bottlenecks.
+The goal is monetary scale invariance: changing a positive initial gold amount must not disable the real
+loop merely because its nominal prices are lower. Compare 0.5 / 1 / 2 g (and micro/macro scales `1e-6 .. 1e6` g in
+`gold-seeding.test.js`) with identical seed, real assets, actors and no new extraction first; assess conservation,
+finite adaptive prices and invariant real trades. In derived mode, haulage quotes, item gates, gradient knees/dock
+slopes, town rest/ration fees, town-purse reserve rebates, unpaid-claim caps and worker split thresholds scale with
+live prices, worker wallets or `money.unitScale()` rather than nominal `[g^1]` constants or fixed `1e-6`/`1e-9` gold
+epsilons. Use paired extraction/no-extraction controls at the same initial gold to test inflation. No regression may
+require goods prices to remain above the arbitrary preset `4`. Exact redenomination tests must also scale
+all gold-denominated stocks, claims and future extraction; changing initial gold alone while keeping mine
+yield in grams fixed is a different monetary path, not an exact symmetry. Zero-start is a separate bootstrap
+diagnostic, not a promise of positive paid trade before extraction.
+
+Legacy main/cell engines use their existing population proxy for seed allocation (`pop` / `START_POP`),
+not particle headcount. Their default is 1 g per proxy unit, split by worker/municipal budget horizons;
+this split must not set the total from a target price. The particle engine uses actual worker count and
+its explicit owner/bank/town/wallet shares.
+
+Validation gate: inspect permanent nominal rest/food fees, wealth floors, credit epsilons, transport knees
+and affordability thresholds. Positive trade at three amounts is a smoke gate, not proof of arbitrary-scale
+invariance. The particle lab's `startTaxPerPop`, `wealthRatio` floor, base service fees and wallet reference
+need this audit before claiming that stronger property. Its independent scenario funding alone is insufficient.
 
 ### Mine funds and payouts
 
@@ -201,12 +208,6 @@ Do not give a portfolio each facility's full cash as an independent buying budge
   attribute use and results. Limited-liability subsidiaries are a later alternative, not implicit protection.
 - Deleting/replacing a facility preserves the owner cash, debts, earned wage claims and cargo payee IDs.
   Ownership transfer does not rewrite existing contracts; explicit stock/contract transfers need atomic terms.
-- Owner accounts without a living proprietor remain estates: their cash, facilities and wage debts persist;
-  no new worker identity inherits them implicitly. Settled claims of dead workers enter the labeled custody
-  account; transport and custody are separate accounts (T1), and custody never drips.
-- A facility-only sale transfers the site and its local stock at an explicit worker-wallet price; the seller
-  retains cash, debts and existing cargo contracts. Whole-business acquisition with liability transfer is a
-  separate atomic contract, not an implicit side effect of editing a site.
 - New owner starts at zero. Startup funding records lender/investor, currency, amount and repayment terms.
   No approval or insufficient funds means pending/unfunded construction, not a hidden grant.
 - O2 reinvestment can finance a second site only from uncommitted owner cash or an approved loan. Record
@@ -558,9 +559,6 @@ Copyable inspector and telemetry (2–5 Hz, no text rewrites on paused frames):
 | P2 | Two issuers, acceptance policies and executable FX; one-bank stress scene | Discount/rejection/run follows liquidity/trust shocks; no hidden gold or cross-currency gains. |
 | P3 | Bankruptcy/bank-takeover path (sell to bank, closure, bank resale); town/faction alternative (C) if useful | Closure preserves wage/note claims; bank-owned facilities are resold, not deleted. |
 
-Slices G1, O2, D1, G2, B0 and T1 are implemented and green in `prototype/particle-transfer-b2/`
-(`bootstrap-bank.test.js` plus the existing suites); P0–P3 remain future work.
-
 Do not implement all slices at once. The first playable target is the confirmed first scenario below.
 Model A is a control slice only; D2 is not planned.
 
@@ -621,7 +619,7 @@ named existing owners. Do not give banking scenes extra gold or wood.
 |-------------|------------|-----------------|
 | Two sites, one profitable/one failing | O2 shared vs O1 isolated with equal total starting wealth | Productive reinvestment versus contagion; shared cash never spent twice. |
 | New mine/project funding | F0 vs F1, then F3 | Who funds construction, wages and inputs; actual principal/interest repayment; unfunded projects remain unfunded. |
-| Starting gold amount | 0.5 / 1 / 2 g per worker | Startup transient: starvation before first extraction vs distorted early prices. |
+| Starting gold amount | 0.5 / 1 / 2 g per worker | Adaptive nominal prices, real throughput, hunger and conservation; no permanent preset-price floor or minimum-gold requirement. |
 | Zero gradient, then demand appears | D0 vs D1 | Dispatch latency, idle cargo, depot saturation and trade; zero goods duplication. |
 | Demand field with stored items | Item transport skipped vs demand field still faded | Cost prediction by cell interpolation works even when items are not moving. |
 | Remote/reserved stock near proposed consumer | Availability query vs global count | Inaccessible or committed stock cannot justify consumption/construction. |
@@ -646,7 +644,7 @@ invariant errors. Judge trade, welfare, inflation and failure exposure together;
 ### Automated acceptance tests (introduced with owning slices)
 
 - Conservation of physical gold per tick, nonnegative balances, bounded extraction and no item-gold spawning.
-- Scenario starting gold equals `INITIAL_GOLD_PER_WORKER × workerCount`, allocated once; ordinary new
+- Scenario starting gold equals `START_GOLD_PER_WORKER × workerCount`, allocated once; ordinary new
   actor/founder never seeds; placement mints nothing.
 - Stable owner/facility IDs across cell reuse; facilities of one owner share a bounded cash budget and
   owner-level debt; owner cash, debt and wage/cargo payees survive facility removal; account and overlay
@@ -670,9 +668,6 @@ invariant errors. Judge trade, welfare, inflation and failure exposure together;
 - Accepted/rejected currencies, zero bid, cash-limited FX, both legs atomic, spreads, no profitable frictionless
   round trip, no nominal addition of different currencies; contract values do not drift after issue.
 - Gold and every currency preserved across worker split/compaction, actor erase and outstanding contracts.
-- G2/B0/T1 acceptance lives in `prototype/particle-transfer-b2/bootstrap-bank.test.js`: timber granted once,
-  wood outage/restock, delivery purchase, debt caps and bank refusals, repayment with exact interest, equity
-  identity, T0/T1 transport rules and a banked reference scene.
 - Checkbox persists across boot; storage denied/file:// fallback; restore without replaying seed/loan issuance;
   off is equivalent to baseline and cannot erase outstanding notes. Full snapshot round trip only when the
   later snapshot contract is implemented.
@@ -711,7 +706,8 @@ that draft and are no longer open:
    purse and owner-level debt, with bounded per-facility budgets. O1 isolated is a comparison control only.
    Owners are workers; any worker with money can buy or found a firm.
 2. **Funding/bootstrap:** starting gold is not hardcoded; it comes from a reasonable daily amount, default
-   1 gold per worker, recorded once as scenario initial capital. No placement minting. Workers start with
+   1 gold per worker, independent of preset prices and recorded once as scenario initial capital. Prices
+   adapt to current holdings; preset prices are transient guards only. No placement minting. Workers start with
    full food in the particle engine. Loans rather than per-firm grants.
 3. **Output:** internal depot by default (D1), speculative map output (D0) as comparison. Directed/reserved
    buyer dispatch (D2) is not supported by the cell and particle transport engines and is not planned.
@@ -730,7 +726,7 @@ that draft and are no longer open:
 Global recommendation: one accounting/settlement kernel and orthogonal small policy presets, not separate
 copies of the economy for every model. Freeze production, geography and transport when comparing monetary
 rules. First review the end-to-end mine → wages/wood → town → supplier → bank-repayment loop; only then add
-competing issuers, adaptive bank policy or main-game influence. Implementation is sliced by the gates in M.7; issuer work follows the gold-only baseline.
+competing issuers, adaptive bank policy or main-game influence. No implementation is authorized by this plan.
 
 ## M.10 Prototype-to-game boundary
 

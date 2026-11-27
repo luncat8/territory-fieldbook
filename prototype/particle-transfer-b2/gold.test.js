@@ -1,5 +1,5 @@
-// Owns: stable-owner wage-claim tests — booking at zero cash, FIFO settlement to the original hire and estate custody.
-// Edit for: payEntryWage/settleFirm/release flows in gold.js and WAGE_CLAIM_CAP behaviour.
+// Owns: per-worker wage-claim tests — SoA booking at zero-cash entry, FIFO owner settlement to the original hire and custody fallback.
+// Edit for: payEntryWage/settleOwner/claim flows in gold.js and WAGE_CLAIM_CAP behaviour.
 'use strict';
 
 const test = require('node:test');
@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'owners.js', 'gold.js', 'banks.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js'];
+const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'gold.js', 'owners.js', 'banks.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js'];
 for (const file of SCRIPTS) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 
 function bareModel() {
@@ -22,9 +22,11 @@ function bareModel() {
 	return m;
 }
 
-const conserved = m => Math.abs(m.money.total() - (m.money.seeded + m.money.mined));
+const conserved = m => Math.abs(m.money.total() - (m.money.initial + m.money.mined));
+const owed = (m, cell) => m.owners.owed[m.owners.ownerAt(cell)];
+const settle = (m, cell) => m.money.settleOwner(m.owners.ownerAt(cell));
 
-test('a zero-purse firm books the unpaid entry wage on the original worker', () => {
+test('a zero-cash owner books the unpaid entry wage on the original worker', () => {
 	const m = bareModel(), firm = economyIndex(10, 10);
 	m.setActor(firm, ECONOMY_MINE);
 	const w = m.workers.spawn(10.5, 10.5, WORKER_FIRM_POOL, 0, 0, 1, true);
@@ -32,13 +34,13 @@ test('a zero-purse firm books the unpaid entry wage on the original worker', () 
 	const paid = m.money.payEntryWage(firm, w, bill);
 	assert.equal(paid, 0, 'no cash at a founding firm');
 	assert.equal(m.workers.gold[w], 0, 'wallet untouched without cash');
-	assert.ok(Math.abs(m.money.wageDebt(firm) - bill) < 1e-12);
+	assert.ok(Math.abs(owed(m, firm) - bill) < 1e-12);
 	assert.ok(Math.abs(m.money.unpaidWages(m.workers.id[w]) - bill) < 1e-12, 'claim is on the hire');
 	assert.equal(m.money.claimCount, 1);
 	assert.ok(conserved(m) < 1e-12, 'the claim is a liability, not minted gold');
 });
 
-test('later firm cash settles the claim to the original hire even when a different worker stands on site', () => {
+test('later owner cash settles the claim to the original hire even when a different worker stands on site', () => {
 	const m = bareModel(), firm = economyIndex(10, 10);
 	m.setActor(firm, ECONOMY_MINE);
 	const original = m.workers.spawn(10.5, 10.5, WORKER_SHIFT, 0, 0, 1, true);
@@ -46,26 +48,26 @@ test('later firm cash settles the claim to the original hire even when a differe
 	m.money.payEntryWage(firm, original, 4);
 	assert.equal(m.money.unpaidWages(m.workers.id[original]), 4);
 	m.money.dig(firm, 2.5);
-	m.money.settleFirm(firm, ECONOMY_MINE);
+	settle(m, firm);
 	assert.ok(Math.abs(m.workers.gold[original] - 2.5) < 1e-12, 'original hire credited');
 	assert.equal(m.workers.gold[stranger], 0, 'stranger on site gets nothing');
 	assert.ok(Math.abs(m.money.unpaidWages(m.workers.id[original]) - 1.5) < 1e-12, 'remainder stays claimed');
-	assert.ok(Math.abs(m.money.wageDebt(firm) - 1.5) < 1e-12, 'firm debt mirrors its claims');
+	assert.ok(Math.abs(owed(m, firm) - 1.5) < 1e-12, 'owner liability mirrors its claims');
 	assert.ok(conserved(m) < 1e-12, 'settlement moves gold, never mints it');
 	m.money.dig(firm, 5);
-	m.money.settleFirm(firm, ECONOMY_MINE);
+	settle(m, firm);
 	assert.ok(Math.abs(m.workers.gold[original] - 4) < 1e-12, 'claim paid in full');
 	assert.equal(m.money.unpaidWages(m.workers.id[original]), 0);
-	assert.equal(m.money.wageDebt(firm), 0);
+	assert.equal(owed(m, firm), 0);
 	assert.equal(m.money.claimCount, 0);
 	assert.ok(conserved(m) < 1e-12);
 });
 
-test('a despawned hire\'s settled claim falls to custody and erased firms retain their promises', () => {
+test('a despawned hire\'s settled claim falls to custody and an erased facility leaves the owner liable', () => {
 	const m = bareModel(), firm = economyIndex(10, 10);
 	m.setActor(firm, ECONOMY_MINE);
 	const w = m.workers.spawn(10.5, 10.5, WORKER_SHIFT, 0, 1, 1, true);
-	m.money.seedWorker(1);
+	m.money.recordFunding(1);
 	const id = m.workers.id[w];
 	m.money.payEntryWage(firm, w, 2);
 	// Despawn: wallet gold already falls to custody in WorkerLife.remove.
@@ -73,21 +75,27 @@ test('a despawned hire\'s settled claim falls to custody and erased firms retain
 	assert.equal(m.workers.indexOfId(id), -1);
 	const before = m.money.total();
 	m.money.dig(firm, 3);
-	m.money.settleFirm(firm, ECONOMY_MINE);
+	settle(m, firm);
 	assert.equal(m.money.unpaidWages(id), 0, 'dead claim settled');
-	assert.ok(Math.abs(m.money.total() - (before + 3)) < 1e-12, 'custody credit keeps the injected gold in the system');
+	assert.ok(Math.abs(m.money.total() - (before + 3)) < 1e-12, 'custody keeps the dug gold in the system');
 	assert.ok(conserved(m) < 1e-12);
-	// Erasure retires the site, not its owner or the earned wage claim.
+	// Claims are owner debts (plan M.1a): erasing the facility neither forgives them nor mints or loses gold.
 	const w2 = m.workers.spawn(10.5, 10.5, WORKER_SHIFT, 0, 0, 1, true);
-	m.money.custody += m.owners.accountAt(firm).cash;
-	m.owners.accountAt(firm).cash = 0;
-	m.money.payEntryWage(firm, w2, 1.25);
+	const o = m.owners.ownerAt(firm);
+	const debt = 1.25 - m.money.payEntryWage(firm, w2, 1.25);
+	assert.ok(debt > 0.1, 'leftover cash covers only part of the second bill');
 	assert.equal(m.money.claimCount, 1);
 	const beforeRelease = m.money.total();
 	m.setActor(firm, 0);
-	assert.equal(m.money.claimCount, 1, 'erased facility keeps owner wage claims');
-	assert.equal(m.money.wageDebt(firm), 0);
+	assert.equal(m.owners.ownerAt(firm), 0, 'facility link dropped');
+	assert.equal(m.money.claimCount, 1, 'owner still owes the hire');
+	assert.ok(Math.abs(m.owners.owed[o] - debt) < 1e-12);
 	assert.ok(Math.abs(m.money.total() - beforeRelease) < 1e-12);
+	m.money.creditOwner(o, 2);
+	m.money.recordFunding(2);
+	m.money.settleOwner(o);
+	assert.ok(Math.abs(m.workers.gold[m.workers.indexOfId(m.workers.id[w2])] - 1.25) < 1e-12, 'later owner cash still pays the claim');
+	assert.ok(conserved(m) < 1e-12);
 });
 
 test('the claim table grows past its initial cap without losing an entitlement', () => {
@@ -100,18 +108,17 @@ test('the claim table grows past its initial cap without losing an entitlement',
 	}
 	assert.equal(m.money.claimCount, N, 'every claim is stored, none dropped at the cap');
 	assert.ok(m.money.claimCap >= N, 'the table grew to hold every claim');
-	assert.ok(Math.abs(m.money.wageDebt(firm) - N) < 1e-12);
+	assert.ok(Math.abs(owed(m, firm) - N) < 1e-12);
 	let unpaid = 0;
 	for (let w = 0; w < N; w++) unpaid += m.money.unpaidWages(m.workers.id[w]);
 	assert.ok(Math.abs(unpaid - N) < 1e-12, 'all entitlements are represented');
 	m.money.dig(firm, N);
-	m.money.settleFirm(firm, ECONOMY_MINE);
+	settle(m, firm);
 	for (let w = 0; w < N; w++) {
 		assert.ok(Math.abs(m.workers.gold[w] - 1) < 1e-12, `worker ${w} paid in full`);
 	}
 	assert.equal(m.money.custody, 0, 'no entitlement fell to custody');
-	assert.equal(m.money.transport, 0, 'no entitlement fell to transport');
-	assert.equal(m.money.wageDebt(firm), 0);
+	assert.equal(owed(m, firm), 0);
 	assert.equal(m.money.claimCount, 0);
 	assert.ok(conserved(m) < 1e-12);
 });
@@ -119,7 +126,6 @@ test('the claim table grows past its initial cap without losing an entitlement',
 test('settlement pays wage claims in FIFO order', () => {
 	const m = bareModel(), firm = economyIndex(10, 10);
 	m.setActor(firm, ECONOMY_MINE);
-	m.priceLabor[firm] = 10;
 	const ws = [], ids = [];
 	for (let n = 0; n < 3; n++) {
 		const w = m.workers.spawn(10.5 + n * 0.1, 10.5, WORKER_SHIFT, 0, 0, 1, true);
@@ -128,18 +134,18 @@ test('settlement pays wage claims in FIFO order', () => {
 		m.money.payEntryWage(firm, w, 1);
 	}
 	m.money.dig(firm, 2);
-	m.money.settleFirm(firm, ECONOMY_MINE);
+	settle(m, firm);
 	assert.ok(Math.abs(m.workers.gold[ws[0]] - 1) < 1e-12, 'first hire paid first');
 	assert.ok(Math.abs(m.workers.gold[ws[1]] - 1) < 1e-12, 'second hire paid before the third');
 	assert.equal(m.workers.gold[ws[2]], 0, 'third hire waits for the remaining debt');
 	assert.equal(m.money.unpaidWages(ids[0]), 0);
 	assert.equal(m.money.unpaidWages(ids[2]), 1);
-	assert.ok(Math.abs(m.money.wageDebt(firm) - 1) < 1e-12);
+	assert.ok(Math.abs(owed(m, firm) - 1) < 1e-12);
 	assert.equal(m.money.claimCount, 1);
 	assert.equal(m.money.claimWorkerId[0], ids[2], 'the surviving claim is the oldest unpaid one');
 	assert.ok(conserved(m) < 1e-12);
 	m.money.dig(firm, 1);
-	m.money.settleFirm(firm, ECONOMY_MINE);
+	settle(m, firm);
 	assert.ok(Math.abs(m.workers.gold[ws[2]] - 1) < 1e-12, 'the deferred hire is paid after the rest');
 	assert.equal(m.money.claimCount, 0);
 	assert.ok(conserved(m) < 1e-12);

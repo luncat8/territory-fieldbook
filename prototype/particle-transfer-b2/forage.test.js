@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'owners.js', 'gold.js', 'banks.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js'];
+const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'gold.js', 'owners.js', 'banks.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js'];
 for (const file of SCRIPTS) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 
 function run(model, seconds) {
@@ -20,13 +20,15 @@ test('hungry workers survive unsupplied towns by self-foraging and return to wor
 	for (let i = 0; i < ECONOMY_SIZE; i++) {
 		if (model.actors[i] === ECONOMY_FACTORY) model.setActor(i, 0);
 	}
+	// Seeded workers start full (plan M.1); the staggered partial bags of the old seed make hunger arrive in-window.
+	for (let w = 0; w < model.workers.count; w++) model.workers.food[w] = 0.65 + 0.35 * (((w % 12) + 1) * 0.6180339887 % 1);
 	const initialHeadcount = model.workers.totalAmount();
-	for (let w = 0; w < model.workers.count; w++) model.workers.food[w] = FOOD_HUNGRY;
 	run(model, 70);
 	assert.equal(model.workers.totalAmount(), initialHeadcount + model.workers.births, 'workers with reachable food survive this run');
-	assert.ok(model.workers.forageEntries >= initialHeadcount, `expected hungry workers to enter forage mode, got ${model.workers.forageEntries}`);
+	// Full starting bags and the early founded farm feed part of the crowd through the bazaar, so half must forage.
+	assert.ok(model.workers.forageEntries >= initialHeadcount / 2, `expected hungry workers to enter forage mode, got ${model.workers.forageEntries}`);
 	assert.ok(model.forage.gardenFed + model.forage.wildPicked > 10, 'expected substantial self-picked food across garden and wild sources');
-	assert.ok(Math.abs(model.money.seeded + model.money.mined - model.money.total()) < 1e-7, 'gold remains strictly conserved during foraging');
+	assert.ok(Math.abs(model.money.initial + model.money.mined - model.money.total()) < 1e-7, 'gold remains strictly conserved during foraging');
 });
 
 test('WORKER_FORAGE mode is undisturbed by firm hiring, town rooms and founding tasks until food bag is full', () => {
@@ -38,12 +40,10 @@ test('WORKER_FORAGE mode is undisturbed by firm hiring, town rooms and founding 
 	const townCell = economyIndex(21, 14);
 	model.setActor(mineCell, ECONOMY_MINE);
 	model.setActor(townCell, ECONOMY_TOWN);
-	model.money.payOwner(model.owners.ownerAt(mineCell), 12);
-	model.money.seedWorker(12);
-	model.owners.allocate();
+	model.money.fund(mineCell, 12);
 	for (let n = 0; n < 60; n++) model.updatePrices();
 	const w = model.workers.spawn(19.5, 14.5, WORKER_WALK_JOB, 0, 5, 0.02, true);
-	model.money.seedWorker(5);
+	model.money.recordFunding(5);
 	model.step();
 	assert.equal(model.workers.state[w], WORKER_FORAGE, 'hungry worker on hiring firm cell must enter WORKER_FORAGE instead of taking shift');
 	assert.equal(model.shiftCount[mineCell], 0, 'foraging worker must not occupy firm shift');

@@ -567,33 +567,18 @@ Carried over from the particle-transfer lab; these govern the persistent-worker 
 - Moving a lab to `prototype/archive/` must grep `index.html` for its `<script src>`: the game shared
   `water-humidity/{terrain,simulation}.js` and boot failed with ENOENT until the paths followed the move.
 
+## scenario money level and owner cash waterfall
 
-## gold-scale and owner-account invariants
-
-- A diffused wage field is a set of competing buyer signals, not the employer’s executable quote. Paying
-  the field at check-in makes a poor site promise a rich rival’s wage and silently manufactures bad debt.
-  Use the local employer quote for settlement; keep the field for discovery and movement.
-- Removing a rest-price minimum is insufficient for a small-money economy: absolute hauling charges,
-  inventory write-down steps and gradient speed knees can preserve the same hidden nominal barrier.
-  Price gradients need relative normalization; quoted hauling and book write-downs must scale with live value.
-- Stable IDs are required on both sides of settlement. A cargo producer cell or wage-debtor cell reused by
-  another facility must not inherit receipts or erase claims. Count owner cash once, never once per site;
-  spending envelopes are limits, not extra assets. Retired/estate accounts stay in the conservation sum.
-- A static lab preview must serve the shared parent directory too. Serving only the lab folder breaks its
-  `../shared/` scripts/styles; redirect the preview root to the lab path while serving the repository root.
-
-
-## gold mine timber, bank loans and real-asset counters
-
-- Keep the labor input last in a recipe whose `entryWage`/`firmLaborPool` read `inputs[last]`. The gold
-  mine's wood batch must not shift the labor index, or the wage bid collapses onto the wood slot.
-- A mine that must buy its next input can starve with a full purse: wage bids exist but no supplier is
-  capitalized (a sawmill needs owner cash or a bank loan first). Fund the supplier with an explicit transfer;
-  never paper over it with a mint or a special-cased bid cap.
-- `near(a, b, message)` treats a string as epsilon — a message argument silently disables the comparison.
-  Test-harness helpers should type-check their epsilon so tests can't pass or fail on formatting accidents.
-- Scenario real-asset sinks (the mine's seeded timber) belong on the model, not in `money.reset()`: tests
-  rebuild money mid-run, and zeroing the counter while the sink remains breaks conservation by exactly the
-  reserve amount.
-- Admission caps need `max(0, ...)` when a bid can legitimately be zero: a wood cap of 0 blocks all
-  deliveries, not just excess ones, and a gold mine with an empty reserve then never restarts.
+- Lowering starting money (327 g → 1 g/worker) exposes every `[g^1]` nominal constant, gate and epsilon:
+  per-cell haulage (`HAUL_COST_RATE`) exceeding spatial price decay `κ · p` strands coal/food particles across 8+ cells;
+  nominal gates (`SAWMILL_GATE`, `PRICE_GATE`, `FARM_MIN_PRICE`, `wealthRatio ≥ 0.45`, `BASE_REST_FEE`, `BASE_RATION_FEE`,
+  `START_PRICE · 1.5`, `WORKER_SPLIT_GOLD`) and fixed `[g^1]` epsilons (`GRADIENT_KNEE`, `DOCK_SLOPE`, `gLen > 1e-9`,
+  `bid + 1e-6 ≥ ask`, `1e-9` wallet/cash checks) break micro-scale trade; unrebated town purses sterilize >40% of gold;
+  and proportional `room / req` particle shaving in `admitKind` splits large queues into hundreds of unsellable crumbs.
+  Expressing haulage, gates, knees, fees, town-reserve rebates and epsilons relative to live prices/wallets/`unitScale()`
+  plus sequential whole-particle FIFO admission restores exact 15-digit closed-economy invariance across `1e-6 .. 1e6` g/worker.
+- A bonus rule "pay cash above N seconds of cost" drains the scenario capital on tick one, because the cost
+  reserve is ~0 before wage fields form. Pay bonuses only from earnings: never while a loan is open and never
+  below paid-in capital (`owners.capital`).
+- A `money.reset()` that clears only its own arrays leaks gold once balances move to other owners (owner
+  registry, bank): reset must zero every gold balance while keeping identities and facility links.

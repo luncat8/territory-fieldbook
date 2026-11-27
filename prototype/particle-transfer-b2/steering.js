@@ -2,14 +2,14 @@
 // Edit for: goods/worker speeds, heading blend, dock slope and water-avoiding movement.
 'use strict';
 
-const GOODS_SPEED = 6;
-const WORKER_SPEED = 11;
+const GOODS_SPEED = 5;
+const WORKER_SPEED = 7;
 
 class Steering {
 	constructor(model) {
 		this.model = model;
 		this.conductance = new Float64Array(ECONOMY_SIZE * DEGREE);
-		this.grad = { gx: 0, gy: 0, bestSlope: 0, bestPull: 0, bestDir: -1 };
+		this.grad = { gx: 0, gy: 0, bestSlope: 0, bestPull: 0, bestDir: -1, knee: GRADIENT_KNEE };
 		this.out = { x: 0, y: 0, hx: 0, hy: 0, ds: 0, effort: 0, cell: 0 };
 		this.rebuildConductance();
 	}
@@ -31,13 +31,13 @@ class Steering {
 		const g = this.grad, cond = this.conductance, base = i * DEGREE;
 		const here = alt ? field[i] + mix * (alt[i] - field[i]) : field[i];
 		const cut = Math.max(here, floor);
-		let gx = 0, gy = 0, bestSlope = 0, bestPull = 0, bestDir = -1, level = Math.max(here, floor);
+		let gx = 0, gy = 0, bestSlope = 0, bestPull = 0, bestDir = -1, peak = here;
 		for (let k = 0; k < DEGREE; k++) {
 			const c = cond[base + k];
 			if (c <= 0) continue;
 			const to = NEIGHBORS[base + k];
 			const there = alt ? field[to] + mix * (alt[to] - field[to]) : field[to];
-			level = Math.max(level, there);
+			if (there > peak) peak = there;
 			if (there <= cut) continue;
 			const dir = DIRECTIONS[k];
 			const pull = (there - here) * dir.inv;
@@ -50,14 +50,14 @@ class Steering {
 				bestDir = k;
 			}
 		}
-		// Relative gradients keep a denomination change from changing transport speed.
-		const inv = level > 0 ? 1 / level : 0;
-		g.gx = gx * inv;
-		g.gy = gy * inv;
-		g.bestSlope = bestSlope * inv;
-		g.bestPull = bestPull * inv;
+		const fieldKnee = alt ? GRADIENT_KNEE : this.model.fieldKnee(field);
+		g.gx = gx;
+		g.gy = gy;
+		g.bestSlope = bestSlope;
+		g.bestPull = bestPull;
 		g.bestDir = bestDir;
-		return g.bestSlope;
+		g.knee = fieldKnee > 0 ? fieldKnee : REL_KNEE * peak;
+		return bestSlope;
 	}
 
 	sampleForage(forage, i) {
@@ -86,6 +86,7 @@ class Steering {
 		g.bestSlope = bestSlope;
 		g.bestPull = bestPull;
 		g.bestDir = bestDir;
+		g.knee = GRADIENT_KNEE;
 		return bestSlope;
 	}
 
@@ -113,8 +114,8 @@ class Steering {
 		}
 		const dir = DIRECTIONS[bestDir];
 		const gLen = Math.hypot(gx, gy);
-		const tx = gLen > 1e-9 ? gx / gLen : dir.ux;
-		const ty = gLen > 1e-9 ? gy / gLen : dir.uy;
+		const tx = gLen > 0 ? gx / gLen : dir.ux;
+		const ty = gLen > 0 ? gy / gLen : dir.uy;
 		if ((hx === 0 && hy === 0) || hx * tx + hy * ty <= 0) {
 			hx = dir.ux;
 			hy = dir.uy;
@@ -125,7 +126,8 @@ class Steering {
 		const hLen = Math.hypot(hx, hy) || 1;
 		const ux = hx / hLen, uy = hy / hLen;
 		const cEdge = this.conductance[cell * DEGREE + bestDir] || this.model.land.speed[cell] || 0.5;
-		const ds = Math.min(0.45, maxSpeed * cEdge * (bestSlope / (bestSlope + GRADIENT_KNEE)) * ECONOMY_DT);
+		const knee = this.grad.knee > 0 ? this.grad.knee : GRADIENT_KNEE;
+		const ds = Math.min(0.45, maxSpeed * cEdge * (bestSlope / (bestSlope + knee)) * ECONOMY_DT);
 		let nx = x + ux * ds, ny = y + uy * ds;
 		if (MAP_WRAP) { nx = wrapX(nx); ny = wrapY(ny); }
 		else {

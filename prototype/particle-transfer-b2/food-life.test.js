@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'owners.js', 'gold.js', 'banks.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js'];
+const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'gold.js', 'owners.js', 'banks.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js'];
 for (const file of SCRIPTS) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-8, `${a} !== ${b}`);
 
@@ -46,7 +46,7 @@ test('town services never create workers or turn comfort goods into food', () =>
 
 test('splitting requires personal needs, food, money and personal cooldown; shares rather than mints', () => {
 	const m = emptyModel(), w = m.workers.spawn(20.5, 14.5, WORKER_STILL, 0.2, 32, 1, true);
-	m.money.seedWorker(32);
+	m.money.recordFunding(32);
 	m.workerLife.needs[w] = 1;
 	m.workers.food[w] = 0.1;
 	lifeTicks(m, WORKER_SPLIT_SECONDS + 1);
@@ -69,7 +69,7 @@ test('splitting requires personal needs, food, money and personal cooldown; shar
 	close(m.workers.gold[1], 16);
 	close(m.workers.food[0] + m.workers.food[1], 1);
 	close(m.workers.totalTired(), 0.2);
-	close(m.money.total(), m.money.seeded);
+	close(m.money.total(), m.money.initial);
 	assert.equal(m.workers.state[1], WORKER_STILL);
 	assert.notEqual(m.workers.id[0], m.workers.id[1]);
 	assert.equal(m.workers.births, 1);
@@ -89,7 +89,7 @@ test('only prolonged personal food absence despawns; refeeding resets grace and 
 	p.spawn(20.5, 14.5, WORKER_FORAGE, 0.4, 7, 0, true);
 	p.spawn(22.5, 14.5, WORKER_STILL, 0.2, 4, 0.5, true);
 	const survivorId = p.id[1];
-	m.money.seedWorker(11);
+	m.money.recordFunding(11);
 	lifeTicks(m, WORKER_STARVE_SECONDS - 1);
 	assert.equal(p.count, 2);
 	p.food[0] = 0.1;
@@ -131,13 +131,11 @@ test('paid farm crews fully clear random farmland, build from felled wood and ha
 	m.settlements.forest.fill(1);
 	m.priceFood.fill(0.45);
 	m.setActor(c, ECONOMY_FARM);
-	m.money.payOwner(m.owners.ownerAt(c), 12);
-	m.money.seedWorker(12);
-	m.owners.allocate();
+	m.money.fund(c, 12);
 	m.priceLabor[c] = 0.1;
 	for (let n = 0; n < 12; n++) {
 		const w = m.workers.spawn(20.5, 14.5, WORKER_STILL, 0, 8, 1, true);
-		m.money.seedWorker(8);
+		m.money.recordFunding(8);
 		assert.equal(m.workers.tryAdmitFirm(w, c), true);
 	}
 	assert.ok(m.money.wages > 0);
@@ -151,7 +149,7 @@ test('paid farm crews fully clear random farmland, build from felled wood and ha
 	assert.ok(m.producedFood > 0);
 	for (let i = 0; i < ECONOMY_SIZE; i++) if (m.farms.plotOwner[i] === c + 1) assert.equal(m.settlements.forest[i], 0);
 	close(m.goodsPool.spawnBufferTotal(ITEM_FOOD), m.producedFood);
-	close(m.money.total(), m.money.seeded);
+	close(m.money.total(), m.money.initial);
 	close(m.workers.seededTired + m.workedLabor, m.workers.totalTired());
 	m.setActor(c, 0);
 	assert.equal(m.farms.plotOwner.some(v => v === c + 1), false);
@@ -194,24 +192,22 @@ test('food particles pay their producer and hauler; workers buy food rather than
 	const m = emptyModel(), c = economyIndex(20, 14), f = economyIndex(24, 14);
 	m.setActor(c, ECONOMY_TOWN);
 	m.setActor(f, ECONOMY_FARM);
-	m.money.payOwner(m.owners.ownerAt(c), 12);
-	m.money.seedWorker(12);
-	m.owners.allocate();
+	m.money.fund(c, 6);
 	m.priceFood[c] = 0.5;
 	m.towns.stepTown(c);
 	m.goodsPool.emit(ITEM_FOOD, c, 1, 0.02);
-	m.goodsPool.owner[0] = m.owners.ownerAt(f);
+	m.goodsPool.payee[0] = m.owners.ownerAt(f);
 	m.goodsPool.transportCost[0] = 0.01;
 	m.goodsPool.stepMove();
 	m.goodsPool.admitKind(ITEM_FOOD);
 	assert.ok(m.food[c] > 0.9);
-	assert.ok(m.owners.accountAt(f).cash > 0);
+	assert.ok(m.owners.cash[m.owners.ownerAt(f)] > 0);
 	assert.ok(m.money.transportEarned > 0);
 	const w = m.workers.spawn(20.5, 14.5, WORKER_STILL, 0, 8, 0, true);
-	m.money.seedWorker(8);
+	m.money.recordFunding(8);
 	assert.ok(m.towns.buyRation(c, w) > 0.9);
 	close(m.food[c] + m.consumedFood + m.goodsPool.spoiled[ITEM_FOOD], 1);
-	close(m.money.total(), m.money.seeded);
+	close(m.money.total(), m.money.initial);
 	assert.ok(m.goodsPool.maxProfitError < 1e-11);
 });
 
@@ -220,14 +216,12 @@ test('the canonical tick sustains a paid farm-to-bazaar chain with exact food an
 	m.settlements.forest.fill(1);
 	m.setActor(c, ECONOMY_FARM);
 	m.setActor(economyIndex(26, 14), ECONOMY_TOWN);
-	m.money.payOwner(m.owners.ownerAt(c), 12);
-	m.money.seedWorker(12);
-	m.owners.allocate();
+	m.money.fund(c, 12);
 	m.priceFood.fill(0.45);
 	m.priceLabor[c] = 0.1;
 	for (let n = 0; n < 6; n++) {
 		const w = m.workers.spawn(20.5, 14.5, WORKER_STILL, 0, 8, 1, true);
-		m.money.seedWorker(8);
+		m.money.recordFunding(8);
 		m.workers.tryAdmitFirm(w, c);
 	}
 	for (let n = 0; n < 7200; n++) m.step();
@@ -236,7 +230,7 @@ test('the canonical tick sustains a paid farm-to-bazaar chain with exact food an
 	assert.ok(m.consumedFood > 1);
 	const held = m.food.reduce((a, b) => a + b, 0) + m.goodsPool.spawnBufferTotal(ITEM_FOOD) + m.goodsPool.inTransitTotal(ITEM_FOOD);
 	close(m.producedFood - m.consumedFood - m.goodsPool.spoiled[ITEM_FOOD], held);
-	close(m.money.total(), m.money.seeded + m.money.mined);
+	close(m.money.total(), m.money.initial + m.money.mined);
 	close(m.workers.totalAmount(), m.workers.seededWorkers + m.workers.births - m.workerLife.deaths);
 	close(m.workers.totalTired(), m.workers.seededTired + m.workedLabor - m.restedDepleted - m.workerLife.removedTired);
 });

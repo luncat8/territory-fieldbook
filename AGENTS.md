@@ -110,9 +110,7 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 - prototype/shared/lab.css — common visual rules shared by both B2 labs; each lab's styles.css loads after and overrides only what differs.
 - prototype/shared/lab-ui.js — `$` DOM lookup + `ICON_PATHS`/`labIcon(name)` SVG helpers + `labBindCopy(button, read)` ⧉ clipboard buttons; loaded before each lab's app.js. Per-lab `RESOURCE_TITLES`/`TOOL_KINDS` stay in app.js.
 - prototype/shared/economy-panel.js — `EconomyPanel(diagnostics, rows, watched)` inspector shell (row groups + stall-flag list + ⧉ copy); pure view over each lab's `diagnostics.js` contract.
-- prototype/particle-transfer-b2/owners.js — stable owner/facility registry, shared cash budgets, worker capital transfers and facility-only sales; gold.js owns extraction and FIFO wage settlement.
-- prototype/particle-transfer-b2/banks.js — gold bank: explicit charter/owner funding transfers, fixed-rate loans with owner debt limits, interest/principal service and grace-period defaults; lending moves existing gold, never mints.
-- prototype/particle-transfer-b2/ — port of the d198120 reference lab: torus wrap, growable FIFO wage-claims + cost relaxation, particle/triangle/gold-flux rendering, Watched Workers audit (track.js/tracked.js), economy diagnostics with coal/goods/food in-flight asks, mine timber inputs and gold-bank lending. Tests: 67.
+- prototype/particle-transfer-b2/ — port of the d198120 reference lab: torus wrap, growable FIFO wage-claims + cost relaxation, particle/triangle/gold-flux rendering, Watched Workers audit (track.js/tracked.js), economy diagnostics with coal/goods/food in-flight asks. Tests: 49.
 - prototype/price-model-b2/ — cell-lab B2 port + economy inspector adapter (diagnostics.js). Tests: 72.
 
 ## drafts = human input
@@ -188,7 +186,9 @@ Before all topics has minimal implementation Do not try to implement 100% of som
   for the default particle money engine (`prototype/particle-transfer-b2/`, port target
   map-money-particle.js); its rules lift from prototype/price-model-b2 plus worker-owned splitting and prolonged starvation, commercial food farms,
   coarse food-gradient foraging and Monastery gardens. Towns never manage worker lifecycle.
-  Particle lab owners: worker-life.js (splits/starvation), farms.js (fields/harvest), towns.js (services/bazaar).
+  Particle lab owners: worker-life.js (splits/starvation), farms.js (fields/harvest), towns.js (services/bazaar),
+  gold.js (gold origin ledger, scenario funding, owner cash waterfall, wage claims), owners.js (shared owners,
+  facility ids, budgets, debt limits), banks.js (F1 gold lending, debt service, default).
 - prototype-to-game boundary (plan-gold-and-paper-money.md M.10): the particle lab is a rules lab, not a
   second game. It ends at the money end-to-end gate (G1+O2+D1+G2+B0/P1); the validated kernel then ports to
   map-money-particle.js and the default flips. Transport staffing, science and other gameplay features build

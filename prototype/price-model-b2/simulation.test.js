@@ -40,8 +40,16 @@ function checkLedger(model) {
 	assert.ok(Math.abs(model.money.total() - model.money.seeded - model.money.mined) < 1e-7);
 }
 
-function clearedMap() {
+// Historical high-funding fixture keeps existing throughput gates independent of the new scenario default.
+function referenceModel() {
 	const model = new PriceEconomy();
+	model.money.startGoldPerWorker = 5.165384615384615;
+	model.reset();
+	return model;
+}
+
+function clearedMap() {
+	const model = referenceModel();
 	model.actors.fill(0);
 	model.pop.fill(0);
 	model.scale.fill(0);
@@ -53,7 +61,7 @@ function clearedMap() {
 }
 
 test('the reference chain staffs mines and factories, delivering coal and goods to towns', () => {
-	const model = new PriceEconomy();
+	const model = referenceModel();
 	run(model, 10);
 	assert.ok(model.workedLabor > 0.5);
 	assert.ok(model.burnedCoal > 0.5);
@@ -64,7 +72,7 @@ test('the reference chain staffs mines and factories, delivering coal and goods 
 });
 
 test('there is no separate demand field: price and wage are the steering fields', () => {
-	const model = new PriceEconomy();
+	const model = referenceModel();
 	assert.equal(model.demand, undefined);
 	assert.ok(model.priceCoal instanceof Float64Array);
 	assert.ok(model.priceGoods instanceof Float64Array);
@@ -271,7 +279,7 @@ test('new arrivals survive their arrival tick', () => {
 });
 
 test('gold is conserved across mining, wages, taxes and actor edits', () => {
-	const model = new PriceEconomy();
+	const model = referenceModel();
 	run(model, 20);
 	model.setActor(economyIndex(13, 13), 0);
 	model.setActor(economyIndex(40, 20), ECONOMY_TOWN);
@@ -282,29 +290,31 @@ test('gold is conserved across mining, wages, taxes and actor edits', () => {
 	checkLedger(model);
 });
 
-test('a new town bids the starting price and does not overbid an extra vault without taxpayer income', () => {
+test('a new town bids from taxpayer gold and does not overbid an extra vault without taxpayer income', () => {
 	const model = clearedMap();
 	const town = economyIndex(24, 14);
 	model.setActor(town, ECONOMY_TOWN);
-	closeTo(model.townGoodsBid(town), START_PRICE);
+	const bid = INPUT_SHARE * (GOODS_COMFORT / TOWN_GOODS_NEED) * model.money.taxPerPop(town);
+	closeTo(model.townGoodsBid(town), bid);
 
 	model.money.purse[town] *= 10;
-	closeTo(model.townGoodsBid(town), START_PRICE);
+	closeTo(model.townGoodsBid(town), bid);
 });
 
 test('prices have no ceiling: richer workers paying higher taxes scale optimal bids proportionally', () => {
 	const model = clearedMap();
 	const town = economyIndex(24, 14);
 	model.setActor(town, ECONOMY_TOWN);
+	const bid = model.townGoodsBid(town);
 	model.money.workerPurse[town] *= 10;
 	model.money.purse[town] *= 10;
-	closeTo(model.townGoodsBid(town), START_PRICE * 10);
+	closeTo(model.townGoodsBid(town), bid * 10);
 	run(model, 8);
-	assert.ok(model.priceGoods[town] > 15);
+	assert.ok(model.priceGoods[town] > bid * 3);
 });
 
 test('factories pay workers, workers pay taxes in town, and both factories and towns make profit', () => {
-	const model = new PriceEconomy();
+	const model = referenceModel();
 	model.setActor(economyIndex(3, 13), 0);
 	const town = economyIndex(9, 20);
 	const factory = economyIndex(13, 13);
@@ -395,14 +405,18 @@ test('a supplied town attracts more population and earns more profit than an uns
 });
 
 test('mined gold inflates prices around the gold mine while distant towns stay steadier', () => {
-	// bounded calibration: hard-edge distances set the near/far gap; the torus dilutes the near peak below START_PRICE at this snapshot
+	// Bounded topology isolates the near/far effect of new extraction.
 	setMapWrap(false);
-	const model = new PriceEconomy();
+	const model = referenceModel();
 	const near = economyIndex(9, 20);
 	const far = economyIndex(28, 12);
+	const control = referenceModel();
+	control.setActor(economyIndex(3, 13), 0);
 	run(model, 140);
+	run(control, 140);
 	setMapWrap(true);
-	assert.ok(model.priceGoods[near] > START_PRICE);
+	assert.ok(model.priceGoods[near] > control.priceGoods[near]);
+	checkLedger(control);
 	assert.ok(model.priceGoods[near] > model.priceGoods[far] * 1.5);
 	checkLedger(model);
 });
@@ -509,7 +523,7 @@ test('wrap edges carry price and stock across the seams to a rim town', () => {
 });
 
 test('map edges swap live mid-run while stock and gold stay conserved', () => {
-	const model = new PriceEconomy();
+	const model = referenceModel();
 	run(model, 10);
 	setMapWrap(false);
 	run(model, 10);

@@ -6,7 +6,7 @@
 // and the only external flow is player trade. Prices are not minted from scarcity — firms and
 // towns bid a margin-preserving share of marginal value, the bid diffuses and decays, and gold
 // payments climb the sellers' asks exactly like goods climb the buyers' bids.
-const GOLD_START_PRICE = 4;
+const GOLD_START_GOLD_PER_WORKER = 1;
 const GOLD_PURSE_SEC = 15;
 const GOLD_WORKER_SEC = 10;
 const GOLD_RESERVE_SEC = 4;
@@ -16,7 +16,6 @@ const GOLD_COAL_COMFORT = 0.2;
 const GOLD_GOODS_COMFORT = 0.8;
 const GOLD_TOWN_COAL_NEED = 0.02;
 const GOLD_TOWN_GOODS_NEED = 0.03;
-const GOLD_START_TAX_PER_POP = GOLD_START_PRICE / (GOLD_INPUT_SHARE * (GOLD_GOODS_COMFORT / GOLD_TOWN_GOODS_NEED));
 const GOLD_SAT_RATE = 1.8;
 const GOLD_PROFIT_RATE = 1.5;
 const GOLD_DIFFUSE = 15;
@@ -174,17 +173,17 @@ function clearGoldScratch(scratch) {
 	scratch.flowRate.fill(0);
 }
 
-// Workers arrive with living savings and the town treasury holds one budget horizon, calibrated
-// so a fresh town's profit-maximizing goods bid equals GOLD_START_PRICE.
-function mapeGoldSeed(i, pop) {
-	const workerGold = pop * GOLD_START_TAX_PER_POP * GOLD_WORKER_SEC;
-	const townGold = pop * GOLD_START_TAX_PER_POP * GOLD_INPUT_SHARE * GOLD_PURSE_SEC;
+// Split scenario gold by budget horizons, never by a target price.
+function mapeGoldSeed(i, pop, perWorker = GOLD_START_GOLD_PER_WORKER) {
+	const total = pop * perWorker;
+	const workerGold = total * GOLD_WORKER_SEC / (GOLD_WORKER_SEC + GOLD_INPUT_SHARE * GOLD_PURSE_SEC);
+	const townGold = total - workerGold;
 	mapeGold.workerPurse[i] += workerGold;
 	mapeGold.purse[i] += townGold;
 	mapeGold.seeded += workerGold + townGold;
 }
 
-function mapeGoldFinishSetup() {
+function mapeGoldFinishSetup(perWorker = GOLD_START_GOLD_PER_WORKER) {
 	mapeGoldReset();
 	const n = world.n;
 	for (let i = 0; i < n; i++) {
@@ -192,7 +191,7 @@ function mapeGoldFinishSetup() {
 			mapeGold.actors[i] = 3;
 			mapeGold.scale[i] = 1;
 			mapeGold.taxMult[i] = 1;
-			mapeGoldSeed(i, mape.pop[i] > 0 ? mape.pop[i] : 1);
+			mapeGoldSeed(i, mape.pop[i] > 0 ? mape.pop[i] : 1, perWorker);
 		}
 	}
 	mape.money.set(mapeGold.purse);

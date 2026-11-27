@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'owners.js', 'gold.js', 'banks.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js', 'fields.js'];
+const SCRIPTS = ['simulation.js', 'land.js', 'steering.js', 'forage.js', 'gold.js', 'owners.js', 'banks.js', 'goods.js', 'workforce.js', 'workers.js', 'worker-life.js', 'farms.js', 'actors.js', 'towns.js', 'settlement.js', 'founding.js', 'track.js', 'fields.js'];
 for (const file of SCRIPTS) vm.runInThisContext(fs.readFileSync(path.join(__dirname, file), 'utf8'), { filename: file });
 
 const DRAW_CALLS = ['fillRect', 'strokeRect', 'beginPath', 'closePath', 'rect', 'clip', 'save', 'restore', 'translate', 'setTransform', 'putImageData', 'drawImage', 'fillText', 'stroke', 'fill', 'moveTo', 'lineTo', 'arc', 'clearRect'];
@@ -74,18 +74,6 @@ function largeCount(pool, kind) {
 	return n;
 }
 
-function walkingWorkers(model) {
-	let n = 0;
-	for (let w = 0; w < model.workers.count; w++) if (model.workers.isWalking(model.workers.state[w])) n++;
-	return n;
-}
-
-function largeWalkers(model) {
-	let n = 0;
-	for (let w = 0; w < model.workers.count; w++) if (model.workers.isWalking(model.workers.state[w]) && (w & 7) === 0) n++;
-	return n;
-}
-
 test('particle views draw heading triangles by default and honour the points and large-8th settings', () => {
 	const model = freshModel();
 	const plot = new FieldPlot(makeCanvas(), true);
@@ -95,19 +83,18 @@ test('particle views draw heading triangles by default and honour the points and
 	const count = name => plot.ctx.counts[name] || 0;
 	const reset = () => { for (const name of DRAW_CALLS) delete plot.ctx.counts[name]; };
 	const total = kindCount(model.goodsPool, ITEM_COAL);
-	const walkers = walkingWorkers(model);
 
 	plot.drawParticles(model, false);
 	assert.equal(count('arc'), 0, 'default mode draws no round dots');
-	assert.equal(count('moveTo'), total + walkers, 'one heading triangle per goods particle and walking worker');
-	assert.equal(count('fill'), total + walkers);
-	assert.equal(count('lineTo'), (total + walkers) * 2, 'two base corners per triangle');
+	assert.equal(count('moveTo'), total, 'one heading triangle per particle');
+	assert.equal(count('fill'), total);
+	assert.equal(count('lineTo'), total * 2, 'two base corners per triangle');
 	assert.equal(count('fillRect'), 0, 'default mode draws no points');
 	reset();
 
 	plot.shape = 'points';
 	plot.drawParticles(model, false);
-	assert.equal(count('fillRect'), total + walkers, 'points mode draws one pixel per particle and worker');
+	assert.equal(count('fillRect'), total, 'points mode draws one pixel per particle');
 	assert.equal(count('moveTo'), 0, 'points mode draws no triangles');
 	reset();
 
@@ -115,14 +102,14 @@ test('particle views draw heading triangles by default and honour the points and
 	plot.drawParticles(model, false);
 	const large = largeCount(model.goodsPool, ITEM_COAL);
 	assert.ok(large > 0 && large < total, `the large mode keeps only an eighth of the particles (${large}/${total})`);
-	assert.equal(count('moveTo'), large + largeWalkers(model));
+	assert.equal(count('moveTo'), large);
 	assert.equal(count('arc'), 0);
 	reset();
 
 	plot.resource = 'labor';
 	plot.shape = 'triangles';
 	plot.drawParticles(model, false);
-	assert.equal(count('moveTo'), walkers, 'walking workers render as heading triangles too');
+	assert.equal(count('moveTo'), 2, 'walking workers render as heading triangles too');
 	assert.equal(count('arc'), 0);
 });
 

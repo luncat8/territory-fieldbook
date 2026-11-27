@@ -25,7 +25,7 @@ function makeCtx() {
 		moveTo(x, y) { finiteAll(x, y); },
 		lineTo(x, y) { finiteAll(x, y); },
 		arc(x, y, r, s, e) { finiteAll(x, y, r, s, e); assert.ok(r >= 0); },
-		fillText(txt, x, y) { assert.equal(typeof txt, 'string'); finiteAll(x, y); },
+		fillText(txt, x, y) { assert.equal(typeof txt, 'string'); assert.ok(!txt.includes('NaN'), `NaN in fillText: ${txt}`); finiteAll(x, y); },
 		drawImage(_img, x, y, w, h) { finiteAll(x, y, w, h); },
 		putImageData() {},
 		createImageData(w, h) { return { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }; },
@@ -136,10 +136,11 @@ test('index.html boots all 24 scripts, renders every resource tab, places a Gard
 	gardenTool.click();
 	byId.get('resource-map').dispatch('click', { clientX: 260, clientY: 150 });
 	assert.match(byId.get('actor-count').textContent, /2 A/, 'Garden tool should place a second Monastery garden');
-	const farmsBefore = Number(byId.get('actor-count').textContent.match(/(\d+) H/)?.[1] || 0);
+	const farms = () => Number((byId.get('actor-count').textContent.match(/(\d+) H/) || [0, 0])[1]);
+	const farmsBefore = farms();
 	tools.find(b => b.dataset.tool === 'farm').click();
 	byId.get('resource-map').dispatch('click', { clientX: 350, clientY: 150 });
-	assert.equal(Number(byId.get('actor-count').textContent.match(/(\d+) H/)?.[1]), farmsBefore + 1, 'Farm tool should place one more commercial farm');
+	assert.equal(farms(), farmsBefore + 1, 'Farm tool should place a commercial farm');
 	byId.get('clear-towns').click();
 	frame(1250);
 	assert.ok(!byId.get('gold-held').textContent.includes('NaN'));

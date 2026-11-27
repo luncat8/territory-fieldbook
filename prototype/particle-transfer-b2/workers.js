@@ -50,7 +50,10 @@ class WorkerPool {
 		this.food = new Float64Array(MAX_WORKERS);
 		this.intent = new Float64Array(MAX_WORKERS);
 		this.since = new Int32Array(MAX_WORKERS);
-		this.columns = [this.id, this.state, this.cell, this.x, this.y, this.hx, this.hy, this.amount, this.tired, this.paidRest, this.gold, this.food, this.intent, this.since];
+		// Unbonused shift labor and the owner it was worked for: bonuses follow credited work, not presence on site.
+		this.credit = new Float64Array(MAX_WORKERS);
+		this.creditOwner = new Int32Array(MAX_WORKERS);
+		this.columns = [this.id, this.state, this.cell, this.x, this.y, this.hx, this.hy, this.amount, this.tired, this.paidRest, this.gold, this.food, this.intent, this.since, this.credit, this.creditOwner];
 		this.watchedId = -1;
 		this.logHead = 0;
 		this.logCount = 0;
@@ -63,20 +66,20 @@ class WorkerPool {
 	reset() {
 		this.count = this.nextId = this.seededWorkers = this.seededTired = this.births = this.forageEntries = 0;
 		this.watchedId = -1;
-		this.seededFood = 0;
 		this.logHead = this.logCount = 0;
 	}
 
+	// Wallets start empty (scenario funding allocates them once); a full food bag keeps the opening transient
+	// a work/financing test rather than a starvation cycle (plan M.1).
 	seedReference() {
 		const { actors } = this.model;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
 			if (actors[i] !== ECONOMY_TOWN) continue;
-			this.model.localWealth[i] = WALLET_PRICE_REFERENCE;
+			this.model.localWealth[i] = WALLET_REFERENCE;
 			const cx = (i % ECONOMY_WIDTH) + 0.5, cy = Math.floor(i / ECONOMY_WIDTH) + 0.5;
 			for (let n = 0; n < SEED_WORKERS_PER_TOWN; n++) {
 				const inRoom = n < 7, tired = inRoom ? 0.15 + 0.75 * (n / 7) : 0;
-				const food = FOOD_BAG;
-				const w = this.spawn(cx, cy, inRoom ? WORKER_ROOM : WORKER_STILL, tired, 0, food, true);
+				const w = this.spawn(cx, cy, inRoom ? WORKER_ROOM : WORKER_STILL, tired, 0, FOOD_BAG, true);
 				if (w >= 0 && inRoom) this.paidRest[w] = tired;
 			}
 		}
@@ -98,8 +101,10 @@ class WorkerPool {
 		this.gold[w] = gold;
 		this.food[w] = food;
 		this.since[w] = this.model.ticks || 0;
+		this.credit[w] = 0;
+		this.creditOwner[w] = 0;
 		this.model.workerLife.init(w);
-		if (isSeed) { this.seededWorkers += WORKER_UNIT; this.seededTired += tired; this.seededFood += food; }
+		if (isSeed) { this.seededWorkers += WORKER_UNIT; this.seededTired += tired; }
 		else this.births += WORKER_UNIT;
 		return w;
 	}
@@ -153,6 +158,27 @@ class WorkerPool {
 	totalAmount() { let s = 0; for (let w = 0; w < this.count; w++) s += this.amount[w]; return s; }
 	totalTired() { let s = 0; for (let w = 0; w < this.count; w++) s += this.tired[w]; return s; }
 	totalGold() { let s = 0; for (let w = 0; w < this.count; w++) s += this.gold[w]; return s; }
+	meanGold() { const amt = this.totalAmount(); return amt > 0 ? this.totalGold() / amt : 0; }
+
+	hasOnSite(cell) {
+		for (let w = 0; w < this.count; w++) if (this.cell[w] === cell && (this.state[w] === WORKER_SHIFT || this.state[w] === WORKER_FIRM_POOL)) return true;
+		return false;
+	}
+
+	// Splits a bonus by unbonused credited labor for this owner, wherever those workers are now; returns gold paid.
+	payCredited(o, totalPay) {
+		let weight = 0;
+		for (let w = 0; w < this.count; w++) if (this.creditOwner[w] === o) weight += this.credit[w];
+		if (weight <= 1e-12) return 0;
+		for (let w = 0; w < this.count; w++) {
+			if (this.creditOwner[w] !== o || this.credit[w] <= 0) continue;
+			const share = totalPay * (this.credit[w] / weight);
+			this.gold[w] += share;
+			this.credit[w] = 0;
+			this.model.tracker.income(w, share, this.cell[w]);
+		}
+		return totalPay;
+	}
 
 	evictCell(cell) {
 		for (let w = 0; w < this.count; w++) {
@@ -204,6 +230,7 @@ class WorkerPool {
 		const avail = this.model.shiftAvail[cell];
 		if (avail <= 1e-12) return;
 		const ratio = Math.min(1, usedLabor / avail);
+		const o = this.model.owners.ownerAt(cell);
 		let actual = 0;
 		for (let w = 0; w < this.count; w++) {
 			if (this.cell[w] !== cell || this.state[w] !== WORKER_SHIFT) continue;
@@ -213,6 +240,8 @@ class WorkerPool {
 			// Credit the real tired delta — including the full-tired snap — so workedLabor stays the exact complement of totalTired.
 			if (this.tired[w] >= this.amount[w] - 1e-7) this.tired[w] = this.amount[w];
 			actual += this.tired[w] - before;
+			if (this.creditOwner[w] !== o) { this.creditOwner[w] = o; this.credit[w] = 0; }
+			this.credit[w] += this.tired[w] - before;
 			if (this.tired[w] >= this.amount[w] - 1e-7) this.setState(w, WORKER_WALK_HOME);
 		}
 		this.model.workedLabor += actual;
@@ -223,13 +252,11 @@ class WorkerPool {
 		if (!opt.isHiringFirm(c)) return false;
 		const fr = this.amount[w] - this.tired[w];
 		if (fr <= 1e-6) return false;
-		const shiftSlots = opt.shiftSlots(c);
-		const totalCap = shiftSlots + opt.poolSlots(c);
+		const shiftSlots = opt.shiftSlots(c), actor = m.actors[c];
+		const totalCap = (actor === ECONOMY_FACTORY && m.coal[c] <= 1e-6) ? 1 : shiftSlots + opt.poolSlots(c);
 		if (m.shiftCount[c] + m.poolCount[c] + this.amount[w] > totalCap + 1e-6) return false;
-		const quote = opt.entryWage(c);
-		if (quote <= 0) return false;
-		const bill = quote * fr;
-		if (bill > 0 && m.money.cash(c) <= 1e-9 && m.money.wageDebt(c) > Math.max(1e-12, m.priceLabor[c] * 1.5)) return false;
+		const bill = m.priceLabor[c] * fr;
+		if (bill > 0 && m.money.cashAt(c) <= m.money.eps() && m.owners.owedAt(c) > m.money.unitScale() * START_PRICE * 1.5) return false;
 		m.money.payEntryWage(c, w, bill);
 		opt.laborCost[c] += bill;
 		if (bill > 0) this.logEvent(w, EVT_WAGE, bill);
@@ -244,14 +271,14 @@ class WorkerPool {
 	}
 
 	checkInRoom(w, c) {
-		const m = this.model, towns = m.towns;
+		const m = this.model, towns = m.towns, eps = m.money.eps();
 		const tr = this.tired[w];
 		const feeRate = towns.restTax(c);
 		const fullFee = feeRate * tr;
-		if (fullFee > 1e-9 && this.gold[w] <= 1e-6) return false;
+		if (fullFee > eps && this.gold[w] <= eps) return false;
 		m.towns.observeWallet(c, this.gold[w] / this.amount[w]);
 		let paid = 0;
-		if (fullFee <= 1e-9) {
+		if (fullFee <= eps) {
 			this.paidRest[w] = tr;
 		} else if (this.gold[w] >= fullFee) {
 			paid = fullFee;
@@ -275,10 +302,10 @@ class WorkerPool {
 	}
 
 	tryAdmitTown(w, c) {
-		const m = this.model, towns = m.towns;
+		const m = this.model, towns = m.towns, eps = m.money.eps();
 		if (m.actors[c] !== ECONOMY_TOWN || m.rooms[c] <= 0) return false;
 		const feeRate = towns.restTax(c);
-		if (feeRate > 1e-9 && this.gold[w] <= 1e-6) return false;
+		if (feeRate > eps && this.gold[w] <= eps) return false;
 		if (m.roomCount[c] + this.amount[w] <= m.rooms[c] + 1e-6) return this.checkInRoom(w, c);
 		if (m.waitCount[c] + this.amount[w] <= towns.waitCap(c) + 1e-6) {
 			m.waitCount[c] += this.amount[w];
@@ -290,8 +317,8 @@ class WorkerPool {
 	}
 
 	step() {
-		const m = this.model, { steering, forage, workforce, towns, land } = m;
-		const shelterShare = workforce.restShare;
+		const m = this.model, { steering, workforce, towns, land } = m;
+		const shelterShare = workforce.restShare, refFee = towns.refRestFee(), eps = m.money.eps();
 		let tickRested = 0;
 		for (let w = 0; w < this.count; w++) {
 			let st = this.state[w], c = this.cell[w];
@@ -312,22 +339,22 @@ class WorkerPool {
 			if (st === WORKER_WALK_JOB) {
 				this.stepWalkJob(w);
 			} else if (st === WORKER_WALK_HOME) {
-				this.stepWalkHome(w);
+				this.stepWalkHome(w, refFee);
 			} else if (st === WORKER_ROOM) {
 				tickRested += this.stepRoom(w);
 			} else if (st === WORKER_TOWN_WAIT) {
-				const wMix = walletWeight(this.gold[w], this.amount[w], m.workforce.referenceFee);
-				if ((towns.restTax(c) > 1e-9 && this.gold[w] <= 1e-6) || steering.hasBetterNeighbor(m.priceHome, m.priceRest, wMix, c)) {
+				const wMix = walletWeight(this.gold[w], this.amount[w], refFee);
+				if ((towns.restTax(c) > eps && this.gold[w] <= eps) || steering.hasBetterNeighbor(m.priceHome, m.priceRest, wMix, c)) {
 					this.setState(w, WORKER_WALK_HOME);
 				}
 			} else if (st === WORKER_STILL) {
 				if (this.tired[w] > 1e-9) {
-				const rest = Math.min(this.tired[w], this.amount[w] * shelterShare * land.rest[c]);
-				this.tired[w] = Math.max(0, this.tired[w] - rest);
-				tickRested += rest;
-				// Zeroing a residual credits it too: restedDepleted must match every tired decrement exactly.
-				if (this.tired[w] <= 1e-8) { tickRested += this.tired[w]; this.tired[w] = 0; }
-				this.relaunchTired(w);
+					const rest = Math.min(this.tired[w], this.amount[w] * shelterShare * land.rest[c]);
+					this.tired[w] = Math.max(0, this.tired[w] - rest);
+					tickRested += rest;
+					// Zeroing a residual credits it too: restedDepleted must match every tired decrement exactly.
+					if (this.tired[w] <= 1e-8) { tickRested += this.tired[w]; this.tired[w] = 0; }
+					this.relaunchTired(w, refFee);
 				} else {
 					this.relaunchFresh(w);
 				}
@@ -356,7 +383,7 @@ class WorkerPool {
 				this.relaunchFresh(w);
 			} else {
 				this.setState(w, WORKER_STILL);
-				this.relaunchTired(w);
+				this.relaunchTired(w, m.towns.refRestFee());
 			}
 			return rested;
 		}
@@ -378,7 +405,7 @@ class WorkerPool {
 		const m = this.model, { steering } = m, c = this.cell[w];
 		if (this.tryAdmitFirm(w, c)) return;
 		steering.sampleField(m.priceLabor, null, 0, c, 0);
-		if (steering.grad.bestPull < DOCK_SLOPE) {
+		if (steering.grad.bestSlope <= 0 || steering.grad.bestPull < m.fieldDock(m.priceLabor)) {
 			this.setState(w, WORKER_STILL);
 			return;
 		}
@@ -391,12 +418,12 @@ class WorkerPool {
 		this.tryAdmitFirm(w, this.cell[w]);
 	}
 
-	stepWalkHome(w) {
+	stepWalkHome(w, refFee = this.model.towns.refRestFee()) {
 		const m = this.model, { steering } = m, c = this.cell[w];
-		const wMix = walletWeight(this.gold[w], this.amount[w], m.workforce.referenceFee);
+		const wMix = walletWeight(this.gold[w], this.amount[w], refFee);
 		if (m.actors[c] === ECONOMY_TOWN && !steering.hasBetterNeighbor(m.priceHome, m.priceRest, wMix, c) && this.tryAdmitTown(w, c)) return;
 		steering.sampleField(m.priceHome, m.priceRest, wMix, c, 0);
-		if (steering.grad.bestPull < DOCK_SLOPE) {
+		if (steering.grad.bestSlope <= 0 || steering.grad.bestPull < DOCK_SLOPE) {
 			this.setState(w, WORKER_STILL);
 			return;
 		}
@@ -437,18 +464,17 @@ class WorkerPool {
 
 	relaunchFresh(w) {
 		const m = this.model, c = this.cell[w];
-		if (m.founding.hasProject(this.id[w])) return;
 		if (this.tryAdmitFirm(w, c)) return;
 		m.steering.sampleField(m.priceLabor, null, 0, c, 0);
-		if (m.steering.grad.bestPull >= DOCK_SLOPE) this.setState(w, WORKER_WALK_JOB);
+		if (m.steering.grad.bestSlope > 0 && m.steering.grad.bestPull >= m.fieldDock(m.priceLabor)) this.setState(w, WORKER_WALK_JOB);
 	}
 
-	relaunchTired(w) {
+	relaunchTired(w, refFee = this.model.towns.refRestFee()) {
 		const m = this.model, c = this.cell[w];
-		const wMix = walletWeight(this.gold[w], this.amount[w], m.workforce.referenceFee);
+		const wMix = walletWeight(this.gold[w], this.amount[w], refFee);
 		if (m.actors[c] === ECONOMY_TOWN && !m.steering.hasBetterNeighbor(m.priceHome, m.priceRest, wMix, c) && this.tryAdmitTown(w, c)) return;
 		m.steering.sampleField(m.priceHome, m.priceRest, wMix, c, 0);
-		if (m.steering.grad.bestPull >= DOCK_SLOPE) this.setState(w, WORKER_WALK_HOME);
+		if (m.steering.grad.bestSlope > 0 && m.steering.grad.bestPull >= DOCK_SLOPE) this.setState(w, WORKER_WALK_HOME);
 	}
 
 	// FIFO promotion by earliest `since` moves queued pool workers into shifts and town waiters into vacated rooms.

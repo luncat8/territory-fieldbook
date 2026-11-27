@@ -172,7 +172,6 @@ class Settlements {
 			}
 		}
 		m.actors[c] = ECONOMY_TOWN;
-		m.owners.found(c);
 		this.tier[c] = 0;
 		m.scale[c] = m.taxMult[c] = 1;
 		m.wealthClass[c] = wealthClassFor(c);

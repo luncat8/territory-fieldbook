@@ -54,12 +54,3 @@ decisions: cap[ITEM_WOOD] is never zeroed in stepFirms — farms rewrite it in f
 decisions: town demand is the negative feedback — when the young town matures (tier ≥ 0.5) bids stop, priceWood collapses below the sawmill gate and felling idles
 pitfalls: isBuyer wood arm must precede the isBuilding guard or farms mid-construction refuse their own deliveries; vm.load order makes SAWMILL_* usable from farms.js before actors.js defines the recipe
 next: browser playtest of the preview (place sawmills, watch wood flow), then Phase 4 game port stays deferred per plan
-
-plan: particle-transfer-b2 visual flow/worker fixes — stabilize stalled in-flight particles and keep commuters visible (fix)
-changed: prototype/particle-transfer-b2/goods.js — stepMove stall branch relaxes an in-flight particle's book toward the best visible price (mirrors stepSpawn COST_RELAX), so coal/wood that outran their buyers unwedge instead of parking forever (fix)
-changed: prototype/particle-transfer-b2/fields.js — drawParticles paints walking workers on every stock view, not only the worker tabs (fix)
-changed: prototype/particle-transfer-b2/{conservation,render}.test.js — stranded-coal relaxation regression; render draw-call counts updated for always-on workers (test)
-validation: node --test particle-transfer-b2 68/68 (67 prior + 1 new); stashing goods.js makes the new relaxation test fail, restoring it passes; 300s probe: coal ask clears the best buyer (flag gone), wood ask written 0.162→~0 until it flows
-decisions: in-flight relaxation is accounting-only (no gold moves) and writes transportCost before factoryCost, so the profit identity and conservation are untouched; workers are a persistent mobility layer, like actor markers
-pitfalls: the write-down asymptotes toward the local best price, so a particle parked at the single highest buyer clears only as the diffused field fluctuates — do not expect instant clearance from the relaxation alone
-next: browser playtest of the preview to confirm steady coal flow and visible commuters

@@ -7,7 +7,7 @@ const TRACK_EVENTS = 8;
 const TRACK_HISTORY = 180;
 const TRACK_EVENT_TICKS = 30;
 const TRACK_SAMPLE_STRIDE = 15;
-const PLACE_TAGS = ['', 'M', 'F', 'T', 'G', 'A', 'H'];
+const PLACE_TAGS = ['', 'M', 'F', 'T', 'G', 'A', 'H', 'S'];
 const placeName = i => `${String(i % ECONOMY_WIDTH).padStart(2, '0')}, ${String(Math.floor(i / ECONOMY_WIDTH)).padStart(2, '0')}`;
 const WORKER_NAMES = ['Aldo', 'Bram', 'Cato', 'Dirk', 'Egon', 'Femke', 'Gerrit', 'Hanna', 'Ivo', 'Klaas', 'Lotte', 'Maas', 'Nora', 'Okke', 'Pim', 'Roel', 'Sanne', 'Teun', 'Ulke', 'Yfke'];
 
@@ -74,18 +74,20 @@ class WorkerTracker {
 	walletDelta(w, amount, place) {
 		const entry = this.byId.get(this.model.workers.id[w]);
 		if (!entry || amount === 0 || entry.status !== 'active') return;
+		const minReport = Math.max(1e-30, this.model.money.unitScale() * 0.005);
+		const digits = minReport < 1e-3 ? 4 : 2;
 		if (amount > 0) {
 			entry.earned += amount;
 			entry.unreportedIncome += amount;
-			if (this.model.ticks - entry.lastEvent >= TRACK_EVENT_TICKS && entry.unreportedIncome >= 0.005) {
-				this.say(entry, `+${entry.unreportedIncome.toFixed(2)} g wages at ${this.place(place)}`);
+			if (this.model.ticks - entry.lastEvent >= TRACK_EVENT_TICKS && entry.unreportedIncome >= minReport) {
+				this.say(entry, `+${entry.unreportedIncome.toFixed(digits)} g wages at ${this.place(place)}`);
 				entry.unreportedIncome = 0;
 			}
 		} else {
 			entry.spent -= amount;
 			entry.unreportedTax -= amount;
-			if (this.model.ticks - entry.lastEvent >= TRACK_EVENT_TICKS && entry.unreportedTax >= 0.005) {
-				this.say(entry, `−${entry.unreportedTax.toFixed(2)} g at ${this.place(place)}`);
+			if (this.model.ticks - entry.lastEvent >= TRACK_EVENT_TICKS && entry.unreportedTax >= minReport) {
+				this.say(entry, `−${entry.unreportedTax.toFixed(digits)} g at ${this.place(place)}`);
 				entry.unreportedTax = 0;
 			}
 		}
