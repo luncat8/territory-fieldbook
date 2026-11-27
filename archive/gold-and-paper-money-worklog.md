@@ -42,3 +42,13 @@
 - decisions: prototype ends at the M.7 end-to-end gate (G1+O2+D1+G2+B0/P1); then port the kernel to `map-money-particle.js`, flip the default, archive the lab.
 - validation: documentation-only change; `git diff --check` on touched Markdown; no runtime changes or simulation reruns.
 - next: run the money prototype to the M.7 gate, then port the kernel to the game.
+
+## G1/O2/D1/G2/F1 · First money slice in the particle lab, 2026-11-27
+- changed: `prototype/particle-transfer-b2/` — new `owners.js` (shared owners, facility ids, budgets, debt limit) and `banks.js` (F1 loans, interest, grace default, write-off); `gold.js` rewritten (origin ledger, scenario funding, owner waterfall, transport/custody); goods payee/origin particles; gold mine needs wood; logs placed at the cut cell; worker-owner founding incl. sawmills; diagnostics/tooltips/ledger UI.
+- decisions: starting gold `1 g × workers` split bank 25 / owners 35 / towns 20 / wallets 20 %, recorded once; empty buckets fold into bank equity.
+- decisions: bonuses only from earnings (no open loan, never below paid-in capital); extracting owners self-fund; claims stay owner debts after facility erase.
+- decisions: D1 is the existing spawn gate — output waits in the depot until a demand gradient clears its floor.
+- evidence: 180 s default run — mined 104 g, 0 starved, 1 loan cleared (reference sawmill, t≈98 s), 3 defaults (new founders' farm/mine/factory), coal 19 vs 62 legacy.
+- evidence: start-gold knob 0.5/1/2/14 → coal 17/19/22/38, goods eaten 2/3/6/11; nominal constants are calibrated to the old money level.
+- validation: `node --test` in the lab → 49/49 (L1); new `banks.test.js` covers loan repay, default, limits, portfolios, wood-gated gold and the M.7 scenario.
+- next: scale nominal price constants with the scenario money level (or a price-level knob), then add credit notes (P1).
