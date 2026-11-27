@@ -105,7 +105,7 @@ class EconomyTelemetry {
 		this.foodBalance.textContent = `${model.producedFood.toFixed(3)} harvested − ${model.consumedFood.toFixed(3)} sold − ${model.goodsPool.spoiled[ITEM_FOOD].toFixed(3)} spoiled ≈ ${foodHeld.toFixed(3)} held+transit`;
 		let woodHeld = model.goodsPool.spawnBufferTotal(ITEM_WOOD) + model.goodsPool.inTransitTotal(ITEM_WOOD);
 		for (let i = 0; i < ECONOMY_SIZE; i++) woodHeld += model.wood[i];
-		this.woodBalance.textContent = `${model.producedWood.toFixed(3)} sawmill-made − ${model.consumedWood.toFixed(3)} built − ${model.goodsPool.spoiled[ITEM_WOOD].toFixed(3)} spoiled ≈ ${woodHeld.toFixed(3)} held+transit`;
+		this.woodBalance.textContent = `${model.seededWood.toFixed(3)} seeded + ${model.producedWood.toFixed(3)} felled − ${model.consumedWood.toFixed(3)} built − ${model.goodsPool.spoiled[ITEM_WOOD].toFixed(3)} spoiled ≈ ${woodHeld.toFixed(3)} held+transit`;
 		this.headSeeded.textContent = model.workers.seededWorkers.toFixed(0);
 		this.headBirths.textContent = model.workers.births.toFixed(0);
 		this.headDeaths.textContent = model.workerLife.deaths.toFixed(0);
@@ -113,11 +113,11 @@ class EconomyTelemetry {
 		this.tiredWorked.textContent = (model.workers.seededTired + model.workedLabor).toFixed(2);
 		this.tiredRested.textContent = (model.restedDepleted + model.workerLife.removedTired).toFixed(2);
 		this.tiredHeld.textContent = model.workers.totalTired().toFixed(2);
-		this.goldSeeded.textContent = model.money.seeded.toFixed(2);
+		this.goldSeeded.textContent = model.money.initial.toFixed(2);
 		this.goldMined.textContent = model.money.mined.toFixed(2);
 		this.goldHeld.textContent = this.values[4].toFixed(2);
 		this.workerCarried.textContent = model.workers.totalGold().toFixed(2);
-		this.vaultHeld.textContent = model.money.vault.toFixed(2);
+		this.vaultHeld.textContent = (model.money.transport + model.money.custody).toFixed(2);
 		this.forageGarden.textContent = model.forage.gardenFed.toFixed(2);
 		this.forageWild.textContent = model.forage.wildPicked.toFixed(2);
 		const seconds = Math.floor(model.ticks * ECONOMY_DT);
