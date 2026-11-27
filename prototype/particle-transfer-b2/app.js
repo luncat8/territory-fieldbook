@@ -269,6 +269,18 @@ function bootEconomy() {
 		message.textContent = result.message;
 		texts();
 	});
+	$('borrow-notes-button').addEventListener('click', () => {
+		const result = model.banks.requestNoteLoan(selected, Number($('loan-amount').value));
+		message.textContent = result.message;
+		texts();
+	});
+	$('redeem-button').addEventListener('click', () => {
+		const result = selected >= 0
+			? model.banks.redeemNotes(selected, model.currencies.accountBalance(model.banks.noteIssuer() >= 0 ? model.banks.noteIssuer() : 0, selected))
+			: { message: 'Select a cell whose owner account holds notes.' };
+		message.textContent = result.message;
+		texts();
+	});
 	derived.addEventListener('change', () => { model.derived = derived.checked; message.textContent = `Derived bid ${model.derived ? 'enabled' : 'disabled'}.`; });
 	suppression.addEventListener('change', () => { model.suppression = suppression.checked; message.textContent = `Stock suppression ${model.suppression ? 'enabled' : 'disabled'}.`; });
 	flow.addEventListener('change', () => { dirty = true; paint(); });

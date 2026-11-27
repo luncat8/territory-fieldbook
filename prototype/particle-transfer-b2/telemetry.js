@@ -4,6 +4,7 @@
 
 class EconomyTelemetry {
 	constructor() {
+		this.notesLine = $('notes-ledger');
 		this.cards = Array.from(document.querySelectorAll('.metric'), card => {
 			const canvas = card.querySelector('canvas');
 			return { canvas, ctx: canvas.getContext('2d'), label: card.querySelector('strong'), samples: new Float64Array(64), color: getComputedStyle(card.querySelector('.icon')).color };
@@ -124,6 +125,10 @@ class EconomyTelemetry {
 		this.bankHeld.textContent = model.banks.gold.toFixed(2);
 		this.forageGarden.textContent = model.forage.gardenFed.toFixed(2);
 		this.forageWild.textContent = model.forage.wildPicked.toFixed(2);
+		const issuer = model.banks.noteIssuer();
+		this.notesLine.textContent = issuer >= 0
+			? `Credit notes ${model.currencies.totalOutstanding().toFixed(2)} outstanding · wages ${model.money.wageNotes.toFixed(2)} · taxes ${model.money.taxNotes.toFixed(2)} · rations ${model.money.rationNotes.toFixed(2)} · bank ${model.banks.suspended ? 'SUSPENDED' : 'open'}`
+			: 'Credit notes none — the economy settles in gold only';
 		const seconds = Math.floor(model.ticks * ECONOMY_DT);
 		this.clock.textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 	}

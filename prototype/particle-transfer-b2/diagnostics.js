@@ -194,6 +194,23 @@ class EconomyDiagnostics {
 		s.notesRetired = issuer ? issuer.retired : 0;
 		s.notesOutstanding = issuer ? issuer.issued - issuer.retired : 0;
 		s.notesError = issuer ? m.currencies.invariantError(b.noteIssuer()) : 0;
+		s.notesBankHeld = issuer ? issuer.bankHeld : 0;
+		s.notesCustody = issuer ? m.currencies.custody[b.noteIssuer()] : 0;
+		s.noteOriginated = b.noteOriginated;
+		s.noteRepaid = b.noteRepaid;
+		s.noteRepaidGold = b.noteRepaidGold;
+		s.noteInterest = b.noteInterest;
+		s.noteInterestGold = b.noteInterestGold;
+		s.noteDefaults = b.noteDefaults;
+		s.noteWrittenDown = b.noteWrittenDown;
+		s.noteArrears = b.noteArrearsAmount();
+		s.bankSuspended = b.suspended;
+		s.redemptionQueue = b.redemptionQueue;
+		s.noteLoanDebt = 0;
+		for (let id = 1; id < m.owners.accounts.length; id++) s.noteLoanDebt += m.owners.accounts[id].noteLoanDebt;
+		s.wageNotes = m.money.wageNotes;
+		s.taxNotes = m.money.taxNotes;
+		s.rationNotes = m.money.rationNotes;
 		s.creditMoney = m.creditMoney;
 	}
 
@@ -337,6 +354,8 @@ class EconomyDiagnostics {
 		if (s.idleFarms) out.push(`${s.idleFarms} farm(s) hold fields but no crew on this tick`);
 		if (s.bankArrears > 1e-9) out.push(`loan arrears ${s.bankArrears.toFixed(2)} g: overdue principal at the gold bank (grace before default)`);
 		if (s.notesError > 1e-9) out.push(`note ledger error ${s.notesError.toExponential(1)}: issued − retired no longer matches outstanding balances (defect)`);
+		if (s.bankSuspended) out.push(`bank suspended: reserves cannot cover ${s.redemptionQueue.toFixed(2)} n of redemption demand; no new credit and notes are not spendable`);
+		if (s.noteArrears > 1e-9) out.push(`note-loan arrears ${s.noteArrears.toFixed(2)} n: overdue principal in notes (grace before default)`);
 		if (s.goldTimberOut) out.push(`${s.goldTimberOut} gold mine(s) out of timber: extraction pauses until a wood delivery arrives`);
 		if (s.bankDefaults > 0) out.push(`${s.bankDefaults} loan default(s) wrote down ${s.bankWrittenDown.toFixed(2)} g of bank equity; wage claims and other creditors stay whole`);
 		if (s.goldTotal > 1 && s.transport > 0.2 * s.goldTotal) out.push(`transport company holds ${pct(s.transport / s.goldTotal)} of all gold (${s.transport.toFixed(2)} g): fees are liquidity away from firms${s.redistributed > 0 ? `, ${s.redistributed.toFixed(2)} g redistributed under T0` : ''}`);
@@ -434,8 +453,16 @@ class EconomyDiagnostics {
 		if (issuer) {
 			const k = b.noteIssuer();
 			rows.push(`${issuer.issued.toFixed(6)} ${issuer.retired.toFixed(6)} ${(issuer.issued - issuer.retired).toFixed(6)} ${this.model.currencies.custody[k].toFixed(6)} ${issuer.bankHeld.toFixed(6)} ${this.model.currencies.invariantError(k).toExponential(1)}`);
+			rows.push(`note_loans originated_n=${b.noteOriginated.toFixed(6)} repaid_n=${b.noteRepaid.toFixed(6)} repaid_gold_g=${b.noteRepaidGold.toFixed(6)} interest_n=${b.noteInterest.toFixed(6)} interest_gold_g=${b.noteInterestGold.toFixed(6)} arrears_n=${b.noteArrearsAmount().toFixed(6)} defaults=${b.noteDefaults} written_down_g=${b.noteWrittenDown.toFixed(6)} suspended=${b.suspended} queue_n=${b.redemptionQueue.toFixed(6)}`);
+			rows.push(`note_tender wage_n=${this.model.money.wageNotes.toFixed(6)} tax_n=${this.model.money.taxNotes.toFixed(6)} ration_n=${this.model.money.rationNotes.toFixed(6)} borrower_debt_n=${this.noteDebtTotal().toFixed(6)}`);
 		} else rows.push('no note issuer: credit money off or no chartered bank');
 		return rows.join('\n');
+	}
+
+	noteDebtTotal() {
+		let sum = 0;
+		for (let id = 1; id < this.model.owners.accounts.length; id++) sum += this.model.owners.accounts[id].noteLoanDebt;
+		return sum;
 	}
 
 	historyText() {
@@ -472,6 +499,8 @@ class EconomyDiagnostics {
 			`chartered=${s.bankExists} reserves=${f(s.bankGold)} funded=${f(s.bankFunded)} originated=${f(s.bankOriginated)} repaid=${f(s.bankRepaid)} interest=${f(s.bankInterest)} arrears=${f(s.bankArrears)} defaults=${s.bankDefaults} written_down=${f(s.bankWrittenDown)} equity=${f(s.bankEquity)}`,
 			'## notes',
 			`credit_money=${s.creditMoney} outstanding=${f(s.notesOutstanding, 4)} issued=${f(s.notesIssued, 4)} retired=${f(s.notesRetired, 4)} ledger_error=${s.notesError.toExponential(1)}`,
+			`note_loans originated=${f(s.noteOriginated, 4)} repaid=${f(s.noteRepaid, 4)} repaid_gold=${f(s.noteRepaidGold, 4)} interest=${f(s.noteInterest, 4)} interest_gold=${f(s.noteInterestGold, 4)} arrears=${f(s.noteArrears, 4)} defaults=${s.noteDefaults} written_down=${f(s.noteWrittenDown, 4)} suspended=${s.bankSuspended} queue=${f(s.redemptionQueue, 4)}`,
+			`note_tender wage=${f(s.wageNotes, 4)} tax=${f(s.taxNotes, 4)} ration=${f(s.rationNotes, 4)} borrower_debt=${f(s.noteLoanDebt, 4)}`,
 			'## wages & taxes',
 			`wage_field_at_firms=${f(s.wageAtFirms, 4)} wage_field_max=${f(s.wageFieldMax, 4)} entry_wage_per_worker=${f(s.entryWage, 4)} pay_per_labor_unit=${f(s.payPerLabor, 4)}`,
 			`wages_paid=${f(s.wagesPaid, 2)} taxes_paid=${f(s.taxesPaid, 2)} wages_rate=${f(s.wageRate, 4)} g/s taxes_rate=${f(s.taxRate, 4)} g/s`,
@@ -527,6 +556,11 @@ const PANEL_ROWS = [
 		['Credit money', s => s.creditMoney ? 'on' : 'off'],
 		['Notes outstanding', s => `${s.notesOutstanding.toFixed(2)} n`, s => s.notesOutstanding > 1e-6],
 		['Issued · retired', s => `${s.notesIssued.toFixed(2)} · ${s.notesRetired.toFixed(2)} n`],
+		['Note loans', s => `${s.noteLoanDebt.toFixed(2)} n debt · ${s.noteOriginated.toFixed(2)} n issued`, s => s.noteLoanDebt > 1e-6],
+		['Repaid · gold-funded', s => `${s.noteRepaid.toFixed(2)} · ${s.noteRepaidGold.toFixed(2)} n`, s => s.noteRepaid + s.noteRepaidGold > 1e-9],
+		['Interest · gold interest', s => `${s.noteInterest.toFixed(3)} · ${s.noteInterestGold.toFixed(3)} n`, s => s.noteInterest + s.noteInterestGold > 1e-9],
+		['Arrears · queue', s => `${s.noteArrears.toFixed(2)} · ${s.redemptionQueue.toFixed(2)} n`, s => s.noteArrears > 1e-6 || s.redemptionQueue > 1e-6],
+		['Suspended', s => s.bankSuspended ? 'yes' : 'no', s => s.bankSuspended],
 		['Ledger error', s => s.notesError.toExponential(1), s => s.notesError > 1e-9]
 	]],
 	['Wages', [
