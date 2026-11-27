@@ -27,6 +27,8 @@ const MINE_LABOR = 1.1;
 const FACTORY_LABOR = 1.1;
 const GOLD_LABOR = 1.1;
 const GOLD_RATE = 0.4;
+const GOLD_WOOD = 0.12;
+const GOLD_START_WOOD = 0.6;
 const START_PRICE = 4;
 const INPUT_SHARE = 0.65;
 const BUFFER_SECONDS = 1.8;
@@ -165,6 +167,9 @@ class PriceEconomy {
 		this.steering = new Steering(this);
 		this.forage = new ForageSystem(this);
 		this.money = new GoldMoney(this);
+		this.bank = new GoldBank(this);
+		this.owners = new OwnerRegistry(this);
+		this.scenario = { goldPerWorker: START_GOLD_PER_WORKER, shares: START_SHARES };
 		this.goodsPool = new GoodsPool(this);
 		this.workers = new WorkerPool(this);
 		this.workerLife = new WorkerLife(this);
@@ -230,15 +235,28 @@ class PriceEconomy {
 		this.workers.reset();
 		this.towns.reset();
 		this.founding.reset();
+		this.owners.reset();
 		this.money.reset();
 		this.workers.seedReference();
 		this.ticks = this.producedCoal = this.burnedCoal = this.producedGoods = this.consumedGoods = 0;
 		this.workedLabor = this.restedDepleted = 0;
 		this.coalRate = this.goodsRate = this.uptakeRate = 0;
-		this.producedWood = this.consumedWood = 0;
+		this.producedWood = this.consumedWood = this.seededWood = 0;
+		this.founding.assignReferenceOwners();
+		this.seedTimber();
+		this.money.fundScenario(this.scenario.goldPerWorker, this.scenario.shares);
 		this.rebuildCellView();
 		this.land.refresh();
 		this.forage.warm();
+	}
+
+	// Gold mines open with a small recorded timber reserve (a real asset, not gold) so the first shift can extract.
+	seedTimber() {
+		for (let i = 0; i < ECONOMY_SIZE; i++) {
+			if (this.actors[i] !== ECONOMY_GOLD) continue;
+			this.wood[i] += GOLD_START_WOOD;
+			this.seededWood += GOLD_START_WOOD;
+		}
 	}
 
 	setActor(i, kind) {
@@ -249,7 +267,8 @@ class PriceEconomy {
 			if (prev === ECONOMY_FARM) this.farms.release(i);
 			this.workers.evictCell(i);
 			this.goodsPool.flushOwner(i);
-			this.money.release(i);
+			this.money.releaseTown(i);
+			this.owners.detach(i);
 			this.coal[i] = this.goods[i] = this.food[i] = this.wood[i] = 0;
 			this.goodsPool.stockCost[ITEM_FOOD][i] = 0;
 			this.goodsPool.stockCost[0][i] = this.goodsPool.stockCost[1][i] = 0;
@@ -271,13 +290,13 @@ class PriceEconomy {
 			this.taxMult[i] = 1;
 			this.wealthClass[i] = wealthClassFor(i);
 			this.vacantTicks[i] = 0;
-			this.localWealth[i] = SEED_WORKER_GOLD;
+			this.localWealth[i] = WALLET_REFERENCE;
 			this.towns.initTown(i);
-			this.money.seedTown(i);
-		} else if (kind === ECONOMY_FARM) {
-			this.farms.init(i);
 		} else if (kind === ECONOMY_GARDEN) {
 			this.forage.claimPlots(i);
+		} else if (kind) {
+			this.founding.assignOwner(i);
+			if (kind === ECONOMY_FARM) this.farms.init(i);
 		}
 		this.rebuildCellView();
 		return true;
@@ -372,6 +391,7 @@ class PriceEconomy {
 					const item = recipe.inputs[m].item;
 					if (item === ITEM_COAL) bCoal = optimizer.bidOut[m];
 					else if (item === ITEM_LABOR) bLabor = optimizer.bidOut[m];
+					else if (item === ITEM_WOOD) bWood = optimizer.bidOut[m];
 				}
 			}
 			this.nextPriceFood[i] = stepBid(this.priceFood, i, this.priceFood[i], bFood, decay);
