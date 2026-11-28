@@ -32,6 +32,9 @@ class EconomyTelemetry {
 		this.goldHeld = $('gold-held');
 		this.workerCarried = $('worker-carried');
 		this.vaultHeld = $('vault-held');
+		this.notesIssued = $('notes-issued');
+		this.notesRetired = $('notes-retired');
+		this.notesHeld = $('notes-held');
 		this.forageGarden = $('forage-garden');
 		this.forageWild = $('forage-wild');
 	}
@@ -118,6 +121,9 @@ class EconomyTelemetry {
 		this.goldHeld.textContent = this.values[4].toFixed(2);
 		this.workerCarried.textContent = model.workers.totalGold().toFixed(2);
 		this.vaultHeld.textContent = (model.money.transport + model.money.custody).toFixed(2);
+		this.notesIssued.textContent = model.bank.noteIssued.toFixed(2);
+		this.notesRetired.textContent = model.bank.noteRetired.toFixed(2);
+		this.notesHeld.textContent = model.money.noteTotal().toFixed(2);
 		this.forageGarden.textContent = model.forage.gardenFed.toFixed(2);
 		this.forageWild.textContent = model.forage.wildPicked.toFixed(2);
 		const seconds = Math.floor(model.ticks * ECONOMY_DT);

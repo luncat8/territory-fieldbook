@@ -22,7 +22,8 @@ funding and currency policies independently before combining them. The lab runs 
 G2 + F1): scenario starting gold `START_GOLD_PER_WORKER × workers` recorded once and split between named owners,
 town treasuries, worker wallets and bank equity; shared worker-owners (`owners.js`); a gold mine that needs
 delivered wood; and a capital-funded gold bank (`banks.js`) with simple interest, grace-period default and
-write-off. Credit notes (P1) and bankruptcy/facility resale (P3) are not in the lab yet.
+write-off. Credit notes (P1) are in the lab: the switch lends the bank's own notes, repayment retires them,
+and redemption suspends issuance when the reserve empties. Bankruptcy/facility resale (P3) is not in the lab yet.
 
 ## Scope
 

@@ -212,25 +212,30 @@ class TownRules {
 	}
 
 	// Funded workers refill their food bag from the town's food stock; broke workers or unsupplied towns cannot, triggering FORAGE.
+	// Payment is notes-first (Gresham) out of the worker's combined wallet; only the gold leg feeds the ledger.
 	buyRation(i, w) {
 		const m = this.model, { workers } = m, eps = m.money.eps();
 		const avail = this.model.food[i];
 		const want = FOOD_BAG - workers.food[w];
-		if (avail <= 1e-4 || want <= 1e-4 || workers.gold[w] <= eps) return 0;
+		const spendable = workers.gold[w] + workers.notes[w];
+		if (avail <= 1e-4 || want <= 1e-4 || spendable <= eps) return 0;
 		const unitFee = this.foodFee(i);
-		const maxBuy = unitFee > 0 ? workers.gold[w] / unitFee : want;
+		const maxBuy = unitFee > 0 ? spendable / unitFee : want;
 		const bought = Math.min(want, avail, maxBuy);
 		if (bought <= 1e-5) return 0;
-		const cost = Math.min(workers.gold[w], bought * unitFee);
+		const cost = Math.min(spendable, bought * unitFee);
+		const notePaid = Math.min(cost, workers.notes[w]);
+		const goldPaid = cost - notePaid;
 		const stockCost = m.goodsPool.stockCost[ITEM_FOOD];
 		stockCost[i] *= 1 - bought / avail;
 		m.consumedFood += bought;
-		workers.gold[w] -= cost;
-		if (cost > 0) m.tracker.expense(w, cost, i);
+		workers.notes[w] -= notePaid;
+		workers.gold[w] -= goldPaid;
+		if (goldPaid > 0) m.tracker.expense(w, goldPaid, i);
 		this.model.food[i] -= bought;
 		workers.food[w] = Math.min(FOOD_BAG, workers.food[w] + bought);
 		if (cost > 0) {
-			m.money.payTown(i, cost);
+			m.money.payTown(i, goldPaid, notePaid);
 			workers.logEvent(w, EVT_RATION, cost);
 		}
 		return bought;

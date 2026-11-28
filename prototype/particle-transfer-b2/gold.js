@@ -17,6 +17,10 @@ class GoldMoney {
 	constructor(model) {
 		this.model = model;
 		this.purse = new Float64Array(ECONOMY_SIZE);
+		// Note ledgers (M.4 F3): town purses, transport account and dead-worker estates hold the bank's notes.
+		this.notePurse = new Float64Array(ECONOMY_SIZE);
+		this.noteTransport = 0;
+		this.noteCustody = 0;
 		// SoA FIFO of unpaid entry wages: debt belongs to the owner and the original hire, even after either moves on.
 		this.claimOwner = new Int32Array(WAGE_CLAIM_CAP);
 		this.claimWorkerId = new Int32Array(WAGE_CLAIM_CAP);
@@ -32,10 +36,12 @@ class GoldMoney {
 	reset() {
 		const { owners, bank } = this.model;
 		this.purse.fill(0);
+		this.notePurse.fill(0);
 		this.claimCount = 0;
-		if (owners) for (const col of [owners.cash, owners.capital, owners.owed]) col.fill(0);
+		if (owners) for (const col of [owners.cash, owners.capital, owners.owed, owners.notes]) col.fill(0);
 		if (bank) bank.reset();
 		this.transport = this.custody = 0;
+		this.noteTransport = this.noteCustody = 0;
 		this.initial = this.mined = this.wages = this.bonuses = this.taxes = this.transportEarned = this.redistributed = 0;
 		this.mineRate = this.wageRate = this.taxRate = 0;
 	}
@@ -109,7 +115,9 @@ class GoldMoney {
 	// An erased town's treasury is an estate: it goes to custody, never vanishes and never mints.
 	releaseTown(i) {
 		this.custody += this.purse[i];
+		this.noteCustody += this.notePurse[i];
 		this.purse[i] = 0;
+		this.notePurse[i] = 0;
 	}
 
 	isTown(i) {
@@ -117,23 +125,37 @@ class GoldMoney {
 	}
 
 	// Spendable budget at a cell: a town's purse, or a facility's bounded share of its owner's shared cash.
+	// Both legs include held notes (M.4 F3): admission is paid notes-first, so affordability counts notes.
 	cashAt(i) {
-		return this.isTown(i) ? this.purse[i] : this.model.owners.budgetAt(i);
+		return this.isTown(i) ? this.purse[i] + this.notePurse[i] : this.model.owners.budgetAt(i);
 	}
 
+	// Draws notes first and gold for the remainder (Gresham); returns the note portion so callers can split
+	// the payment across transport and payee accounts exactly.
 	debit(i, amount) {
+		let notePart = 0;
 		if (this.isTown(i)) {
-			this.purse[i] = Math.max(0, this.purse[i] - amount);
-			return;
+			notePart = Math.min(amount, this.notePurse[i]);
+			this.notePurse[i] -= notePart;
+			this.purse[i] = Math.max(0, this.purse[i] - (amount - notePart));
+			return notePart;
 		}
 		const owners = this.model.owners, o = owners.ownerAt(i);
-		owners.cash[o] = Math.max(0, owners.cash[o] - amount);
+		notePart = Math.min(amount, owners.notes[o]);
+		owners.notes[o] -= notePart;
+		owners.cash[o] = Math.max(0, owners.cash[o] - (amount - notePart));
+		return notePart;
 	}
 
-	creditOwner(o, amount) {
-		if (amount <= 0) return;
-		if (o) this.model.owners.cash[o] += amount;
-		else this.custody += amount;
+	creditOwner(o, amount, noteAmount = 0) {
+		if (amount <= 0 && noteAmount <= 0) return;
+		if (o) {
+			this.model.owners.cash[o] += amount;
+			this.model.owners.notes[o] += noteAmount;
+		} else {
+			this.custody += amount;
+			this.noteCustody += noteAmount;
+		}
 	}
 
 	growClaims() {
@@ -177,14 +199,19 @@ class GoldMoney {
 	}
 
 	// Prepays the shift at pool entry from the facility budget; any shortfall books an SoA wage claim on the owner
-	// in favour of the original worker, settled FIFO from later owner cash.
+	// in favour of the original worker, settled FIFO from later owner cash. The budget is drawn notes-first
+	// (Gresham), and only the gold portion feeds the watched-worker ledger so its identity stays gold-exact.
 	payEntryWage(firmCell, workerIdx, bill) {
 		if (bill <= 0) return 0;
 		const m = this.model, owners = m.owners, o = owners.ownerAt(firmCell), eps = this.eps();
 		const paid = Math.min(bill, owners.budgetAt(firmCell));
-		owners.cash[o] = Math.max(0, owners.cash[o] - paid);
-		m.workers.gold[workerIdx] += paid;
-		if (paid > 0) m.tracker.income(workerIdx, paid, m.workers.cell[workerIdx]);
+		const notePaid = Math.min(paid, owners.notes[o]);
+		const goldPaid = paid - notePaid;
+		owners.notes[o] -= notePaid;
+		owners.cash[o] = Math.max(0, owners.cash[o] - goldPaid);
+		m.workers.notes[workerIdx] += notePaid;
+		m.workers.gold[workerIdx] += goldPaid;
+		if (goldPaid > 0) m.tracker.income(workerIdx, goldPaid, m.workers.cell[workerIdx]);
 		this.wages += paid;
 		const owed = bill - paid;
 		if (owed > eps) {
@@ -234,22 +261,36 @@ class GoldMoney {
 		if (left > 0) this.custody += left;
 	}
 
-	payTransport(amount) {
-		if (amount <= 0) return;
+	payTransport(amount, noteAmount = 0) {
+		if (amount <= 0 && noteAmount <= 0) return;
 		this.transport += amount;
-		this.transportEarned += amount;
+		this.noteTransport += noteAmount;
+		this.transportEarned += amount + noteAmount;
 	}
 
-	payTown(townCell, amount) {
-		if (amount <= 0) return;
+	payTown(townCell, amount, noteAmount = 0) {
+		if (amount <= 0 && noteAmount <= 0) return;
 		this.purse[townCell] += amount;
-		this.taxes += amount;
-		this.model.towns.recordRevenue(townCell, amount);
+		this.notePurse[townCell] += noteAmount;
+		// Taxes and town revenue count the total g value paid, gold and notes alike.
+		this.taxes += amount + noteAmount;
+		this.model.towns.recordRevenue(townCell, amount + noteAmount);
 	}
 
-	// Overlay holdings: a facility shows its budget share, so owner cash is never counted once per site.
+	// Overlay holdings: a facility shows its gold budget share, so owner cash is never counted once per site
+	// and notes never masquerade as gold on the map.
 	held(i) {
-		return (this.isTown(i) ? this.purse[i] : this.model.owners.budgetAt(i)) + this.model.workerGold[i];
+		return (this.isTown(i) ? this.purse[i] : this.model.owners.goldAt(i)) + this.model.workerGold[i];
+	}
+
+	// Every note balance the bank owes: town purses, owner and worker wallets, transport and custody.
+	noteTotal() {
+		const m = this.model;
+		let sum = this.noteTransport + this.noteCustody;
+		for (let i = 0; i < ECONOMY_SIZE; i++) sum += this.notePurse[i];
+		if (m.owners) sum += m.owners.totalNotes();
+		if (m.workers) sum += m.workers.totalNotes();
+		return sum;
 	}
 
 	townTotal() {
@@ -282,6 +323,7 @@ class GoldMoney {
 	}
 
 	// T0 redistributes transport fees to towns by population; T1 retains them. Custody always escheats to towns.
+	// Notes follow the same escheat path so no note balance is stranded outside every wallet (M.4 F3).
 	dripToTowns() {
 		const { actors, pop } = this.model;
 		let townWeight = 0;
@@ -290,12 +332,20 @@ class GoldMoney {
 		const fromTransport = this.transportPreset === 'T0' ? this.transport * this.dripShare : 0;
 		const fromCustody = this.custody * this.dripShare;
 		const drip = fromTransport + fromCustody;
-		if (drip <= this.eps()) return;
+		const fromNoteTransport = this.transportPreset === 'T0' ? this.noteTransport * this.dripShare : 0;
+		const fromNoteCustody = this.noteCustody * this.dripShare;
+		const noteDrip = fromNoteTransport + fromNoteCustody;
+		if (drip <= this.eps() && noteDrip <= this.eps()) return;
 		this.transport -= fromTransport;
 		this.custody -= fromCustody;
+		this.noteTransport -= fromNoteTransport;
+		this.noteCustody -= fromNoteCustody;
 		this.redistributed += drip;
 		for (let i = 0; i < ECONOMY_SIZE; i++) {
-			if (actors[i] === ECONOMY_TOWN) this.purse[i] += drip * (Math.max(1, pop[i]) / townWeight);
+			if (actors[i] !== ECONOMY_TOWN) continue;
+			const share = Math.max(1, pop[i]) / townWeight;
+			this.purse[i] += drip * share;
+			this.notePurse[i] += noteDrip * share;
 		}
 	}
 
@@ -322,8 +372,11 @@ class GoldMoney {
 			this.wages += pay;
 		}
 		const reserve = owners.reserve[o];
-		if (!owners.extracts[o] && reserve > eps && owners.cash[o] < reserve) m.bank.request(o, reserve / RESERVE_SECONDS);
-		m.bank.service(o, owners.cash[o] - reserve);
+		// The wage reserve is spendable gold+notes (wages draw notes too), so both the borrow trigger and the
+		// debt-service budget measure the combined balance against it. Re-read after request(): a fresh loan
+		// lands in the wallet first, exactly as the original cash-only waterfall did.
+		if (!owners.extracts[o] && reserve > eps && owners.cash[o] + owners.notes[o] < reserve) m.bank.request(o, reserve / RESERVE_SECONDS);
+		m.bank.service(o, owners.cash[o] + owners.notes[o] - reserve);
 		if (m.bank.principal[o] > eps) return;
 		const surplus = owners.cash[o] - Math.max(owners.capital[o], reserve * (RESERVE_HORIZON_SECONDS / RESERVE_SECONDS));
 		const batch = BONUS_BATCH * this.unitScale();

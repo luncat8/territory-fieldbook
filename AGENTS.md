@@ -110,8 +110,8 @@ good: obj.data.action() / obj.action(obj.data) · not good: getObj().data().acti
 - prototype/shared/lab.css — common visual rules shared by both B2 labs; each lab's styles.css loads after and overrides only what differs.
 - prototype/shared/lab-ui.js — `$` DOM lookup + `ICON_PATHS`/`labIcon(name)` SVG helpers + `labBindCopy(button, read)` ⧉ clipboard buttons; loaded before each lab's app.js. Per-lab `RESOURCE_TITLES`/`TOOL_KINDS` stay in app.js.
 - prototype/shared/economy-panel.js — `EconomyPanel(diagnostics, rows, watched)` inspector shell (row groups + stall-flag list + ⧉ copy); pure view over each lab's `diagnostics.js` contract.
-- prototype/particle-transfer-b2/ — port of the d198120 reference lab: torus wrap, growable FIFO wage-claims + cost relaxation, particle/triangle/gold-flux rendering, Watched Workers audit (track.js/tracked.js), economy diagnostics with coal/goods/food in-flight asks. Tests: 49.
-- prototype/price-model-b2/ — cell-lab B2 port + economy inspector adapter (diagnostics.js). Tests: 72.
+- prototype/particle-transfer-b2/ — port of the d198120 reference lab: torus wrap, growable FIFO wage-claims + cost relaxation, particle/triangle/gold-flux rendering, Watched Workers audit (track.js/tracked.js), economy diagnostics with coal/goods/food in-flight asks, credit notes (F3 issuance, redemption queue, suspension). Tests: 59.
+- prototype/price-model-b2/ — cell-lab B2 port + economy inspector adapter (diagnostics.js). Tests: 74.
 
 ## drafts = human input
 

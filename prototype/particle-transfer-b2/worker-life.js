@@ -53,6 +53,8 @@ class WorkerLife {
 		const child = pool.spawn(pool.x[w], pool.y[w], WORKER_STILL, 0, pool.gold[w] / 2, pool.food[w] / 2, false);
 		if (child < 0) return false;
 		pool.gold[w] /= 2;
+		pool.notes[child] = pool.notes[w] / 2;
+		pool.notes[w] /= 2;
 		pool.food[w] /= 2;
 		pool.tired[child] = pool.tired[w] / 2;
 		pool.tired[w] /= 2;
@@ -67,6 +69,8 @@ class WorkerLife {
 		const m = this.model, pool = m.workers;
 		this.model.tracker.onRemove(w);
 		m.money.custody += pool.gold[w];
+		// The dead worker's notes become an estate in note custody (still bank liabilities, never minted).
+		m.money.noteCustody += pool.notes[w];
 		this.deaths += pool.amount[w];
 		this.removedTired += pool.tired[w];
 		this.lostFood += pool.food[w];

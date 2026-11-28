@@ -165,6 +165,9 @@ class PriceEconomy {
 		this.decay = true;
 		this.derived = true;
 		this.suppression = true;
+		// Credit-money switch (plan M.3): a saved preference, not world state — model.reset() keeps it.
+		this.creditOn = false;
+		this.creditStop = false;
 		this.land = new Land(this);
 		this.steering = new Steering(this);
 		this.forage = new ForageSystem(this);

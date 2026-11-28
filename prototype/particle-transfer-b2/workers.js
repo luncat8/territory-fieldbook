@@ -47,13 +47,15 @@ class WorkerPool {
 		this.tired = new Float64Array(MAX_WORKERS);
 		this.paidRest = new Float64Array(MAX_WORKERS);
 		this.gold = new Float64Array(MAX_WORKERS);
+		// Note wallet (M.4 F3): kept out of gold so the watched-ledger identity stays exact.
+		this.notes = new Float64Array(MAX_WORKERS);
 		this.food = new Float64Array(MAX_WORKERS);
 		this.intent = new Float64Array(MAX_WORKERS);
 		this.since = new Int32Array(MAX_WORKERS);
 		// Unbonused shift labor and the owner it was worked for: bonuses follow credited work, not presence on site.
 		this.credit = new Float64Array(MAX_WORKERS);
 		this.creditOwner = new Int32Array(MAX_WORKERS);
-		this.columns = [this.id, this.state, this.cell, this.x, this.y, this.hx, this.hy, this.amount, this.tired, this.paidRest, this.gold, this.food, this.intent, this.since, this.credit, this.creditOwner];
+		this.columns = [this.id, this.state, this.cell, this.x, this.y, this.hx, this.hy, this.amount, this.tired, this.paidRest, this.gold, this.notes, this.food, this.intent, this.since, this.credit, this.creditOwner];
 		this.watchedId = -1;
 		this.logHead = 0;
 		this.logCount = 0;
@@ -99,6 +101,8 @@ class WorkerPool {
 		this.tired[w] = tired;
 		this.paidRest[w] = this.intent[w] = 0;
 		this.gold[w] = gold;
+		// Swap-remove reuses a stale slot, so every column spawn does not set must be zeroed here.
+		this.notes[w] = 0;
 		this.food[w] = food;
 		this.since[w] = this.model.ticks || 0;
 		this.credit[w] = 0;
@@ -158,6 +162,7 @@ class WorkerPool {
 	totalAmount() { let s = 0; for (let w = 0; w < this.count; w++) s += this.amount[w]; return s; }
 	totalTired() { let s = 0; for (let w = 0; w < this.count; w++) s += this.tired[w]; return s; }
 	totalGold() { let s = 0; for (let w = 0; w < this.count; w++) s += this.gold[w]; return s; }
+	totalNotes() { let s = 0; for (let w = 0; w < this.count; w++) s += this.notes[w]; return s; }
 	meanGold() { const amt = this.totalAmount(); return amt > 0 ? this.totalGold() / amt : 0; }
 
 	hasOnSite(cell) {
@@ -275,24 +280,24 @@ class WorkerPool {
 		const tr = this.tired[w];
 		const feeRate = towns.restTax(c);
 		const fullFee = feeRate * tr;
-		if (fullFee > eps && this.gold[w] <= eps) return false;
+		if (fullFee > eps && this.gold[w] + this.notes[w] <= eps) return false;
 		m.towns.observeWallet(c, this.gold[w] / this.amount[w]);
-		let paid = 0;
+		let paid = 0, goldPaid = 0, notePaid = 0;
 		if (fullFee <= eps) {
 			this.paidRest[w] = tr;
-		} else if (this.gold[w] >= fullFee) {
-			paid = fullFee;
-			this.gold[w] -= fullFee;
-			this.paidRest[w] = tr;
 		} else {
-			paid = this.gold[w];
+			// Notes first (Gresham): spend the bank's own notes before gold, short of the fee only.
+			paid = Math.min(fullFee, this.gold[w] + this.notes[w]);
+			notePaid = Math.min(paid, this.notes[w]);
+			goldPaid = paid - notePaid;
+			this.notes[w] -= notePaid;
+			this.gold[w] -= goldPaid;
 			this.paidRest[w] = tr * (paid / fullFee);
-			this.gold[w] = 0;
 		}
 		if (paid > 0) {
-			m.money.payTown(c, paid);
+			m.money.payTown(c, goldPaid, notePaid);
 			this.logEvent(w, EVT_TAX, paid);
-			m.tracker.expense(w, paid, c);
+			m.tracker.expense(w, goldPaid, c);
 		}
 		m.tracker.visit(this.id[w], c, paid);
 		m.roomCount[c] += this.amount[w];
@@ -305,7 +310,7 @@ class WorkerPool {
 		const m = this.model, towns = m.towns, eps = m.money.eps();
 		if (m.actors[c] !== ECONOMY_TOWN || m.rooms[c] <= 0) return false;
 		const feeRate = towns.restTax(c);
-		if (feeRate > eps && this.gold[w] <= eps) return false;
+		if (feeRate > eps && this.gold[w] + this.notes[w] <= eps) return false;
 		if (m.roomCount[c] + this.amount[w] <= m.rooms[c] + 1e-6) return this.checkInRoom(w, c);
 		if (m.waitCount[c] + this.amount[w] <= towns.waitCap(c) + 1e-6) {
 			m.waitCount[c] += this.amount[w];
@@ -344,7 +349,7 @@ class WorkerPool {
 				tickRested += this.stepRoom(w);
 			} else if (st === WORKER_TOWN_WAIT) {
 				const wMix = walletWeight(this.gold[w], this.amount[w], refFee);
-				if ((towns.restTax(c) > eps && this.gold[w] <= eps) || steering.hasBetterNeighbor(m.priceHome, m.priceRest, wMix, c)) {
+				if ((towns.restTax(c) > eps && this.gold[w] + this.notes[w] <= eps) || steering.hasBetterNeighbor(m.priceHome, m.priceRest, wMix, c)) {
 					this.setState(w, WORKER_WALK_HOME);
 				}
 			} else if (st === WORKER_STILL) {

@@ -36,6 +36,7 @@ function bootEconomy() {
 	const panel = new EconomyPanel(diagnostics, PANEL_ROWS, () => model.tracker.list);
 	const guide = $('field-guide'), runButton = $('run-button'), runState = $('run-state');
 	const speedSelect = $('speed'), decay = $('price-decay'), derived = $('derived-bid'), suppression = $('stock-suppression'), flow = $('show-flow');
+	const creditBox = $('credit-notes'), redeemButton = $('redeem-notes'), creditMessage = $('credit-message');
 	const toolButtons = document.querySelectorAll('[data-tool]'), clearButton = $('clear-towns');
 	const resourceButtons = document.querySelectorAll('[data-resource]');
 	const edgeButtons = document.querySelectorAll('[data-map-edge]');
@@ -47,6 +48,26 @@ function bootEconomy() {
 	model.decay = decay.checked;
 	model.derived = derived.checked;
 	model.suppression = suppression.checked;
+	// Credit is a saved preference (plan M.3), never world state: restore from localStorage only, so the
+	// DOM default (or a test's checked node) can never switch the bank's note issuance on by itself.
+	const SETTINGS_KEY = 'fluxfield.particle-transfer-b2.settings';
+	function saveSettings() {
+		try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ v: 1, credit: model.creditOn })); } catch (err) { /* storage unavailable */ }
+	}
+	function restoreSettings() {
+		let credit = false;
+		try {
+			const raw = localStorage.getItem(SETTINGS_KEY);
+			if (raw) {
+				const data = JSON.parse(raw);
+				if (data && data.v === 1) credit = !!data.credit;
+			}
+		} catch (err) { /* corrupt or unavailable */ }
+		model.creditOn = credit;
+		creditBox.checked = credit;
+		if (credit) creditMessage.textContent = 'Credit notes restored from your last session.';
+	}
+	restoreSettings();
 	function syncEdgeLabel() {
 		$('grid-size').textContent = `${ECONOMY_WIDTH} × ${ECONOMY_HEIGHT} (forage ${model.forage.cw} × ${model.forage.ch}) · ${MAP_WRAP ? 'wrap' : 'bounded'}`;
 	}
@@ -198,6 +219,38 @@ function bootEconomy() {
 	decay.addEventListener('change', () => { model.decay = decay.checked; message.textContent = `Price decay ${model.decay ? 'enabled' : 'disabled'}.`; });
 	derived.addEventListener('change', () => { model.derived = derived.checked; message.textContent = `Derived bid ${model.derived ? 'enabled' : 'disabled'}.`; });
 	suppression.addEventListener('change', () => { model.suppression = suppression.checked; message.textContent = `Stock suppression ${model.suppression ? 'enabled' : 'disabled'}.`; });
+	creditBox.addEventListener('change', () => {
+		if (creditBox.checked) {
+			model.creditOn = true;
+			model.creditStop = false;
+			saveSettings();
+			creditMessage.textContent = 'Credit notes on: the bank lends its own notes — expansion adds notes, never gold.';
+			return;
+		}
+		// M.3: the switch may only fall once every note is settled; until then stop new issuance and let F1 resume.
+		if (!model.bank.notesSettled()) {
+			creditBox.checked = true;
+			model.creditStop = true;
+			creditMessage.textContent = `Credit stopping: ${model.bank.noteLiability.toFixed(2)} g of notes still outstanding. New note loans stop and gold lending resumes — redeem and repay, then uncheck again.`;
+			return;
+		}
+		model.creditOn = false;
+		model.creditStop = false;
+		saveSettings();
+		creditMessage.textContent = 'Credit notes off: the bank lends gold again.';
+	});
+	redeemButton.addEventListener('click', () => {
+		const pool = model.workers;
+		const w = pool.watchedId >= 0 ? pool.indexOfId(pool.watchedId) : -1;
+		const held = w >= 0 ? pool.notes[w] : 0;
+		if (held <= 0) {
+			creditMessage.textContent = 'Watched worker holds no notes to redeem — click a worker with a note wallet first.';
+			return;
+		}
+		const { fill, queued } = model.bank.redeemWorker(w, held);
+		const susp = model.bank.isSuspended() ? '; reserve empty — credit suspended, issuance refused' : '';
+		creditMessage.textContent = `Redeemed ${fill.toFixed(2)} g of ${held.toFixed(2)} g notes; ${queued.toFixed(2)} g queued${susp}.`;
+	});
 	flow.addEventListener('change', () => { dirty = true; paint(); });
 	$('particle-shape').addEventListener('change', event => {
 		for (const plot of plots) plot.shape = event.target.value;

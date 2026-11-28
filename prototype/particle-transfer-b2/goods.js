@@ -353,11 +353,14 @@ class GoodsPool {
 			const itemUnitPrice = (facSlice + trSlice) / accepted;
 			const buyerPay = Math.min(availCash, accepted * buyerUnitPrice);
 			const effectiveUnitBid = buyerPay / accepted;
-			money.debit(cell, buyerPay);
+			// The buyer pays notes-first; split that note portion across transport and payee so both ledgers
+			// stay exact (dig-site payees never see notes because the default parameters are zero).
+			const notePaid = money.debit(cell, buyerPay);
 			const transportPaid = Math.min(buyerPay, trSlice);
+			const noteForTransport = Math.min(notePaid, transportPaid);
 			const factoryRevenue = buyerPay - transportPaid;
-			money.payTransport(transportPaid);
-			money.creditOwner(this.payee[p], factoryRevenue);
+			money.payTransport(transportPaid - noteForTransport, noteForTransport);
+			money.creditOwner(this.payee[p], factoryRevenue - (notePaid - noteForTransport), notePaid - noteForTransport);
 			const realizedProfit = factoryRevenue - facSlice - (trSlice - transportPaid);
 			const identityProfit = accepted * (effectiveUnitBid - itemUnitPrice);
 			const err = Math.abs(realizedProfit - identityProfit);

@@ -165,6 +165,14 @@ class EconomyDiagnostics {
 		let unpaid = 0;
 		for (let k = 0; k < money.claimCount; k++) unpaid += money.claimAmount[k];
 		s.unpaidWages = unpaid;
+		// Note ledgers (M.4 F3): liability vs every wallet that can hold the bank's notes, plus redemption state.
+		s.noteOut = m.bank.noteLiability;
+		s.noteHeld = money.noteTotal();
+		s.noteQueue = m.bank.queuedNotes();
+		s.noteSuspended = m.bank.isSuspended();
+		s.noteIssued = m.bank.noteIssued;
+		s.noteRetired = m.bank.noteRetired;
+		s.creditState = m.creditOn ? (m.creditStop ? 'stopped' : 'active') : 'off';
 	}
 
 	countOwners(s, m) {
@@ -324,6 +332,7 @@ class EconomyDiagnostics {
 		if (s.firmOwed > s.firmPurse && s.firmOwed > this.model.money.unitScale()) out.push(`owners owe ${s.firmOwed.toFixed(2)} g but hold ${s.firmPurse.toFixed(2)} g (unpaid wage claims ${s.unpaidWages.toFixed(2)} g)`);
 		if (s.defaults) out.push(`${s.defaults} bank loan(s) defaulted: ${s.writtenOff.toFixed(2)} g written off bank equity; borrowers' cash and wage claims are untouched`);
 		if (Math.abs(s.goldError) > Math.max(1e-9, s.goldTotal * 1e-8)) out.push(`gold ledger off by ${s.goldError.toExponential(2)} g: initial + mined must equal every bucket`);
+		if (s.noteSuspended) out.push(`credit suspended: reserve empty with ${s.noteOut.toFixed(2)} g of notes outstanding and ${s.noteQueue.toFixed(2)} g queued for redemption — issuance is refused until gold returns`);
 		if (s.bazaarEmpty) out.push(`${s.bazaarEmpty} town bazaar(s) are empty while populated: food bids go dead until a farm delivers`);
 		if (s.idleFarms) out.push(`${s.idleFarms} farm(s) hold fields but no crew on this tick`);
 		return out;
@@ -393,7 +402,7 @@ class EconomyDiagnostics {
 		const f = (v, n = 7, d = 2) => v.toFixed(d).padStart(n);
 		const rows = ['owner worker sites    cash    owed    debt overdue state'];
 		for (let o = 1; o < owners.count; o++) {
-			const state = bank.defaulted[o] ? 'default' : bank.principal[o] > 0 ? 'loan' : '-';
+			const state = bank.defaulted[o] ? 'default' : bank.noteLoan[o] && bank.principal[o] > 0 ? 'note' : bank.principal[o] > 0 ? 'loan' : '-';
 			rows.push(`${String(o).padStart(5)} ${String(owners.workerId[o]).padStart(6)} ${String(owners.facilities[o]).padStart(5)} ${f(owners.cash[o])} ${f(owners.owed[o])} ${f(bank.principal[o])} ${f(bank.overdue[o], 7, 1)} ${state}`);
 		}
 		return rows.join('\n');
@@ -441,6 +450,7 @@ class EconomyDiagnostics {
 			'## gold',
 			`total=${f(s.goldTotal)} initial=${f(s.initial)} mined=${f(s.mined)} error=${s.goldError.toExponential(1)} town_purse=${f(s.townPurse)} owner_cash=${f(s.firmPurse)} bank_reserve=${f(s.bankReserve)} transport=${f(s.transport)} custody=${f(s.custody)} wallets=${f(s.wallets)}`,
 			`wallet_share=${f(s.walletShare * 100, 1)}% wallet_mean=${f(s.walletMean, 4)} wallet_median=${f(s.walletMedian, 4)} wallet_max=${f(s.walletMax)} broke_workers=${s.walletBroke} firm_owed=${f(s.firmOwed)} unpaid_wage_claims=${f(s.unpaidWages)}`,
+			`notes_out=${f(s.noteOut)} notes_held=${f(s.noteHeld)} notes_queued=${f(s.noteQueue)} credit=${s.creditState}${s.noteSuspended ? ' (suspended)' : ''} note_issued=${f(s.noteIssued)} note_retired=${f(s.noteRetired)}`,
 			'## owners & bank',
 			`owners=${s.owners} debt=${f(s.debt)} lent=${f(s.lent)} repaid=${f(s.repaid)} interest=${f(s.interest)} written_off=${f(s.writtenOff)} loans=${s.loans} cleared=${s.cleared} defaults=${s.defaults} refusals=${s.refusals} bank_capital=${f(s.bankCapital)} bank_equity=${f(s.bankEquity)} bonuses=${f(s.bonuses)} depot=${f(s.depot)}`,
 			this.ownerRows(),
@@ -484,8 +494,10 @@ const PANEL_ROWS = [
 		['Transport · custody', s => `${s.transport.toFixed(1)} · ${s.custody.toFixed(1)} g`],
 		['Unpaid wages', s => `${s.unpaidWages.toFixed(2)} g`, s => s.unpaidWages > 1e-6],
 		['Owed by owners', s => `${s.firmOwed.toFixed(2)} g`, s => s.firmOwed > s.firmPurse && s.firmOwed > 1],
-		['Initial / mined', s => `${s.initial.toFixed(1)} / ${s.mined.toFixed(1)} g`],
-		['Ledger error', s => s.goldError.toExponential(1), s => Math.abs(s.goldError) > 1e-6]
+			['Initial / mined', s => `${s.initial.toFixed(1)} / ${s.mined.toFixed(1)} g`],
+			['Notes out · held', s => `${s.noteOut.toFixed(2)} · ${s.noteHeld.toFixed(2)} g`, s => Math.abs(s.noteOut - s.noteHeld) > 1e-6],
+			['Credit', s => `${s.creditState}${s.noteSuspended ? ' · suspended' : ''} · queue ${s.noteQueue.toFixed(2)} g`, s => s.noteSuspended],
+			['Ledger error', s => s.goldError.toExponential(1), s => Math.abs(s.goldError) > 1e-6]
 	]],
 	['Owners & bank', [
 		['Owners · debt', s => `${s.owners} · ${s.debt.toFixed(2)} g`],
